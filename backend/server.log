@@ -1,0 +1,63 @@
+INFO:     Started server process [80048]
+INFO:     Waiting for application startup.
+Unclosed client session
+client_session: <aiohttp.client.ClientSession object at 0x7e8b799ad2e0>
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+ERROR:    Traceback (most recent call last):
+  File "/home/hila/Desktop/Stocks/backend/venv/lib/python3.12/site-packages/starlette/routing.py", line 747, in lifespan
+    await receive()
+  File "/home/hila/Desktop/Stocks/backend/venv/lib/python3.12/site-packages/uvicorn/lifespan/on.py", line 137, in receive
+    return await self.receive_queue.get()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/queues.py", line 158, in get
+    await getter
+asyncio.exceptions.CancelledError
+
+Initializing database...
+Starting scheduler (interval: 10 minutes)...
+Running initial scrape...
+
+[2026-02-06 23:47:38.129659] Starting scheduled scrape...
+
+=== Starting comprehensive market scan ===
+Scraping from 13+ sources in parallel...
+
+✓ Yahoo Finance: 88 items
+✓ MarketWatch: 20 items
+Attempting to login to Finviz Elite...
+CNBC RSS: Found 30 news items
+Barron's RSS: Found 0 items
+StockTwits returned status 403
+Finviz: Found 180 raw rows
+✓ Finviz: 50 items
+Benzinga: Found 0 movers/news
+Benzinga Premarket: Found 0 movers
+✓ Barron's: 0 items
+API Top Gainers: Found 10 quality stocks
+✓ Price Monitor: 10 items
+TradingView Ideas: Found 5 trending ideas
+Login successful!
+Google Finance gainers: Found 0 stocks
+Google Finance most_active: Found 0 stocks
+CNBC Breaking: Found 8 news items
+Google Finance trending: Found 0 stocks
+✓ CNBC: 8 items
+✓ Google Finance: 0 items
+TradingView Movers: Found 48 movers
+✓ TradingView: 6 items
+IPO Tracker: Found 0 IPOs
+✓ IPO Tracker: 0 items
+✓ Social Trending: 1 items
+Seeking Alpha: Found 23 trending stocks
+✓ Seeking Alpha: 12 items
+Error scraping Benzinga breaking news: 
+✓ Benzinga: 0 items
+Error scraping Market Pulse: 
+✓ Momentum Scanner: 0 items
+
+✅ Total items scraped: 195
+📊 Unique tickers found: 45
+=== Scan complete ===
+
+  Scraped: 195, Saved: 46, Signals: 5

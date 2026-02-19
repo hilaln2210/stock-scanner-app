@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: stock-scanner
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite+aiosqlite:///./stocks.db
+      - key: SCRAPE_INTERVAL_MINUTES
+        value: "10"
+      - key: MAX_NEWS_AGE_HOURS
+        value: "48"
+      - key: FINVIZ_EMAIL
+        sync: false
+      - key: FINVIZ_PASSWORD
+        sync: false
+      - key: FINVIZ_COOKIE
+        sync: false

@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  stock-scanner:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - backend/.env
+    volumes:
+      # Persist the SQLite database
+      - ./data:/app/backend/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

@@ -1,0 +1,118 @@
+nohup: ignoring input
+INFO:     Will watch for changes in these directories: ['/home/hila/Desktop/Stocks/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [27455] using StatReload
+Process SpawnProcess-1:
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/usr/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/hila/Desktop/Stocks/backend/venv/lib/python3.12/site-packages/uvicorn/_subprocess.py", line 78, in subprocess_started
+    target(sockets=sockets)
+  File "/home/hila/Desktop/Stocks/backend/venv/lib/python3.12/site-packages/uvicorn/server.py", line 62, in run
+    return asyncio.run(self.serve(sockets=sockets))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/home/hila/Desktop/Stocks/backend/venv/lib/python3.12/site-packages/uvicorn/server.py", line 69, in serve
+    config.load()
+  File "/home/hila/Desktop/Stocks/backend/venv/lib/python3.12/site-packages/uvicorn/config.py", line 458, in load
+    self.loaded_app = import_from_string(self.app)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/hila/Desktop/Stocks/backend/venv/lib/python3.12/site-packages/uvicorn/importer.py", line 21, in import_from_string
+    module = importlib.import_module(module_str)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/home/hila/Desktop/Stocks/backend/app/main.py", line 8, in <module>
+    from app.api.routes import router
+  File "/home/hila/Desktop/Stocks/backend/app/api/routes.py", line 16, in <module>
+    from app.services.momentum_scan import scan_ticker
+  File "/home/hila/Desktop/Stocks/backend/app/services/momentum_scan.py", line 118
+    from __future__ import annotations
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+SyntaxError: from __future__ imports must occur at the beginning of the file
+WARNING:  StatReload detected changes in 'app/api/routes.py'. Reloading...
+INFO:     Started server process [27706]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+Initializing database...
+Starting scheduler (interval: 10 minutes)...
+Running initial scrape...
+
+[2026-02-05 22:27:29.940611] Starting scheduled scrape...
+Scraping Finviz...
+Finviz: Found 180 raw rows
+  Found 50 items
+Scraping Yahoo Finance...
+  Found 92 items
+Scraping MarketWatch...
+  Found 20 items
+Total items scraped: 162
+  Scraped: 162, Saved: 27, Signals: 1
+
+[2026-02-05 22:37:29.941414] Starting scheduled scrape...
+Scraping Finviz...
+Finviz: Found 180 raw rows
+  Found 50 items
+Scraping Yahoo Finance...
+  Found 92 items
+Scraping MarketWatch...
+  Found 20 items
+Total items scraped: 162
+  Scraped: 162, Saved: 11, Signals: 0
+
+[2026-02-05 22:47:29.941409] Starting scheduled scrape...
+Scraping Finviz...
+Finviz: Found 180 raw rows
+  Found 50 items
+Scraping Yahoo Finance...
+  Found 91 items
+Scraping MarketWatch...
+  Found 20 items
+Total items scraped: 161
+  Scraped: 161, Saved: 11, Signals: 1
+
+[2026-02-05 22:57:29.942815] Starting scheduled scrape...
+Scraping Finviz...
+Finviz: Found 180 raw rows
+  Found 50 items
+Scraping Yahoo Finance...
+  Found 92 items
+Scraping MarketWatch...
+  Found 20 items
+Total items scraped: 162
+  Scraped: 162, Saved: 20, Signals: 2
+
+[2026-02-05 23:07:29.941619] Starting scheduled scrape...
+Scraping Finviz...
+Finviz: Found 180 raw rows
+  Found 50 items
+Scraping Yahoo Finance...
+  Found 92 items
+Scraping MarketWatch...
+  Found 20 items
+Total items scraped: 162
+  Scraped: 162, Saved: 28, Signals: 5
+INFO:     127.0.0.1:56194 - "GET /api/signals?min_score=0&limit=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56200 - "GET /api/news?hours=48&limit=50 HTTP/1.1" 200 OK
+API Top Gainers: Found 10 quality stocks
+INFO:     127.0.0.1:56178 - "GET /api/top-movers?limit=10&lang=he HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40202 - "GET /api/signals?min_score=0&limit=100&lang=en HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40212 - "GET /api/news?hours=48&limit=50&lang=en HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40190 - "GET /api/dashboard/stats HTTP/1.1" 200 OK
