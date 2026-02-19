@@ -194,13 +194,13 @@ class CatalystTrackerService:
                 if enriched and events:
                     # 2. Extract unique tickers and enrich with Finviz fundamentals
                     tickers = list(set(e['ticker'] for e in events if e.get('ticker')))
-                    tickers = tickers[:30]  # Limit to top 30
+                    tickers = tickers[:20]  # Limit to top 20 (faster on slow servers)
 
                     if tickers:
                         try:
                             fundamentals = await asyncio.wait_for(
                                 self.finviz_fundamentals.get_fundamentals_batch(tickers),
-                                timeout=35
+                                timeout=25
                             )
                             for event in events:
                                 ticker = event.get('ticker', '')
@@ -209,13 +209,13 @@ class CatalystTrackerService:
                         except asyncio.TimeoutError:
                             print("Catalyst enrichment TIMEOUT — skipping fundamentals")
 
-                    # 3. Fetch news for top tickers
-                    top_tickers = tickers[:15]
+                    # 3. Fetch news for top tickers (only 8, in background-friendly way)
+                    top_tickers = tickers[:8]
                     if top_tickers:
                         try:
                             news_data = await asyncio.wait_for(
                                 self._fetch_news_for_tickers(top_tickers),
-                                timeout=15
+                                timeout=10
                             )
                             for event in events:
                                 ticker = event.get('ticker', '')

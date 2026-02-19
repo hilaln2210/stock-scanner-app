@@ -66,7 +66,13 @@
       "Bash(git add:*)",
       "Bash(apt list:*)",
       "Bash(dpkg:*)",
-      "Bash(# Download static git binary curl -L \"\"https://github.com/git/git/releases/download/v2.47.1/git-2.47.1.tar.gz\"\" -o /tmp/git-src.tar.gz # Actually, let''s try conda or the gh approach # Check if there''s git-core somewhere find / -name \"\"git\"\" -type f)"
+      "Bash(# Download static git binary curl -L \"\"https://github.com/git/git/releases/download/v2.47.1/git-2.47.1.tar.gz\"\" -o /tmp/git-src.tar.gz # Actually, let''s try conda or the gh approach # Check if there''s git-core somewhere find / -name \"\"git\"\" -type f)",
+      "Bash(__NEW_LINE_7707543be0b8fac9__ git status --short)",
+      "Bash(git rm:*)",
+      "Bash(git commit:*)",
+      "Bash(/home/hila/.local/bin/gh repo create stock-scanner --private --source=. --remote=origin --push)",
+      "Bash(/home/hila/.local/bin/gh repo create stock-scanner-app --private --source=. --remote=origin --push)",
+      "Bash(/home/hila/.local/bin/gh repo edit:*)"
     ]
   }
 }

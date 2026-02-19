@@ -199,7 +199,7 @@ class FDACalendarScraper:
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=self.headers, timeout=aiohttp.ClientTimeout(total=15)) as response:
+                async with session.get(url, headers=self.headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
                     if response.status != 200:
                         print(f"BioPharmCatalyst returned {response.status}")
                         return events
@@ -384,7 +384,7 @@ class FDACalendarScraper:
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=self.headers, timeout=aiohttp.ClientTimeout(total=15)) as response:
+                async with session.get(url, headers=self.headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
                     if response.status != 200:
                         return events
 
@@ -676,7 +676,7 @@ class FDACalendarScraper:
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=self.headers, timeout=aiohttp.ClientTimeout(total=15)) as response:
+                async with session.get(url, headers=self.headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
                     if response.status != 200:
                         return events
 
@@ -754,7 +754,7 @@ class FDACalendarScraper:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(base_url, params=params, headers=self.headers,
-                                       timeout=aiohttp.ClientTimeout(total=15)) as response:
+                                       timeout=aiohttp.ClientTimeout(total=10)) as response:
                     if response.status != 200:
                         print(f"ClinicalTrials.gov returned {response.status}")
                         return events
@@ -830,7 +830,7 @@ class FDACalendarScraper:
         for url in urls:
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(url, headers=self.headers, timeout=aiohttp.ClientTimeout(total=15)) as response:
+                    async with session.get(url, headers=self.headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
                         if response.status != 200:
                             continue
 
@@ -1011,7 +1011,7 @@ class FDACalendarScraper:
         for url in urls:
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(url, headers=self.headers, timeout=aiohttp.ClientTimeout(total=15)) as response:
+                    async with session.get(url, headers=self.headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
                         if response.status != 200:
                             continue
 
