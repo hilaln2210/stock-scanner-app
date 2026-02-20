@@ -1,10 +1,5 @@
-# Stage 1: Build frontend
-FROM node:20-slim AS frontend-build
-WORKDIR /app/frontend
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm install
-COPY frontend/ ./
-RUN npm run build
+# Stage 1: Use pre-built frontend dist (committed to repo)
+# (No npm install/build needed — dist is pre-built locally and committed)
 
 # Stage 2: Python backend + built frontend
 FROM python:3.12-slim
@@ -22,8 +17,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy backend code
 COPY backend/ ./backend/
 
-# Copy built frontend from stage 1
-COPY --from=frontend-build /app/frontend/dist ./frontend/dist
+# Copy pre-built frontend dist
+COPY frontend/dist ./frontend/dist
 
 # Set working directory to backend
 WORKDIR /app/backend

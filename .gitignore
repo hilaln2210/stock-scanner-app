@@ -35,6 +35,9 @@ yarn-error.log*
 # Build
 dist/
 build/
+# Allow frontend pre-built dist to be committed (for Render Docker deploy)
+!frontend/dist/
+!frontend/dist/**
 
 # OS
 .DS_Store
