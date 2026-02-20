@@ -1140,12 +1140,17 @@ class CatalystTrackerService:
 
     async def get_todays_biotech_movers(self) -> List[Dict]:
         """
-        Scan for healthcare/biotech stocks moving significantly today.
+        Scan for healthcare/biotech stocks moving significantly TODAY.
+        Returns empty list if the US market hasn't opened yet (pre-9:30 AM ET).
         Cross-reference with FDA calendar to identify catalyst-driven moves.
-        Returns list with: ticker, move%, reason, stage, fundamentals.
         """
         import aiohttp
         from bs4 import BeautifulSoup
+
+        # Return empty if today's session hasn't started yet
+        _, _, _, today_session_active = self._get_trading_session_dates()
+        if not today_session_active:
+            return []
 
         # Get FDA events for cross-referencing
         fda_events = await self.get_catalyst_events(days_forward=90, days_back=7, enriched=False)
@@ -1280,6 +1285,302 @@ class CatalystTrackerService:
         ))
 
         return all_movers
+
+    def _get_trading_session_dates(self):
+        """Returns (current_session_date, previous_session_date, is_market_open, today_session_active).
+        - current_session_date: today's calendar date if weekday, else None
+        - previous_session_date: last completed trading session date
+        - is_market_open: True only during 9:30-16:00 ET on weekdays
+        - today_session_active: True if market has opened today (9:30+ ET, weekday) — includes post-market
+        """
+        import pytz
+        et = pytz.timezone('America/New_York')
+        now_et = datetime.now(et)
+        today_et = now_et.date()
+
+        def prev_trading_day(d):
+            d -= timedelta(days=1)
+            while d.weekday() >= 5:
+                d -= timedelta(days=1)
+            return d
+
+        market_open = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+        market_close = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
+        is_weekday = today_et.weekday() < 5
+        is_market_open = is_weekday and market_open <= now_et < market_close
+        # today_session_active: True from 9:30 AM ET onwards on a trading day (covers live + post-market)
+        today_session_active = is_weekday and now_et >= market_open
+
+        current_session = today_et if is_weekday else None
+        previous_session = prev_trading_day(today_et)
+        return current_session, previous_session, is_market_open, today_session_active
+
+    async def _get_healthcare_universe(self) -> List[str]:
+        """Fetch a broad list of active healthcare tickers from Finviz (no change% filter)."""
+        import aiohttp
+        from bs4 import BeautifulSoup
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'text/html',
+        }
+        if self.finviz_fundamentals.cookie:
+            headers['Cookie'] = self.finviz_fundamentals.cookie
+
+        use_elite = bool(self.finviz_fundamentals.cookie)
+        base_url = 'https://elite.finviz.com/screener.ashx' if use_elite else 'https://finviz.com/screener.ashx'
+        filters = 'sec_healthcaretechnology,sec_healthcare,sh_avgvol_o200,sh_price_o2'
+        url = f"{base_url}?v=111&f={filters}&o=-volume"
+
+        tickers = []
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=12)) as resp:
+                    if resp.status != 200:
+                        return []
+                    html = await resp.text()
+                    soup = BeautifulSoup(html, 'html.parser')
+
+                    table = soup.find('table', class_='table-light')
+                    if not table:
+                        tables = soup.find_all('table')
+                        for t in tables:
+                            if t.find('td', string=lambda s: s and str(s).isalpha() and len(str(s)) <= 5):
+                                table = t
+                                break
+
+                    if not table:
+                        return []
+
+                    rows = table.find_all('tr')[1:]
+                    for row in rows[:80]:
+                        cells = row.find_all('td')
+                        if len(cells) < 2:
+                            continue
+                        ticker = cells[1].get_text(strip=True)
+                        if ticker and ticker.isalpha() and 1 <= len(ticker) <= 5 and ticker not in {'FDA', 'SEC', 'CEO', 'No.', 'Ticker'}:
+                            tickers.append(ticker)
+        except Exception as e:
+            print(f"Healthcare universe fetch error: {e}")
+
+        return tickers
+
+    async def get_yesterdays_biotech_movers(self) -> List[Dict]:
+        """Get previous trading session's healthcare movers using yfinance batch download.
+        Returns stocks that moved >3% in the previous completed trading session.
+        """
+        import pandas as pd
+
+        current_session, prev_session, is_market_open, today_session_active = self._get_trading_session_dates()
+
+        # Get FDA events for cross-referencing
+        fda_events = await self.get_catalyst_events(days_forward=90, days_back=7, enriched=False)
+        fda_map = {}
+        for e in fda_events:
+            t = e.get('ticker', '')
+            if t:
+                fda_map[t] = e
+
+        # Get a universe of healthcare tickers from Finviz
+        tickers = await self._get_healthcare_universe()
+        if not tickers:
+            return []
+
+        # Batch fetch 5-day daily data from yfinance
+        def fetch_batch_data(ticker_list):
+            try:
+                data = yf.download(
+                    tickers=ticker_list,
+                    period='5d',
+                    interval='1d',
+                    progress=False,
+                    auto_adjust=True,
+                    threads=True,
+                )
+                return data
+            except Exception as e:
+                print(f"yfinance batch download error: {e}")
+                return None
+
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            try:
+                data = await asyncio.wait_for(
+                    loop.run_in_executor(executor, fetch_batch_data, tickers),
+                    timeout=25
+                )
+            except asyncio.TimeoutError:
+                print("yfinance batch download timed out for yesterday's movers")
+                return []
+
+        if data is None or data.empty:
+            return []
+
+        try:
+            close_data = data['Close']
+        except KeyError:
+            return []
+
+        # Single ticker returns a Series — convert to DataFrame
+        if isinstance(close_data, pd.Series):
+            close_data = close_data.to_frame(name=tickers[0] if tickers else 'UNKNOWN')
+
+        movers = []
+        for ticker in close_data.columns:
+            col = close_data[ticker].dropna()
+            if len(col) < 2:
+                continue
+
+            # If today's session has started (9:30+ ET), yfinance last row = today's data
+            # Use index[-2] for yesterday's close, index[-3] for day-before
+            # If session hasn't started (pre-market / weekend), last row = yesterday's completed data
+            if today_session_active and len(col) >= 3:
+                prev_close = float(col.iloc[-2])
+                prev_prev_close = float(col.iloc[-3])
+                session_date = col.index[-2]
+            elif len(col) >= 2:
+                prev_close = float(col.iloc[-1])
+                prev_prev_close = float(col.iloc[-2])
+                session_date = col.index[-1]
+            else:
+                continue
+
+            if prev_prev_close <= 0:
+                continue
+
+            change_pct = (prev_close - prev_prev_close) / prev_prev_close * 100
+            if abs(change_pct) < 3.0:
+                continue
+
+            direction = 'up' if change_pct > 0 else 'down'
+            session_date_str = session_date.date().isoformat() if hasattr(session_date, 'date') else str(session_date)[:10]
+
+            fda_event = fda_map.get(ticker)
+            item = {
+                'ticker': ticker,
+                'company': ticker,
+                'price': f'{prev_close:.2f}',
+                'change_pct': f'{change_pct:+.2f}%',
+                'direction': direction,
+                'sector': 'Healthcare',
+                'industry': '',
+                'volume': '',
+                'market_cap': '',
+                'session_date': session_date_str,
+            }
+
+            if fda_event:
+                item['has_fda_catalyst'] = True
+                item['catalyst_type'] = fda_event.get('catalyst_type', '')
+                item['catalyst_date'] = fda_event.get('catalyst_date', '')
+                item['days_until'] = fda_event.get('days_until')
+                item['drug_name'] = fda_event.get('drug_name', '')
+                item['indication'] = fda_event.get('indication', '')
+                item['phase'] = fda_event.get('phase', '')
+                item['approval_probability'] = fda_event.get('approval_probability', {})
+                item['status'] = fda_event.get('status', '')
+            else:
+                item['has_fda_catalyst'] = False
+
+            item['move_reason'] = self._classify_biotech_move(item, fda_event)
+            movers.append(item)
+
+        movers.sort(key=lambda x: (
+            -int(x.get('has_fda_catalyst', False)),
+            -abs(float(str(x.get('change_pct', '0')).replace('%', '').replace('+', '') or '0'))
+        ))
+        return movers
+
+    @staticmethod
+    def _calc_rsi(prices: list, period: int = 14) -> Optional[float]:
+        """Wilder's Smoothed RSI from a list of closing prices."""
+        if not prices or len(prices) < period + 1:
+            return None
+        p = prices[-(period * 3):]
+        deltas = [p[i + 1] - p[i] for i in range(len(p) - 1)]
+        gains = [max(d, 0.0) for d in deltas]
+        losses = [max(-d, 0.0) for d in deltas]
+        avg_gain = sum(gains[:period]) / period
+        avg_loss = sum(losses[:period]) / period
+        for i in range(period, len(gains)):
+            avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+            avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+        if avg_loss == 0:
+            return 100.0 if avg_gain > 0 else 50.0
+        rs = avg_gain / avg_loss
+        return round(100 - (100 / (1 + rs)), 1)
+
+    def _fetch_rsi_sync(self, ticker: str) -> Dict:
+        """Synchronous yfinance: fetch RSI(14) for daily, monthly, and hourly timeframes."""
+        result = {}
+        try:
+            stock = yf.Ticker(ticker)
+            # Daily RSI(14) — 60 days of daily bars
+            try:
+                h = stock.history(period='60d', interval='1d', timeout=5)
+                if not h.empty and len(h) >= 15:
+                    result['rsi_daily'] = self._calc_rsi(h['Close'].tolist())
+            except Exception:
+                pass
+            # Monthly RSI(14) — 3 years of monthly bars
+            try:
+                h = stock.history(period='3y', interval='1mo', timeout=5)
+                if not h.empty and len(h) >= 15:
+                    result['rsi_monthly'] = self._calc_rsi(h['Close'].tolist())
+            except Exception:
+                pass
+            # Hourly RSI(14) — 5 days of hourly bars
+            try:
+                h = stock.history(period='5d', interval='1h', timeout=5)
+                if not h.empty and len(h) >= 15:
+                    result['rsi_hourly'] = self._calc_rsi(h['Close'].tolist())
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"RSI sync error {ticker}: {e}")
+        return {k: v for k, v in result.items() if v is not None}
+
+    async def _fetch_rsi_batch(self, tickers: List[str], limit: int = 15) -> Dict[str, Dict]:
+        """Fetch RSI for up to `limit` tickers with bounded concurrency."""
+        if not tickers:
+            return {}
+        tickers = list(dict.fromkeys(tickers))[:limit]
+        sem = asyncio.Semaphore(2)
+        rsi_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix='rsi')
+
+        async def fetch_one(ticker: str):
+            async with sem:
+                await asyncio.sleep(0.15)
+                try:
+                    loop = asyncio.get_event_loop()
+                    data = await asyncio.wait_for(
+                        loop.run_in_executor(rsi_executor, self._fetch_rsi_sync, ticker),
+                        timeout=12
+                    )
+                    return ticker, data
+                except asyncio.TimeoutError:
+                    print(f"RSI timeout: {ticker}")
+                    return ticker, {}
+                except Exception:
+                    return ticker, {}
+
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*[fetch_one(t) for t in tickers], return_exceptions=True),
+                timeout=40
+            )
+        except asyncio.TimeoutError:
+            results = []
+        finally:
+            rsi_executor.shutdown(wait=False)
+
+        rsi_map = {}
+        for r in results:
+            if isinstance(r, tuple) and len(r) == 2:
+                t, d = r
+                if isinstance(d, dict):
+                    rsi_map[t] = d
+        return rsi_map
 
     def _classify_biotech_move(self, mover: Dict, fda_event: Optional[Dict]) -> Dict:
         """Classify why a biotech stock is moving today."""

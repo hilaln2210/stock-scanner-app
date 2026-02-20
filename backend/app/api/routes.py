@@ -709,25 +709,59 @@ async def get_fda_movers(
 @router.get("/catalyst/biotech-movers-today")
 async def get_biotech_movers_today():
     """
-    Today's Biotech Movers — healthcare stocks moving significantly today.
+    Today's + Yesterday's Biotech Movers — healthcare stocks moving significantly.
     Cross-referenced with FDA calendar for catalyst-driven moves.
     Cached for 3 minutes.
     """
-    cache_key = "biotech_movers_today"
+    cache_key = "biotech_movers_both"
     now = _time.time()
 
     if cache_key in _response_cache and (now - _response_cache_time.get(cache_key, 0)) < _RESPONSE_CACHE_TTL * 3:
         return _response_cache[cache_key]
 
+    empty_section = {"movers": [], "count": 0, "session_date": ""}
     try:
-        movers = await asyncio.wait_for(
-            catalyst_tracker.get_todays_biotech_movers(),
-            timeout=30
+        # Phase 1: Scan both sessions in parallel
+        today_movers, yesterday_movers = await asyncio.wait_for(
+            asyncio.gather(
+                catalyst_tracker.get_todays_biotech_movers(),
+                catalyst_tracker.get_yesterdays_biotech_movers(),
+            ),
+            timeout=55
         )
 
+        current_session, prev_session, is_market_open, today_session_active = catalyst_tracker._get_trading_session_dates()
+
+        # Phase 2: RSI enrichment for unique tickers (best-effort, won't block if slow)
+        all_tickers = list(dict.fromkeys(
+            [m['ticker'] for m in today_movers] + [m['ticker'] for m in yesterday_movers]
+        ))
+        try:
+            rsi_map = await asyncio.wait_for(
+                catalyst_tracker._fetch_rsi_batch(all_tickers, limit=15),
+                timeout=40
+            )
+            for m in today_movers + yesterday_movers:
+                if m['ticker'] in rsi_map:
+                    m.update(rsi_map[m['ticker']])
+        except (asyncio.TimeoutError, Exception) as rsi_err:
+            print(f"RSI enrichment skipped: {rsi_err}")
+
         result = {
-            "movers": movers,
-            "count": len(movers),
+            "movers": today_movers,  # backward compat
+            "count": len(today_movers),
+            "today": {
+                "movers": today_movers,
+                "count": len(today_movers),
+                "session_date": str(current_session) if current_session else "",
+                "is_market_open": is_market_open,
+                "session_active": today_session_active,
+            },
+            "yesterday": {
+                "movers": yesterday_movers,
+                "count": len(yesterday_movers),
+                "session_date": str(prev_session),
+            },
             "last_updated": datetime.now().isoformat(),
         }
 
@@ -737,14 +771,14 @@ async def get_biotech_movers_today():
     except asyncio.TimeoutError:
         if cache_key in _response_cache:
             return _response_cache[cache_key]
-        return {"movers": [], "count": 0, "error": "timeout"}
+        return {"movers": [], "count": 0, "today": empty_section, "yesterday": empty_section, "error": "timeout"}
     except Exception as e:
         print(f"Biotech movers today error: {e}")
         import traceback
         traceback.print_exc()
         if cache_key in _response_cache:
             return _response_cache[cache_key]
-        return {"movers": [], "count": 0, "error": str(e)}
+        return {"movers": [], "count": 0, "today": empty_section, "yesterday": empty_section, "error": str(e)}
 
 
 @router.get("/catalyst/tech")

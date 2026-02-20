@@ -825,15 +825,264 @@ function FDAMoversSection({ movers, loading: moversLoading }) {
 
 // ─── Today's Biotech Movers ──────────────────────────────
 
-function TodaysBiotechMovers({ movers, loading: moversLoading }) {
+function RsiBlock({ rsi_hourly, rsi_daily, rsi_monthly }) {
+  const hasAny = rsi_hourly != null || rsi_daily != null || rsi_monthly != null;
+  if (!hasAny) return null;
+
+  const hourlyAlert = rsi_hourly != null && (
+    rsi_hourly > 70 ||
+    (rsi_daily != null && rsi_hourly - rsi_daily > 20)
+  );
+
+  const rsiColor = (v) => {
+    if (v == null) return 'text-slate-600';
+    if (v > 70) return 'text-red-400';
+    if (v < 30) return 'text-green-400';
+    return 'text-slate-300';
+  };
+
+  return (
+    <div className={`flex flex-col items-end gap-0.5 ${hourlyAlert ? 'bg-orange-950/40 rounded px-1.5 py-1 ring-1 ring-orange-500/40' : ''}`}>
+      <div className="text-[8px] text-slate-500 font-semibold tracking-wide uppercase">RSI</div>
+      <div className="flex gap-1.5 items-center">
+        {rsi_hourly != null && (
+          <span className={`text-[11px] font-bold font-mono ${rsiColor(rsi_hourly)}`}>
+            {hourlyAlert && <span className="text-orange-400">⚡</span>}H:{rsi_hourly}
+          </span>
+        )}
+        {rsi_daily != null && (
+          <span className={`text-[10px] font-mono ${rsiColor(rsi_daily)}`}>D:{rsi_daily}</span>
+        )}
+        {rsi_monthly != null && (
+          <span className={`text-[10px] font-mono ${rsiColor(rsi_monthly)}`}>M:{rsi_monthly}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MoverCard({ m, idx }) {
+  const changeNum = parseFloat(String(m.change_pct || '0').replace('%', '').replace('+', '')) || 0;
+  const isUp = m.direction === 'up';
+  const absChange = Math.abs(changeNum);
+  const reasons = m.move_reason || {};
+
+  const hourlyAlert = m.rsi_hourly != null && (
+    m.rsi_hourly > 70 || (m.rsi_daily != null && m.rsi_hourly - m.rsi_daily > 20)
+  );
+
+  return (
+    <div className={`rounded-lg border p-3 ${
+      absChange >= 15 ? (isUp ? 'bg-green-950/40 border-green-500/30' : 'bg-red-950/40 border-red-500/30') :
+      absChange >= 7  ? (isUp ? 'bg-green-950/20 border-green-500/20' : 'bg-red-950/20 border-red-500/20') :
+                        'bg-slate-900/40 border-slate-700/50'
+    } ${hourlyAlert ? 'ring-1 ring-orange-500/30' : ''}`}>
+
+      {/* TOP ROW: ticker + badges (left) | RSI + change (right) */}
+      <div className="flex items-start justify-between mb-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <a href={`https://finance.yahoo.com/quote/${m.ticker}`} target="_blank" rel="noopener noreferrer"
+            className="text-base font-bold text-white hover:text-blue-400 transition-colors">
+            {m.ticker}
+          </a>
+          {m.has_fda_catalyst && (
+            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold text-white ${
+              getCatalystStyle(m.catalyst_type).bg
+            }`}>{m.catalyst_type}</span>
+          )}
+          <span className="text-[10px] text-slate-500 max-w-[130px] truncate">{m.company !== m.ticker ? m.company : ''}</span>
+        </div>
+
+        {/* Right side: RSI block + change + price + vol */}
+        <div className="flex items-start gap-3 shrink-0">
+          {/* RSI — most prominent position, top-right */}
+          <RsiBlock rsi_hourly={m.rsi_hourly} rsi_daily={m.rsi_daily} rsi_monthly={m.rsi_monthly} />
+
+          <div className="flex items-start gap-2">
+            <div className="text-right">
+              <div className={`text-lg font-bold leading-tight ${isUp ? 'text-green-400' : 'text-red-400'}`}>
+                {m.change_pct}
+              </div>
+              {m.price && <div className="text-[10px] text-slate-500">${m.price}</div>}
+            </div>
+            {m.volume && (
+              <div className="text-right">
+                <div className="text-xs text-slate-400">{m.volume}</div>
+                <div className="text-[10px] text-slate-600">vol</div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {m.has_fda_catalyst && (
+        <div className="mb-1.5">
+          <StagePipeline event={{
+            catalyst_type: m.catalyst_type,
+            phase: m.phase || '',
+            status: m.status || '',
+          }} />
+        </div>
+      )}
+
+      <div dir="rtl" className="mt-1">
+        {(reasons.reasons_he || []).map((reason, ri) => (
+          <div key={ri} className="text-[11px] text-amber-400/80 flex items-start gap-1">
+            <span className="text-amber-500 shrink-0">→</span>
+            <span>{reason}</span>
+          </div>
+        ))}
+      </div>
+
+      {m.has_fda_catalyst && (
+        <div className="mt-1.5 pt-1.5 border-t border-slate-700/30 flex items-center gap-3 flex-wrap text-[10px] text-slate-500">
+          {m.drug_name && <span>Drug: <span className="text-slate-300">{m.drug_name}</span></span>}
+          {m.indication && <span>Indication: <span className="text-slate-300">{m.indication}</span></span>}
+          {m.catalyst_date && <span>Date: <span className="text-slate-300">{m.catalyst_date}</span></span>}
+          {m.approval_probability?.probability && (
+            <span>PoA: <span className="text-green-400 font-bold">{m.approval_probability.probability}%</span></span>
+          )}
+        </div>
+      )}
+
+      <div className="flex items-center gap-3 mt-1 text-[10px] text-slate-600">
+        {m.industry && <span>{m.industry}</span>}
+        {m.market_cap && <span>MCap: {m.market_cap}</span>}
+      </div>
+    </div>
+  );
+}
+
+function MoversSection({ movers, sessionDate, isToday, isMarketOpen }) {
   const [showAll, setShowAll] = useState(false);
 
+  const formatSessionDate = (dateStr) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr + 'T12:00:00');
+      const heDay = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'][d.getDay()];
+      return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} (${heDay})`;
+    } catch { return dateStr; }
+  };
+
+  const fdaRelated = movers.filter(m => m.has_fda_catalyst);
+  const upMovers = movers.filter(m => m.direction === 'up');
+  const downMovers = movers.filter(m => m.direction === 'down');
+  const displayMovers = showAll ? movers : movers.slice(0, 10);
+
+  // RSI alerts: stocks with elevated hourly RSI
+  const rsiAlerts = movers.filter(m =>
+    (m.rsi_hourly != null && m.rsi_hourly > 70) ||
+    (m.rsi_hourly != null && m.rsi_daily != null && m.rsi_hourly - m.rsi_daily > 20)
+  );
+
+  const borderColor = isToday ? 'border-green-500/30' : 'border-slate-600/40';
+  const headerColor = isToday ? 'text-green-400' : 'text-blue-400';
+
+  return (
+    <div className={`bg-slate-800/60 border ${borderColor} rounded-lg p-4 mb-4`}>
+      {/* Section Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Activity size={15} className={headerColor} />
+          <span className={`text-sm font-bold ${headerColor}`} dir="rtl">
+            זינוקים {isToday ? 'של היום' : 'של אתמול'}
+          </span>
+          {sessionDate && (
+            <span className="text-[10px] text-slate-500">{formatSessionDate(sessionDate)}</span>
+          )}
+          {isToday && isMarketOpen && (
+            <span className="px-1.5 py-0.5 bg-green-600/30 text-green-400 text-[9px] rounded font-bold">LIVE</span>
+          )}
+          {isToday && !isMarketOpen && (
+            <span className="px-1.5 py-0.5 bg-slate-700 text-slate-400 text-[9px] rounded">סגור</span>
+          )}
+        </div>
+        <span className="text-[10px] text-slate-500">{movers.length} stocks</span>
+      </div>
+
+      {movers.length === 0 ? (
+        <div className="text-center py-4">
+          <p className="text-slate-500 text-xs" dir="rtl">
+            {isToday && !isMarketOpen ? 'השוק סגור — אין נתוני מסחר עדיין' : 'אין מניות עם תנועה >3%'}
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <div className="bg-slate-900/60 rounded p-2 text-center">
+              <div className="text-base font-bold text-green-400">{upMovers.length}</div>
+              <div className="text-[9px] text-slate-500" dir="rtl">עולות</div>
+            </div>
+            <div className="bg-slate-900/60 rounded p-2 text-center">
+              <div className="text-base font-bold text-red-400">{downMovers.length}</div>
+              <div className="text-[9px] text-slate-500" dir="rtl">יורדות</div>
+            </div>
+            <div className="bg-slate-900/60 rounded p-2 text-center">
+              <div className={`text-base font-bold ${fdaRelated.length > 0 ? 'text-orange-400' : 'text-slate-400'}`}>{fdaRelated.length}</div>
+              <div className="text-[9px] text-slate-500" dir="rtl">FDA</div>
+            </div>
+          </div>
+
+          {/* FDA highlights */}
+          {fdaRelated.length > 0 && (
+            <div className="bg-orange-950/30 border border-orange-500/20 rounded-lg p-2 mb-3" dir="rtl">
+              <div className="text-[10px] font-bold text-orange-400 mb-1">קשורות ל-FDA:</div>
+              <div className="space-y-0.5 text-[10px] text-orange-300/80">
+                {fdaRelated.slice(0, 3).map((m, i) => (
+                  <div key={i}>
+                    • <span className="font-bold text-white">{m.ticker}</span>{' '}
+                    <span className={m.direction === 'up' ? 'text-green-400' : 'text-red-400'}>{m.change_pct}</span>
+                    {' — '}{m.move_reason?.reasons_he?.[0] || m.catalyst_type}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* RSI Alert Banner */}
+          {rsiAlerts.length > 0 && (
+            <div className="bg-orange-950/30 border border-orange-500/30 rounded-lg p-2 mb-3" dir="rtl">
+              <div className="text-[10px] font-bold text-orange-300 mb-0.5">⚡ RSI שעתי גבוה מהרגיל:</div>
+              <div className="text-[10px] text-orange-300/80 flex flex-wrap gap-2">
+                {rsiAlerts.map((m, i) => (
+                  <span key={i}>
+                    <span className="font-bold text-white">{m.ticker}</span>
+                    {m.rsi_hourly != null && <span className="text-orange-400"> H:{m.rsi_hourly}</span>}
+                    {m.rsi_daily != null && <span className="text-slate-400"> D:{m.rsi_daily}</span>}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Mover cards */}
+          <div className="space-y-2">
+            {displayMovers.map((m, idx) => <MoverCard key={`${m.ticker}-${idx}`} m={m} idx={idx} />)}
+          </div>
+
+          {movers.length > 10 && (
+            <button
+              onClick={() => setShowAll(!showAll)}
+              className="w-full mt-2 py-1.5 text-xs text-slate-400 hover:text-white bg-slate-900/50 rounded transition-colors"
+            >
+              {showAll ? 'הצג פחות' : `הצג את כל ${movers.length} המניות`}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function TodaysBiotechMovers({ data, loading: moversLoading }) {
   if (moversLoading) {
     return (
       <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-4 mb-4">
         <div className="flex items-center gap-2 mb-3">
           <Activity size={16} className="text-green-400 animate-pulse" />
-          <span className="text-sm font-bold text-white" dir="rtl">סורק מניות בריאות שזזות היום...</span>
+          <span className="text-sm font-bold text-white" dir="rtl">סורק זינוקים של היום ואתמול...</span>
         </div>
         <div className="flex justify-center py-6">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
@@ -842,171 +1091,23 @@ function TodaysBiotechMovers({ movers, loading: moversLoading }) {
     );
   }
 
-  if (!movers || movers.length === 0) {
-    return (
-      <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-4 mb-4 text-center">
-        <Activity size={24} className="mx-auto mb-2 text-slate-600" />
-        <p className="text-slate-400 text-sm" dir="rtl">אין מניות בריאות עם תנועה משמעותית היום</p>
-        <p className="text-slate-600 text-[10px] mt-1">Healthcare stocks &gt;3% move not detected</p>
-      </div>
-    );
-  }
-
-  const fdaRelated = movers.filter(m => m.has_fda_catalyst);
-  const upMovers = movers.filter(m => m.direction === 'up');
-  const downMovers = movers.filter(m => m.direction === 'down');
-  const displayMovers = showAll ? movers : movers.slice(0, 12);
+  const today = data?.today || { movers: [], session_date: '', is_market_open: false };
+  const yesterday = data?.yesterday || { movers: [], session_date: '' };
 
   return (
-    <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-4 mb-4">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <Activity size={16} className="text-green-400" />
-          <span className="text-sm font-bold text-white" dir="rtl">מניות בריאות שזזות היום</span>
-        </div>
-        <span className="text-[10px] text-slate-500">{movers.length} stocks moving</span>
-      </div>
-
-      {/* Summary stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
-        <div className="bg-slate-900/60 rounded p-2 text-center">
-          <div className="text-lg font-bold text-green-400">{upMovers.length}</div>
-          <div className="text-[9px] text-slate-500" dir="rtl">עולות</div>
-        </div>
-        <div className="bg-slate-900/60 rounded p-2 text-center">
-          <div className="text-lg font-bold text-red-400">{downMovers.length}</div>
-          <div className="text-[9px] text-slate-500" dir="rtl">יורדות</div>
-        </div>
-        <div className="bg-slate-900/60 rounded p-2 text-center">
-          <div className={`text-lg font-bold ${fdaRelated.length > 0 ? 'text-orange-400' : 'text-slate-400'}`}>{fdaRelated.length}</div>
-          <div className="text-[9px] text-slate-500" dir="rtl">עם קטליסט FDA</div>
-        </div>
-        <div className="bg-slate-900/60 rounded p-2 text-center">
-          <div className="text-lg font-bold text-white">{movers.length}</div>
-          <div className="text-[9px] text-slate-500" dir="rtl">סה"כ תנועות</div>
-        </div>
-      </div>
-
-      {/* FDA-linked movers highlight */}
-      {fdaRelated.length > 0 && (
-        <div className="bg-orange-950/30 border border-orange-500/20 rounded-lg p-3 mb-3" dir="rtl">
-          <div className="text-xs font-bold text-orange-400 mb-1">תנועות קשורות ל-FDA:</div>
-          <div className="space-y-1 text-[11px] text-orange-300/80">
-            {fdaRelated.slice(0, 4).map((m, i) => (
-              <div key={i}>
-                • <span className="font-bold text-white">{m.ticker}</span>
-                {' '}
-                <span className={m.direction === 'up' ? 'text-green-400' : 'text-red-400'}>
-                  {m.change_pct}
-                </span>
-                {' — '}
-                {m.move_reason?.reasons_he?.[0] || m.catalyst_type}
-                {m.days_until !== null && m.days_until !== undefined && (
-                  <span className="text-orange-500"> (בעוד {m.days_until} ימים)</span>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Mover cards */}
-      <div className="space-y-2">
-        {displayMovers.map((m, idx) => {
-          const changeNum = parseFloat(String(m.change_pct || '0').replace('%', '').replace('+', '')) || 0;
-          const isUp = m.direction === 'up';
-          const absChange = Math.abs(changeNum);
-          const reasons = m.move_reason || {};
-
-          return (
-            <div key={`${m.ticker}-${idx}`} className={`rounded-lg border p-3 ${
-              absChange >= 15 ? (isUp ? 'bg-green-950/40 border-green-500/30' : 'bg-red-950/40 border-red-500/30') :
-              absChange >= 7 ? (isUp ? 'bg-green-950/20 border-green-500/20' : 'bg-red-950/20 border-red-500/20') :
-              'bg-slate-900/40 border-slate-700/50'
-            }`}>
-              {/* Top row: ticker, change, pipeline */}
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-2">
-                  <a href={`https://finance.yahoo.com/quote/${m.ticker}`} target="_blank" rel="noopener noreferrer"
-                    className="text-base font-bold text-white hover:text-blue-400 transition-colors">
-                    {m.ticker}
-                  </a>
-                  {m.has_fda_catalyst && (
-                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold text-white ${
-                      getCatalystStyle(m.catalyst_type).bg
-                    }`}>{m.catalyst_type}</span>
-                  )}
-                  <span className="text-[10px] text-slate-500 max-w-[160px] truncate">{m.company}</span>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <div className={`text-lg font-bold ${isUp ? 'text-green-400' : 'text-red-400'}`}>
-                      {m.change_pct}
-                    </div>
-                    {m.price && <div className="text-[10px] text-slate-500">${m.price}</div>}
-                  </div>
-                  {m.volume && (
-                    <div className="text-right">
-                      <div className="text-xs text-slate-400">{m.volume}</div>
-                      <div className="text-[10px] text-slate-600">vol</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Pipeline - only for FDA-related */}
-              {m.has_fda_catalyst && (
-                <div className="mb-1.5">
-                  <StagePipeline event={{
-                    catalyst_type: m.catalyst_type,
-                    phase: m.phase || '',
-                    status: m.status || '',
-                  }} />
-                </div>
-              )}
-
-              {/* Reasons */}
-              <div dir="rtl" className="mt-1">
-                {(reasons.reasons_he || []).map((reason, ri) => (
-                  <div key={ri} className="text-[11px] text-amber-400/80 flex items-start gap-1">
-                    <span className="text-amber-500 shrink-0">→</span>
-                    <span>{reason}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* FDA details if linked */}
-              {m.has_fda_catalyst && (
-                <div className="mt-1.5 pt-1.5 border-t border-slate-700/30 flex items-center gap-3 flex-wrap text-[10px] text-slate-500">
-                  {m.drug_name && <span>Drug: <span className="text-slate-300">{m.drug_name}</span></span>}
-                  {m.indication && <span>Indication: <span className="text-slate-300">{m.indication}</span></span>}
-                  {m.catalyst_date && <span>Date: <span className="text-slate-300">{m.catalyst_date}</span></span>}
-                  {m.approval_probability?.probability && (
-                    <span>PoA: <span className="text-green-400 font-bold">{m.approval_probability.probability}%</span></span>
-                  )}
-                </div>
-              )}
-
-              {/* Info row */}
-              <div className="flex items-center gap-3 mt-1 text-[10px] text-slate-600">
-                {m.industry && <span>{m.industry}</span>}
-                {m.market_cap && <span>MCap: {m.market_cap}</span>}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {movers.length > 12 && (
-        <button
-          onClick={() => setShowAll(!showAll)}
-          className="w-full mt-2 py-1.5 text-xs text-slate-400 hover:text-white bg-slate-900/50 rounded transition-colors"
-        >
-          {showAll ? 'Show less' : `Show all ${movers.length} movers`}
-        </button>
-      )}
+    <div>
+      <MoversSection
+        movers={today.movers || []}
+        sessionDate={today.session_date}
+        isToday={true}
+        isMarketOpen={today.is_market_open}
+      />
+      <MoversSection
+        movers={yesterday.movers || []}
+        sessionDate={yesterday.session_date}
+        isToday={false}
+        isMarketOpen={false}
+      />
     </div>
   );
 }
@@ -1166,7 +1267,7 @@ function CatalystEventCard({ event, rank, viewMode, isWatchlisted, onToggleWatch
             </div>
           </div>
 
-          {/* Right: Probability + Score + Expand */}
+          {/* Right: Probability + Score + RSI + Expand */}
           <div className="flex flex-col items-end gap-1 shrink-0">
             <div className="flex items-center gap-2">
               {/* Approval probability */}
@@ -1214,6 +1315,36 @@ function CatalystEventCard({ event, rank, viewMode, isWatchlisted, onToggleWatch
                 </div>
                 <span className="text-[10px] text-slate-500" dir="rtl">ציון</span>
               </div>
+
+              {/* RSI circle (from Finviz fundamentals) */}
+              {fundamentals.rsi != null && (
+                (() => {
+                  const rsiVal = parseFloat(fundamentals.rsi) || 0;
+                  const rsiPct = Math.min(rsiVal / 100, 1);
+                  const rsiColor = rsiVal >= 70 ? 'text-red-400' : rsiVal <= 30 ? 'text-green-400' : 'text-cyan-400';
+                  const rsiAlert = rsiVal >= 70 || rsiVal <= 30;
+                  return (
+                    <div className="flex flex-col items-center">
+                      <div className={`relative ${rsiAlert ? 'ring-1 ring-current rounded-full' : ''} ${rsiColor}`}>
+                        <svg className="transform -rotate-90 w-14 h-14">
+                          <circle cx="28" cy="28" r="22" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-slate-700" />
+                          <circle cx="28" cy="28" r="22" stroke="currentColor" strokeWidth="4" fill="transparent"
+                            strokeDasharray={`${2 * Math.PI * 22}`}
+                            strokeDashoffset={`${2 * Math.PI * 22 * (1 - rsiPct)}`}
+                            className={rsiColor}
+                          />
+                        </svg>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <span className={`text-sm font-bold ${rsiColor}`}>{Math.round(rsiVal)}</span>
+                        </div>
+                      </div>
+                      <span className={`text-[10px] font-semibold ${rsiAlert ? rsiColor : 'text-slate-500'}`} dir="rtl">
+                        {rsiVal >= 70 ? '⚡ RSI' : rsiVal <= 30 ? '↓ RSI' : 'RSI'}
+                      </span>
+                    </div>
+                  );
+                })()
+              )}
             </div>
 
             <div className="mt-1 flex items-center gap-1">
@@ -1786,8 +1917,8 @@ export default function FDACatalystTracker({ events, loading, viewMode = 'fda' }
   const [moversLoading, setMoversLoading] = useState(false);
   const moversLoadedRef = useRef(false);
 
-  // Today's Biotech Movers state
-  const [biotechMovers, setBiotechMovers] = useState([]);
+  // Today's + Yesterday's Biotech Movers state
+  const [biotechData, setBiotechData] = useState({ today: { movers: [], session_date: '' }, yesterday: { movers: [], session_date: '' } });
   const [biotechLoading, setBiotechLoading] = useState(false);
   const biotechLoadedRef = useRef(false);
 
@@ -1806,7 +1937,7 @@ export default function FDACatalystTracker({ events, loading, viewMode = 'fda' }
     }
   }, [displayMode, viewMode]);
 
-  // Fetch today's biotech movers when tab is selected
+  // Fetch today's + yesterday's biotech movers when tab is selected
   useEffect(() => {
     if (displayMode === 'today' && !biotechLoadedRef.current && viewMode === 'fda') {
       biotechLoadedRef.current = true;
@@ -1814,7 +1945,10 @@ export default function FDACatalystTracker({ events, loading, viewMode = 'fda' }
       fetch('/api/catalyst/biotech-movers-today')
         .then(r => r.json())
         .then(data => {
-          setBiotechMovers(data.movers || []);
+          setBiotechData({
+            today: data.today || { movers: data.movers || [], session_date: '' },
+            yesterday: data.yesterday || { movers: [], session_date: '' },
+          });
           setBiotechLoading(false);
         })
         .catch(() => setBiotechLoading(false));
@@ -2034,7 +2168,7 @@ export default function FDACatalystTracker({ events, loading, viewMode = 'fda' }
 
       {/* Today's Biotech Movers view */}
       {displayMode === 'today' && viewMode === 'fda' && (
-        <TodaysBiotechMovers movers={biotechMovers} loading={biotechLoading} />
+        <TodaysBiotechMovers data={biotechData} loading={biotechLoading} />
       )}
 
       {/* Historical Movers view */}
