@@ -1115,6 +1115,32 @@ function TodaysBiotechMovers({ data, loading: moversLoading }) {
 
 // ─── Catalyst Event Card (expandable) ────────────────────
 
+function RsiCircle({ rsi }) {
+  const val = parseFloat(rsi);
+  if (!val || isNaN(val)) return null;
+  const pct = Math.min(val / 100, 1);
+  const color = val >= 70 ? '#f87171' : val <= 30 ? '#4ade80' : '#22d3ee';
+  const label = val >= 70 ? '⚡ RSI' : val <= 30 ? '↓ RSI' : 'RSI';
+  const circumference = 2 * Math.PI * 22;
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative" style={{ width: 56, height: 56 }}>
+        <svg className="transform -rotate-90" width="56" height="56">
+          <circle cx="28" cy="28" r="22" stroke="#334155" strokeWidth="4" fill="transparent" />
+          <circle cx="28" cy="28" r="22" stroke={color} strokeWidth="4" fill="transparent"
+            strokeDasharray={circumference}
+            strokeDashoffset={circumference * (1 - pct)}
+          />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-sm font-bold" style={{ color }}>{Math.round(val)}</span>
+        </div>
+      </div>
+      <span className="text-[10px] font-semibold" style={{ color: val >= 70 || val <= 30 ? color : '#64748b' }}>{label}</span>
+    </div>
+  );
+}
+
 function CatalystEventCard({ event, rank, viewMode, isWatchlisted, onToggleWatchlist }) {
   const [expanded, setExpanded] = useState(false);
   const catStyle = getCatalystStyle(event.catalyst_type);
@@ -1317,34 +1343,7 @@ function CatalystEventCard({ event, rank, viewMode, isWatchlisted, onToggleWatch
               </div>
 
               {/* RSI circle (from Finviz fundamentals) */}
-              {fundamentals.rsi != null && (
-                (() => {
-                  const rsiVal = parseFloat(fundamentals.rsi) || 0;
-                  const rsiPct = Math.min(rsiVal / 100, 1);
-                  const rsiColor = rsiVal >= 70 ? 'text-red-400' : rsiVal <= 30 ? 'text-green-400' : 'text-cyan-400';
-                  const rsiAlert = rsiVal >= 70 || rsiVal <= 30;
-                  return (
-                    <div className="flex flex-col items-center">
-                      <div className={`relative ${rsiAlert ? 'ring-1 ring-current rounded-full' : ''} ${rsiColor}`}>
-                        <svg className="transform -rotate-90 w-14 h-14">
-                          <circle cx="28" cy="28" r="22" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-slate-700" />
-                          <circle cx="28" cy="28" r="22" stroke="currentColor" strokeWidth="4" fill="transparent"
-                            strokeDasharray={`${2 * Math.PI * 22}`}
-                            strokeDashoffset={`${2 * Math.PI * 22 * (1 - rsiPct)}`}
-                            className={rsiColor}
-                          />
-                        </svg>
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <span className={`text-sm font-bold ${rsiColor}`}>{Math.round(rsiVal)}</span>
-                        </div>
-                      </div>
-                      <span className={`text-[10px] font-semibold ${rsiAlert ? rsiColor : 'text-slate-500'}`} dir="rtl">
-                        {rsiVal >= 70 ? '⚡ RSI' : rsiVal <= 30 ? '↓ RSI' : 'RSI'}
-                      </span>
-                    </div>
-                  );
-                })()
-              )}
+              <RsiCircle rsi={fundamentals.rsi} />
             </div>
 
             <div className="mt-1 flex items-center gap-1">
