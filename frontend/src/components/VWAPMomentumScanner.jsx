@@ -719,6 +719,31 @@ function FilterBar({ filters, setFilters, stockCount }) {
         <option value={20}>20%+ Move</option>
       </select>
 
+      {/* Market Cap */}
+      <select
+        value={filters.marketCap}
+        onChange={e => setFilters(f => ({ ...f, marketCap: e.target.value }))}
+        className="px-2 py-1 bg-slate-900 text-white text-xs border border-slate-600 rounded"
+      >
+        <option value="any">Market Cap: Any</option>
+        <option value="mega">Mega ($200B+)</option>
+        <option value="large">Large ($10B–$200B)</option>
+        <option value="mid">Mid ($2B–$10B)</option>
+        <option value="small">Small ($300M–$2B)</option>
+        <option value="micro">Micro ($50M–$300M)</option>
+        <option value="nano">Nano (under $50M)</option>
+        <option disabled>──────────</option>
+        <option value="+large">+Large (over $10B)</option>
+        <option value="+mid">+Mid (over $2B)</option>
+        <option value="+small">+Small (over $300M)</option>
+        <option value="+micro">+Micro (over $50M)</option>
+        <option disabled>──────────</option>
+        <option value="-large">-Large (under $200B)</option>
+        <option value="-mid">-Mid (under $10B)</option>
+        <option value="-small">-Small (under $2B)</option>
+        <option value="-micro">-Micro (under $300M)</option>
+      </select>
+
       {/* Sort */}
       <select
         value={filters.sortBy}
@@ -783,6 +808,7 @@ export default function VWAPMomentumScanner({ stocks, loading }) {
     minRelVol: 0,
     minChange: 0,
     sortBy: 'score',
+    marketCap: 'any',
   });
 
   // Apply filters
@@ -801,6 +827,23 @@ export default function VWAPMomentumScanner({ stocks, loading }) {
 
     // Min change
     if (filters.minChange > 0) result = result.filter(s => Math.abs(s.change_pct || 0) >= filters.minChange);
+
+    // Market Cap filter
+    const mc = s => s.market_cap || 0;
+    if (filters.marketCap === 'mega')       result = result.filter(s => mc(s) >= 200e9);
+    else if (filters.marketCap === 'large') result = result.filter(s => mc(s) >= 10e9 && mc(s) < 200e9);
+    else if (filters.marketCap === 'mid')   result = result.filter(s => mc(s) >= 2e9  && mc(s) < 10e9);
+    else if (filters.marketCap === 'small') result = result.filter(s => mc(s) >= 300e6 && mc(s) < 2e9);
+    else if (filters.marketCap === 'micro') result = result.filter(s => mc(s) >= 50e6  && mc(s) < 300e6);
+    else if (filters.marketCap === 'nano')  result = result.filter(s => mc(s) > 0 && mc(s) < 50e6);
+    else if (filters.marketCap === '+large') result = result.filter(s => mc(s) >= 10e9);
+    else if (filters.marketCap === '+mid')   result = result.filter(s => mc(s) >= 2e9);
+    else if (filters.marketCap === '+small') result = result.filter(s => mc(s) >= 300e6);
+    else if (filters.marketCap === '+micro') result = result.filter(s => mc(s) >= 50e6);
+    else if (filters.marketCap === '-large') result = result.filter(s => mc(s) < 200e9);
+    else if (filters.marketCap === '-mid')   result = result.filter(s => mc(s) < 10e9);
+    else if (filters.marketCap === '-small') result = result.filter(s => mc(s) < 2e9);
+    else if (filters.marketCap === '-micro') result = result.filter(s => mc(s) < 300e6);
 
     // Sort
     if (filters.sortBy === 'change') result.sort((a, b) => Math.abs(b.change_pct || 0) - Math.abs(a.change_pct || 0));
