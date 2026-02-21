@@ -1657,6 +1657,20 @@ function CatalystCalendarView({ events, onDayClick }) {
 }
 
 
+// ─── Market Cap Parser ────────────────────────────────────
+
+function parseMcapStr(str) {
+  if (!str) return 0;
+  const s = str.replace(/[$,\s]/g, '');
+  const num = parseFloat(s);
+  if (isNaN(num)) return 0;
+  if (s.endsWith('T')) return num * 1e12;
+  if (s.endsWith('B')) return num * 1e9;
+  if (s.endsWith('M')) return num * 1e6;
+  if (s.endsWith('K')) return num * 1e3;
+  return num;
+}
+
 // ─── Filters ─────────────────────────────────────────────
 
 function CatalystFilters({ filters, setFilters, eventCount, viewMode, watchlistCount }) {
@@ -1714,7 +1728,7 @@ function CatalystFilters({ filters, setFilters, eventCount, viewMode, watchlistC
         <button
           onClick={() => setFilters({
             catalystType: 'all', timeframe: '90', sortBy: 'score',
-            minScore: 0, minProb: 0, searchTicker: '', watchlistOnly: false, quickFilter: ''
+            minScore: 0, minProb: 0, searchTicker: '', watchlistOnly: false, quickFilter: '', marketCap: 'any'
           })}
           className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 text-slate-500 hover:text-white transition-all">
           <X size={12} className="inline" /> Reset
@@ -1791,6 +1805,29 @@ function CatalystFilters({ filters, setFilters, eventCount, viewMode, watchlistC
           <option value={40}>Score 40+</option>
           <option value={60}>Score 60+</option>
           <option value={80}>Score 80+</option>
+        </select>
+
+        {/* Market Cap */}
+        <select value={filters.marketCap}
+          onChange={e => setFilters(f => ({ ...f, marketCap: e.target.value }))}
+          className="px-2 py-1 bg-slate-900 text-white text-xs border border-slate-600 rounded">
+          <option value="any">Market Cap: Any</option>
+          <option value="mega">Mega ($200B+)</option>
+          <option value="large">Large ($10B–$200B)</option>
+          <option value="mid">Mid ($2B–$10B)</option>
+          <option value="small">Small ($300M–$2B)</option>
+          <option value="micro">Micro ($50M–$300M)</option>
+          <option value="nano">Nano (under $50M)</option>
+          <option disabled>──────────</option>
+          <option value="+large">+Large (over $10B)</option>
+          <option value="+mid">+Mid (over $2B)</option>
+          <option value="+small">+Small (over $300M)</option>
+          <option value="+micro">+Micro (over $50M)</option>
+          <option disabled>──────────</option>
+          <option value="-large">-Large (under $200B)</option>
+          <option value="-mid">-Mid (under $10B)</option>
+          <option value="-small">-Small (under $2B)</option>
+          <option value="-micro">-Micro (under $300M)</option>
         </select>
 
         <div className="flex-1" />
@@ -1906,6 +1943,7 @@ export default function FDACatalystTracker({ events, loading, viewMode = 'fda' }
     searchTicker: '',
     watchlistOnly: false,
     quickFilter: '',
+    marketCap: 'any',
   });
   const [selectedDay, setSelectedDay] = useState(null);
   const [selectedDayEvents, setSelectedDayEvents] = useState([]);
@@ -2005,6 +2043,25 @@ export default function FDACatalystTracker({ events, loading, viewMode = 'fda' }
     // Min probability filter
     if (filters.minProb > 0) {
       result = result.filter(e => (e.approval_probability?.probability || 0) >= filters.minProb);
+    }
+
+    // Market Cap filter
+    if (filters.marketCap !== 'any') {
+      const mc = e => parseMcapStr(e.fundamentals?.market_cap);
+      if      (filters.marketCap === 'mega')    result = result.filter(e => mc(e) >= 200e9);
+      else if (filters.marketCap === 'large')   result = result.filter(e => mc(e) >= 10e9  && mc(e) < 200e9);
+      else if (filters.marketCap === 'mid')     result = result.filter(e => mc(e) >= 2e9   && mc(e) < 10e9);
+      else if (filters.marketCap === 'small')   result = result.filter(e => mc(e) >= 300e6 && mc(e) < 2e9);
+      else if (filters.marketCap === 'micro')   result = result.filter(e => mc(e) >= 50e6  && mc(e) < 300e6);
+      else if (filters.marketCap === 'nano')    result = result.filter(e => mc(e) > 0      && mc(e) < 50e6);
+      else if (filters.marketCap === '+large')  result = result.filter(e => mc(e) >= 10e9);
+      else if (filters.marketCap === '+mid')    result = result.filter(e => mc(e) >= 2e9);
+      else if (filters.marketCap === '+small')  result = result.filter(e => mc(e) >= 300e6);
+      else if (filters.marketCap === '+micro')  result = result.filter(e => mc(e) >= 50e6);
+      else if (filters.marketCap === '-large')  result = result.filter(e => mc(e) < 200e9);
+      else if (filters.marketCap === '-mid')    result = result.filter(e => mc(e) < 10e9);
+      else if (filters.marketCap === '-small')  result = result.filter(e => mc(e) < 2e9);
+      else if (filters.marketCap === '-micro')  result = result.filter(e => mc(e) < 300e6);
     }
 
     // Sort
