@@ -6,6 +6,7 @@ import MomentumScannerPro from './components/MomentumScannerPro';
 import VWAPMomentumScanner from './components/VWAPMomentumScanner';
 import TrendingStocks from './components/TrendingStocks';
 import FDACatalystTracker from './components/FDACatalystTracker';
+import DailyBriefing from './components/DailyBriefing';
 import QuickStats from './components/QuickStats';
 import NewsPanel from './components/NewsPanel';
 import MarketStatus from './components/MarketStatus';
@@ -102,6 +103,19 @@ function MomentumDashboard() {
     enabled: viewMode === 'tech-catalyst',
     keepPreviousData: true,
     staleTime: 120000,
+  });
+
+  // Fetch Daily Briefing — only when active, no auto-refresh (3h cache)
+  const { data: briefingData, refetch: refetchBriefing, isLoading: briefingLoading } = useQuery({
+    queryKey: ['dailyBriefing'],
+    queryFn: async () => {
+      const response = await api.get('/briefing/daily');
+      return response.data;
+    },
+    enabled: viewMode === 'briefing',
+    staleTime: 3 * 60 * 60 * 1000,  // 3 hours
+    refetchInterval: 0,
+    keepPreviousData: true,
   });
 
   // Fetch News
@@ -281,6 +295,16 @@ function MomentumDashboard() {
         <div className="mb-6 flex items-center gap-4">
           <div className="flex bg-slate-800 border border-slate-700 rounded-lg p-1">
             <button
+              onClick={() => setViewMode('briefing')}
+              className={`px-4 py-2 rounded-md transition-all flex items-center gap-1.5 ${
+                viewMode === 'briefing'
+                  ? 'bg-amber-600 text-white shadow-lg'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              ☀️ {language === 'he' ? 'בריפינג' : 'Briefing'}
+            </button>
+            <button
               onClick={() => setViewMode('scanner')}
               className={`px-4 py-2 rounded-md transition-all ${
                 viewMode === 'scanner'
@@ -336,7 +360,9 @@ function MomentumDashboard() {
           <button
             onClick={() => {
               setLastUpdateTime(new Date());
-              if (viewMode === 'scanner') {
+              if (viewMode === 'briefing') {
+                refetchBriefing();
+              } else if (viewMode === 'scanner') {
                 refetchScanner();
               } else if (viewMode === 'vwap') {
                 refetchVwap();
@@ -511,7 +537,9 @@ function MomentumDashboard() {
                   </div>
                 )}
 
-                {viewMode === 'fda' ? (
+                {viewMode === 'briefing' ? (
+                  <DailyBriefing data={briefingData} loading={briefingLoading} onRefetch={refetchBriefing} />
+                ) : viewMode === 'fda' ? (
                   <FDACatalystTracker events={fdaData?.events || []} loading={fdaLoading} viewMode="fda" />
                 ) : viewMode === 'tech-catalyst' ? (
                   <FDACatalystTracker events={techCatalystData?.events || []} loading={techCatalystLoading} viewMode="tech" />

@@ -24,6 +24,7 @@ from app.services.catalyst_tracker import CatalystTrackerService
 from app.services.translator import translation_service
 from app.services.live_prices import LivePriceService
 from app.services.move_tracker import move_tracker
+from app.services.briefing_service import BriefingService
 from app.config import settings
 
 router = APIRouter()
@@ -54,6 +55,7 @@ catalyst_tracker = CatalystTrackerService(
     finviz_fundamentals=finviz_fundamentals,
     tech_scraper=tech_catalyst_scraper,
 )
+briefing_service = BriefingService()
 
 # Response-level cache for heavy endpoints
 import time as _time
@@ -844,3 +846,79 @@ async def get_tech_catalysts(
             if cache_key in _response_cache:
                 return _response_cache[cache_key]
             return {"events": [], "count": 0, "error": str(e)}
+
+
+# ── Daily Briefing ────────────────────────────────────────────────────────────
+
+_BRIEFING_CACHE_TTL = 3 * 60 * 60   # 3 hours — morning briefing, rarely changes
+_briefing_lock = asyncio.Lock()
+
+@router.get("/briefing/daily")
+async def get_daily_briefing():
+    """
+    Daily morning briefing: top 3-5 stocks with earnings beat ≥15% + RSI 45-65.
+    Includes market status (SPY/QQQ) and today's catalyst events.
+    Cached for 3 hours.
+    """
+    cache_key = "briefing_daily"
+    now = _time.time()
+
+    if cache_key in _response_cache and (now - _response_cache_time.get(cache_key, 0)) < _BRIEFING_CACHE_TTL:
+        return _response_cache[cache_key]
+
+    if _briefing_lock.locked():
+        if cache_key in _response_cache:
+            return _response_cache[cache_key]
+        return {"stocks": [], "loading": True, "market_status": {}, "error": "scan in progress"}
+
+    async with _briefing_lock:
+        now = _time.time()
+        if cache_key in _response_cache and (now - _response_cache_time.get(cache_key, 0)) < _BRIEFING_CACHE_TTL:
+            return _response_cache[cache_key]
+
+        try:
+            result = await asyncio.wait_for(
+                briefing_service.get_daily_briefing(
+                    min_surprise_pct=15.0,
+                    rsi_min=45.0,
+                    rsi_max=65.0,
+                    top_n=5,
+                ),
+                timeout=90
+            )
+
+            # Add today's FDA events
+            try:
+                fda_events = await asyncio.wait_for(
+                    catalyst_tracker.get_catalyst_events(days_forward=1, days_back=0, enriched=False),
+                    timeout=10
+                )
+                result['today_events'] = [
+                    {
+                        'ticker': e.get('ticker'),
+                        'company': e.get('company'),
+                        'catalyst_type': e.get('catalyst_type'),
+                        'drug_name': e.get('drug_name', ''),
+                        'days_until': e.get('days_until', 0),
+                    }
+                    for e in fda_events if e.get('days_until', 999) <= 1
+                ]
+            except Exception:
+                result['today_events'] = []
+
+            _response_cache[cache_key] = result
+            _response_cache_time[cache_key] = _time.time()
+            return result
+
+        except asyncio.TimeoutError:
+            print("Daily briefing TIMEOUT (>90s)")
+            if cache_key in _response_cache:
+                return _response_cache[cache_key]
+            return {"stocks": [], "error": "timeout", "market_status": {}, "today_events": []}
+        except Exception as e:
+            print(f"Error in daily briefing: {e}")
+            import traceback
+            traceback.print_exc()
+            if cache_key in _response_cache:
+                return _response_cache[cache_key]
+            return {"stocks": [], "error": str(e), "market_status": {}, "today_events": []}
