@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useQuery, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RefreshCw, Zap, Filter, Search, TrendingUp } from 'lucide-react';
 import axios from 'axios';
-import MomentumScanner from './components/MomentumScanner';
 import MomentumScannerPro from './components/MomentumScannerPro';
 import VWAPMomentumScanner from './components/VWAPMomentumScanner';
 import TrendingStocks from './components/TrendingStocks';
@@ -34,7 +33,7 @@ function MomentumDashboard() {
   const [autoRefresh, setAutoRefresh] = useState(10); // seconds - default 10s for live feel
   const [searchTicker, setSearchTicker] = useState('');
   const [minMomentum, setMinMomentum] = useState(60);
-  const [viewMode, setViewMode] = useState('pulse'); // 'pulse', 'scanner', 'trending', 'vwap', 'fda', 'tech-catalyst'
+  const [viewMode, setViewMode] = useState('scanner'); // 'scanner', 'trending', 'vwap', 'fda', 'tech-catalyst'
   const [lastUpdateTime, setLastUpdateTime] = useState(new Date());
   const [language, setLanguage] = useState('he'); // 'en' or 'he'
   const [liveMode, setLiveMode] = useState(true); // Live price updates
@@ -42,19 +41,6 @@ function MomentumDashboard() {
   // VWAP tab uses longer interval (heavy endpoint, cached on backend for 60s)
   const vwapInterval = autoRefresh > 0 ? Math.max(autoRefresh, 60) * 1000 : 0;
   const normalInterval = autoRefresh > 0 ? autoRefresh * 1000 : 0;
-
-  // Fetch Market Pulse — only when active
-  const { data: pulseData, refetch: refetchPulse, isLoading: pulseLoading } = useQuery({
-    queryKey: ['marketPulse', language],
-    queryFn: async () => {
-      const response = await api.get(`/momentum/market-pulse?limit=50&lang=${language}`);
-      setLastUpdateTime(new Date());
-      return response.data;
-    },
-    refetchInterval: viewMode === 'pulse' ? normalInterval : 0,
-    enabled: viewMode === 'pulse',
-    keepPreviousData: true,
-  });
 
   // Fetch Momentum Scanner — only when active
   const { data: scannerData, refetch: refetchScanner, isLoading: scannerLoading } = useQuery({
@@ -133,12 +119,10 @@ function MomentumDashboard() {
   });
 
   const stocks =
-    viewMode === 'pulse' ? pulseData?.stocks || [] :
     viewMode === 'scanner' ? scannerData?.opportunities || [] :
     viewMode === 'vwap' ? vwapData?.stocks || [] :
     trendingData?.trending || [];
   const isLoading =
-    viewMode === 'pulse' ? pulseLoading :
     viewMode === 'scanner' ? scannerLoading :
     viewMode === 'vwap' ? vwapLoading :
     trendingLoading;
@@ -174,14 +158,6 @@ function MomentumDashboard() {
       return s.momentum_score >= minMomentum;
     })
     .filter(s => !searchTicker || s.ticker.toLowerCase().includes(searchTicker.toLowerCase()))
-    // For Market Pulse: prefer recent items (last 3 hours) - but not for searched stocks
-    .filter(s => {
-      // Always show searched stock regardless of time
-      if (searchedStock && s.ticker === searchedStock.ticker) return true;
-      if (viewMode !== 'pulse') return true;
-      const ageMinutes = (new Date() - new Date(s.published_at)) / 60000;
-      return ageMinutes < 180; // Last 3 hours
-    })
     // Sort by momentum score (searched stock on top)
     .sort((a, b) => {
       // Searched stock always first
@@ -305,16 +281,6 @@ function MomentumDashboard() {
         <div className="mb-6 flex items-center gap-4">
           <div className="flex bg-slate-800 border border-slate-700 rounded-lg p-1">
             <button
-              onClick={() => setViewMode('pulse')}
-              className={`px-4 py-2 rounded-md transition-all ${
-                viewMode === 'pulse'
-                  ? 'bg-blue-600 text-white shadow-lg'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Market Pulse
-            </button>
-            <button
               onClick={() => setViewMode('scanner')}
               className={`px-4 py-2 rounded-md transition-all ${
                 viewMode === 'scanner'
@@ -370,9 +336,7 @@ function MomentumDashboard() {
           <button
             onClick={() => {
               setLastUpdateTime(new Date());
-              if (viewMode === 'pulse') {
-                refetchPulse();
-              } else if (viewMode === 'scanner') {
+              if (viewMode === 'scanner') {
                 refetchScanner();
               } else if (viewMode === 'vwap') {
                 refetchVwap();
@@ -440,9 +404,9 @@ function MomentumDashboard() {
                        viewMode === 'fda' ? (language === 'he' ? 'קטליסטים FDA' : 'FDA Catalyst Calendar') :
                        viewMode === 'tech-catalyst' ? (language === 'he' ? 'קטליסטים טכנולוגיה' : 'Tech Catalyst Calendar') :
                        language === 'he' ? 'המניות הכי מדוברות' : 'Most Talked About Stocks'}
-                      {viewMode === 'pulse' && (
-                        <span className="text-xs bg-red-500 text-white px-2 py-1 rounded-full animate-pulse">
-                          HOT
+                      {viewMode === 'scanner' && (
+                        <span className="text-xs bg-blue-500 text-white px-2 py-1 rounded-full font-bold">
+                          LIVE
                         </span>
                       )}
                       {viewMode === 'vwap' && (
@@ -475,9 +439,6 @@ function MomentumDashboard() {
                        viewMode === 'tech-catalyst' ?
                          `${techCatalystData?.count || 0} tech catalyst events` :
                          `${filteredStocks.length} stocks found`}
-                      {viewMode === 'pulse' && !isLoading && (
-                        <span className="text-slate-500"> • Last 3 hours only</span>
-                      )}
                     </p>
                   </div>
                   <div className="text-right">

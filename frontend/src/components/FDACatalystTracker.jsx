@@ -1726,9 +1726,16 @@ function CatalystFilters({ filters, setFilters, eventCount, viewMode, watchlistC
           Watchlist {watchlistCount > 0 ? `(${watchlistCount})` : ''}
         </button>
         <button
+          onClick={() => setFilters(f => ({ ...f, earningsBeat: !f.earningsBeat }))}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            filters.earningsBeat ? 'bg-emerald-700 text-white' : 'bg-slate-700 text-slate-400 hover:text-white'
+          }`}>
+          📈 Earnings Beat
+        </button>
+        <button
           onClick={() => setFilters({
             catalystType: 'all', timeframe: '90', sortBy: 'score',
-            minScore: 0, minProb: 0, searchTicker: '', watchlistOnly: false, quickFilter: '', marketCap: 'any'
+            minScore: 0, minProb: 0, searchTicker: '', watchlistOnly: false, quickFilter: '', marketCap: 'any', earningsBeat: false
           })}
           className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 text-slate-500 hover:text-white transition-all">
           <X size={12} className="inline" /> Reset
@@ -1944,6 +1951,7 @@ export default function FDACatalystTracker({ events, loading, viewMode = 'fda' }
     watchlistOnly: false,
     quickFilter: '',
     marketCap: 'any',
+    earningsBeat: false,
   });
   const [selectedDay, setSelectedDay] = useState(null);
   const [selectedDayEvents, setSelectedDayEvents] = useState([]);
@@ -2062,6 +2070,14 @@ export default function FDACatalystTracker({ events, loading, viewMode = 'fda' }
       else if (filters.marketCap === '-mid')    result = result.filter(e => mc(e) < 10e9);
       else if (filters.marketCap === '-small')  result = result.filter(e => mc(e) < 2e9);
       else if (filters.marketCap === '-micro')  result = result.filter(e => mc(e) < 300e6);
+    }
+
+    // Earnings Beat filter — eps_qq > 5% (recent strong quarter)
+    if (filters.earningsBeat) {
+      result = result.filter(e => {
+        const epsQQ = parseFloat(e.fundamentals?.eps_qq || '0');
+        return epsQQ > 5;
+      });
     }
 
     // Sort

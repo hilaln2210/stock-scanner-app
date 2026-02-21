@@ -515,6 +515,11 @@ function StockCard({ stock, rank }) {
                     {vwapSignal}
                   </span>
                 )}
+                {(stock.earnings_growth_pct > 10) && (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold text-white bg-emerald-700 flex items-center gap-1">
+                    📈 Earnings Beat {stock.earnings_growth_pct > 0 ? `+${stock.earnings_growth_pct}%` : ''}
+                  </span>
+                )}
                 {tags.map((tag, i) => (
                   <span key={i} className={`px-2 py-0.5 rounded text-[10px] font-bold text-white ${tag.color}`}>
                     {tag.label}
@@ -719,6 +724,18 @@ function FilterBar({ filters, setFilters, stockCount }) {
         <option value={20}>20%+ Move</option>
       </select>
 
+      {/* Earnings Beat toggle */}
+      <button
+        onClick={() => setFilters(f => ({ ...f, earningsBeat: !f.earningsBeat }))}
+        className={`px-2 py-1 text-xs font-bold rounded border transition-all ${
+          filters.earningsBeat
+            ? 'bg-emerald-700 border-emerald-500 text-white'
+            : 'bg-slate-900 border-slate-600 text-slate-400 hover:text-white'
+        }`}
+      >
+        📈 Earnings Beat
+      </button>
+
       {/* Market Cap */}
       <select
         value={filters.marketCap}
@@ -809,6 +826,7 @@ export default function VWAPMomentumScanner({ stocks, loading }) {
     minChange: 0,
     sortBy: 'score',
     marketCap: 'any',
+    earningsBeat: false,
   });
 
   // Apply filters
@@ -827,6 +845,9 @@ export default function VWAPMomentumScanner({ stocks, loading }) {
 
     // Min change
     if (filters.minChange > 0) result = result.filter(s => Math.abs(s.change_pct || 0) >= filters.minChange);
+
+    // Earnings Beat filter (quarterly growth > 10%)
+    if (filters.earningsBeat) result = result.filter(s => (s.earnings_growth_pct || 0) > 10);
 
     // Market Cap filter
     const mc = s => s.market_cap || 0;

@@ -584,6 +584,9 @@ class FinvizScreener:
                 'full_industry': str(info.get('industry') or ''),
                 'market_cap': int(info.get('marketCap') or 0),
 
+                # Earnings beat (quarterly growth from yfinance)
+                'earnings_growth_pct': round((info.get('earningsQuarterlyGrowth') or 0) * 100, 1),
+
                 # Description & News
                 'business_summary': business_summary,
                 'news': news_items,
