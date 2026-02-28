@@ -68,6 +68,18 @@ async def lifespan(app: FastAPI):
     import asyncio
     asyncio.create_task(scheduled_scrape())
 
+    # Pre-warm briefing cache in background
+    async def _prewarm_briefing():
+        import httpx
+        await asyncio.sleep(8)  # wait for server to fully start
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.get("http://127.0.0.1:8000/api/briefing/daily", timeout=60)
+                print("Briefing cache pre-warmed.")
+        except Exception as e:
+            print(f"Briefing pre-warm failed: {e}")
+    asyncio.create_task(_prewarm_briefing())
+
     yield
 
     # Shutdown

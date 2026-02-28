@@ -107,7 +107,7 @@ class MoveTracker:
                 'high_of_day': round(hod, 2),
                 'distance_from_hod': round(distance_from_hod, 2),
 
-                'updated_at': datetime.now().isoformat(),
+                'updated_at': datetime.now().astimezone().isoformat(),
             }
 
         except Exception as e:
@@ -350,7 +350,7 @@ class MoveTracker:
             'rel_volume': 0,
             'high_of_day': 0,
             'distance_from_hod': 0,
-            'updated_at': datetime.now().isoformat(),
+            'updated_at': datetime.now().astimezone().isoformat(),
         }
 
 

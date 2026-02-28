@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     finviz_password: str = ""
     finviz_cookie: str = ""
 
+    # AI Assistant
+    anthropic_api_key: str = ""
+
     # Server
     host: str = "0.0.0.0"
     port: int = 8000

@@ -12,3 +12,5 @@ python-dateutil==2.8.2
 lxml==5.1.0
 yfinance==0.2.36
 deep-translator==1.11.4
+anthropic>=0.84.0
+ib_insync

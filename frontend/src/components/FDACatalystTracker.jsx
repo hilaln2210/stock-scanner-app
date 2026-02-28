@@ -1225,8 +1225,8 @@ function CatalystEventCard({ event, rank, viewMode, isWatchlisted, onToggleWatch
                 </div>
               )}
 
-              {/* Hebrew description: what the company does + stage */}
-              {getHebrewDescription(event) && (
+              {/* Hebrew description: what the company does + stage (FDA only) */}
+              {viewMode === 'fda' && getHebrewDescription(event) && (
                 <div className="text-[11px] text-amber-400/80 mt-1" dir="rtl">
                   {getHebrewDescription(event)}
                 </div>
@@ -1847,7 +1847,7 @@ function CatalystFilters({ filters, setFilters, eventCount, viewMode, watchlistC
 
 // ─── Day Detail Modal ────────────────────────────────────
 
-function DayDetailPanel({ date, events, onClose }) {
+function DayDetailPanel({ date, events, onClose, viewMode }) {
   if (!events || events.length === 0) return null;
 
   return (
@@ -1882,7 +1882,7 @@ function DayDetailPanel({ date, events, onClose }) {
               {e.drug_name && <div className="text-xs text-slate-300 mt-1">{e.drug_name}</div>}
               {e.indication && <div className="text-xs text-slate-400">{e.indication}</div>}
               {e.company && <div className="text-xs text-slate-500 mt-1">{e.company}</div>}
-              {getHebrewDescription(e) && (
+              {viewMode === 'fda' && getHebrewDescription(e) && (
                 <div className="text-[10px] text-amber-400/70 mt-1" dir="rtl">{getHebrewDescription(e)}</div>
               )}
             </div>
@@ -2233,6 +2233,7 @@ export default function FDACatalystTracker({ events, loading, viewMode = 'fda' }
               date={selectedDay}
               events={selectedDayEvents}
               onClose={() => { setSelectedDay(null); setSelectedDayEvents([]); }}
+              viewMode={viewMode}
             />
           )}
         </>

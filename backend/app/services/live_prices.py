@@ -128,7 +128,7 @@ class LivePriceService:
                 "day_high": round(day_high, 2) if day_high else 0,
                 "day_low": round(day_low, 2) if day_low else 0,
                 "prev_close": round(prev_close, 2) if prev_close else 0,
-                "updated_at": datetime.now().isoformat()
+                "updated_at": datetime.now().astimezone().isoformat()
             }
         except Exception as e:
             print(f"Error in _fetch_stock_data for {ticker}: {e}")
@@ -148,7 +148,7 @@ class LivePriceService:
             "industry": "Unknown",
             "company_name": "",
             "business_summary": "",
-            "updated_at": datetime.now().isoformat()
+            "updated_at": datetime.now().astimezone().isoformat()
         }
 
     def get_sector_emoji(self, sector: str) -> str:

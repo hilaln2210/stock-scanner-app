@@ -1,598 +1,524 @@
 import { useState } from 'react';
 import { useQuery, QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { RefreshCw, Zap, Filter, Search, TrendingUp } from 'lucide-react';
+import { RefreshCw, Zap, Search } from 'lucide-react';
 import axios from 'axios';
-import MomentumScannerPro from './components/MomentumScannerPro';
-import VWAPMomentumScanner from './components/VWAPMomentumScanner';
 import TrendingStocks from './components/TrendingStocks';
 import FDACatalystTracker from './components/FDACatalystTracker';
 import DailyBriefing from './components/DailyBriefing';
-import QuickStats from './components/QuickStats';
+import DemoPortfolio from './components/DemoPortfolio';
+import TechnicalSignalsScanner from './components/TechnicalSignalsScanner';
+import DailyAnalysisScanner from './components/DailyAnalysisScanner';
 import NewsPanel from './components/NewsPanel';
-import MarketStatus from './components/MarketStatus';
+import AIAssistant from './components/AIAssistant';
+import IBPortfolio from './components/IBPortfolio';
+import AlertSystem from './components/AlertSystem';
+import FinvizTableScanner from './components/FinvizTableScanner';
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
       retry: 1,
-      staleTime: 30000,      // Data considered fresh for 30s
-      cacheTime: 5 * 60000,  // Keep in cache for 5 minutes
+      staleTime: 30000,
+      cacheTime: 5 * 60000,
     },
   },
 });
 
 const API_BASE = '/api';
+const api = axios.create({ baseURL: API_BASE, timeout: 30000 });
 
-// Axios instance with timeout to prevent stuck requests
-const api = axios.create({
-  baseURL: API_BASE,
-  timeout: 30000, // 30 second timeout — never hang forever
-});
+// Tab definitions with accent hex colors for the active underline
+const TABS = [
+  { key: 'briefing',        label: '☀️ בריפינג',            accent: '#f59e0b' },
+  { key: 'portfolio',       label: '💼 תיק דמו',             accent: '#f43f5e' },
+  { key: 'trending',        label: '🔥 הכי מדוברות',         accent: '#a855f7' },
+  { key: 'fda',             label: '💊 FDA',                  accent: '#22c55e' },
+  { key: 'tech-catalyst',   label: '🖥️ קטליסטים',            accent: '#06b6d4' },
+  { key: 'tech-signals',    label: '📈 סיגנלים',             accent: '#6366f1' },
+  { key: 'daily-analysis',  label: '🎯 ניתוח יומי',           accent: '#8b5cf6' },
+  { key: 'ib',              label: '🏦 IB חשבון',             accent: '#3b82f6' },
+  { key: 'finviz-table',   label: '📋 סורק בסיסי',           accent: '#14b8a6' },
+];
 
 function MomentumDashboard() {
-  const [autoRefresh, setAutoRefresh] = useState(10); // seconds - default 10s for live feel
-  const [searchTicker, setSearchTicker] = useState('');
-  const [minMomentum, setMinMomentum] = useState(60);
-  const [viewMode, setViewMode] = useState('scanner'); // 'scanner', 'trending', 'vwap', 'fda', 'tech-catalyst'
-  const [lastUpdateTime, setLastUpdateTime] = useState(new Date());
-  const [language, setLanguage] = useState('he'); // 'en' or 'he'
-  const [liveMode, setLiveMode] = useState(true); // Live price updates
+  const [autoRefresh, setAutoRefresh]         = useState(30);
+  const [searchTicker, setSearchTicker]       = useState('');
+  const [viewMode, setViewMode]               = useState('briefing');
+  const [lastUpdateTime, setLastUpdateTime]   = useState(new Date());
+  const [language, setLanguage]               = useState('he');
+  const [liveMode, setLiveMode]               = useState(false);
+  const [briefingForceKey, setBriefingForceKey] = useState(0);
 
-  // VWAP tab uses longer interval (heavy endpoint, cached on backend for 60s)
-  const vwapInterval = autoRefresh > 0 ? Math.max(autoRefresh, 60) * 1000 : 0;
   const normalInterval = autoRefresh > 0 ? autoRefresh * 1000 : 0;
 
-  // Fetch Momentum Scanner — only when active
-  const { data: scannerData, refetch: refetchScanner, isLoading: scannerLoading } = useQuery({
-    queryKey: ['momentumScanner', language],
-    queryFn: async () => {
-      const response = await api.get(`/momentum/scanner?lang=${language}`);
-      return response.data;
-    },
-    refetchInterval: viewMode === 'scanner' ? normalInterval : 0,
-    enabled: viewMode === 'scanner',
-    keepPreviousData: true,
-  });
-
-  // Fetch Trending Stocks — only when active
   const { data: trendingData, refetch: refetchTrending, isLoading: trendingLoading } = useQuery({
     queryKey: ['trendingStocks', language],
-    queryFn: async () => {
-      const response = await api.get(`/trending/social?lang=${language}`);
-      return response.data;
-    },
+    queryFn: async () => (await api.get(`/trending/social?lang=${language}`)).data,
     refetchInterval: viewMode === 'trending' ? normalInterval : 0,
     enabled: viewMode === 'trending',
     keepPreviousData: true,
   });
 
-  // Fetch VWAP Momentum Screener — only when active, longer interval
-  const { data: vwapData, refetch: refetchVwap, isLoading: vwapLoading } = useQuery({
-    queryKey: ['vwapMomentum', language],
-    queryFn: async () => {
-      const response = await api.get(`/screener/vwap-momentum?lang=${language}`);
-      return response.data;
-    },
-    refetchInterval: viewMode === 'vwap' ? vwapInterval : 0,
-    enabled: viewMode === 'vwap',
-    keepPreviousData: true,
-  });
-
-  // Fetch FDA Catalysts — only when active, longer interval (data changes slowly)
   const { data: fdaData, refetch: refetchFda, isLoading: fdaLoading } = useQuery({
     queryKey: ['fdaCatalysts', language],
-    queryFn: async () => {
-      const response = await api.get(`/catalyst/fda?lang=${language}`);
-      return response.data;
-    },
+    queryFn: async () => (await api.get(`/catalyst/fda?lang=${language}`)).data,
     refetchInterval: viewMode === 'fda' ? Math.max(autoRefresh, 120) * 1000 : 0,
     enabled: viewMode === 'fda',
     keepPreviousData: true,
     staleTime: 120000,
   });
 
-  // Fetch Tech Catalysts — only when active
   const { data: techCatalystData, refetch: refetchTechCatalyst, isLoading: techCatalystLoading } = useQuery({
     queryKey: ['techCatalysts', language],
-    queryFn: async () => {
-      const response = await api.get(`/catalyst/tech?lang=${language}`);
-      return response.data;
-    },
+    queryFn: async () => (await api.get(`/catalyst/tech?lang=${language}`)).data,
     refetchInterval: viewMode === 'tech-catalyst' ? Math.max(autoRefresh, 120) * 1000 : 0,
     enabled: viewMode === 'tech-catalyst',
     keepPreviousData: true,
     staleTime: 120000,
   });
 
-  // Fetch Daily Briefing — only when active, no auto-refresh (3h cache)
-  const { data: briefingData, refetch: refetchBriefing, isLoading: briefingLoading } = useQuery({
-    queryKey: ['dailyBriefing'],
-    queryFn: async () => {
-      const response = await api.get('/briefing/daily');
-      return response.data;
-    },
-    enabled: viewMode === 'briefing',
-    staleTime: 3 * 60 * 60 * 1000,  // 3 hours
+  const { data: techSignalsData, refetch: refetchTechSignals, isLoading: techSignalsLoading } = useQuery({
+    queryKey: ['techSignals'],
+    queryFn: async () => (await api.get('/scanner/signals')).data,
+    enabled: viewMode === 'tech-signals',
+    staleTime: 15 * 60 * 1000,
     refetchInterval: 0,
     keepPreviousData: true,
   });
 
-  // Fetch News
-  const { data: newsData, refetch: refetchNews } = useQuery({
+  const { data: dailyAnalysisData, refetch: refetchDailyAnalysis, isLoading: dailyAnalysisLoading } = useQuery({
+    queryKey: ['dailyAnalysis'],
+    queryFn: async () => (await api.get('/analysis/daily')).data,
+    enabled: viewMode === 'daily-analysis',
+    staleTime: 15 * 60 * 1000,
+    refetchInterval: 0,
+    keepPreviousData: true,
+  });
+
+  const { data: briefingData, isLoading: briefingLoading } = useQuery({
+    queryKey: ['dailyBriefing', briefingForceKey],
+    queryFn: async () => (await api.get('/briefing/daily')).data,
+    enabled: viewMode === 'briefing',
+    staleTime: 30 * 60 * 1000,
+    refetchInterval: (data) => (data?.loading || !data?.stocks?.length) ? 10000 : 0,
+    keepPreviousData: true,
+  });
+
+  const refetchBriefing = () => setBriefingForceKey(k => k + 1);
+
+  const { data: newsData } = useQuery({
     queryKey: ['news', searchTicker, language],
     queryFn: async () => {
       const params = searchTicker
         ? `?ticker=${searchTicker}&hours=24&limit=30&lang=${language}`
-        : `?hours=24&limit=30&lang=${language}`;
-      const response = await api.get(`/news${params}`);
-      return response.data;
+        : `?hours=24&limit=30&lang=${language}&midcap_plus=true`;
+      return (await api.get(`/news${params}`)).data;
     },
     refetchInterval: normalInterval,
     keepPreviousData: true,
   });
 
-  const stocks =
-    viewMode === 'scanner' ? scannerData?.opportunities || [] :
-    viewMode === 'vwap' ? vwapData?.stocks || [] :
-    trendingData?.trending || [];
-  const isLoading =
-    viewMode === 'scanner' ? scannerLoading :
-    viewMode === 'vwap' ? vwapLoading :
-    trendingLoading;
-
-  // Fetch specific stock if search ticker is provided
   const { data: searchedStock } = useQuery({
     queryKey: ['searchStock', searchTicker, language],
     queryFn: async () => {
-      if (!searchTicker || searchTicker.length < 1) return null;
-
-      // Fetch live data for this specific ticker
+      if (!searchTicker) return null;
       try {
-        const response = await api.get(`/stock/${searchTicker.toUpperCase()}?lang=${language}`);
-        return response.data.error ? null : response.data;
-      } catch (err) {
-        return null;
-      }
+        const r = await api.get(`/stock/${searchTicker.toUpperCase()}?lang=${language}`);
+        return r.data.error ? null : r.data;
+      } catch { return null; }
     },
     enabled: searchTicker.length >= 1,
     refetchInterval: normalInterval,
     keepPreviousData: true,
   });
 
-  // Combine regular stocks with searched stock
-  const allStocks = searchedStock ? [searchedStock, ...stocks] : stocks;
+  const { data: searchedBriefing, isFetching: briefingSearchLoading } = useQuery({
+    queryKey: ['tickerBriefing', searchTicker],
+    queryFn: async () => {
+      if (!searchTicker) return null;
+      try {
+        const r = await api.get(`/briefing/ticker/${searchTicker.toUpperCase()}`);
+        return r.data?.error ? null : r.data;
+      } catch { return null; }
+    },
+    enabled: searchTicker.length >= 1,
+    staleTime: 5 * 60 * 1000,
+    keepPreviousData: true,
+  });
 
-  // Filter stocks
-  const filteredStocks = allStocks
-    .filter(s => {
-      // Always show searched stock regardless of momentum score
-      if (searchedStock && s.ticker === searchedStock.ticker) return true;
-      // Otherwise apply momentum filter
-      return s.momentum_score >= minMomentum;
-    })
-    .filter(s => !searchTicker || s.ticker.toLowerCase().includes(searchTicker.toLowerCase()))
-    // Sort by momentum score (searched stock on top)
-    .sort((a, b) => {
-      // Searched stock always first
-      if (searchedStock && a.ticker === searchedStock.ticker) return -1;
-      if (searchedStock && b.ticker === searchedStock.ticker) return 1;
-      return b.momentum_score - a.momentum_score;
-    });
-
-  const handleRefreshAll = () => {
+  const handleQuickRefresh = () => {
     setLastUpdateTime(new Date());
-    refetchPulse();
-    refetchScanner();
-    refetchTrending();
-    refetchVwap();
-    refetchFda();
-    refetchTechCatalyst();
-    refetchNews();
+    if (viewMode === 'briefing')         refetchBriefing();
+    else if (viewMode === 'fda')         refetchFda();
+    else if (viewMode === 'tech-catalyst') refetchTechCatalyst();
+    else if (viewMode === 'tech-signals')  refetchTechSignals();
+    else if (viewMode === 'daily-analysis') refetchDailyAnalysis();
+    else refetchTrending();
   };
 
+  const isAnyLoading = fdaLoading || techCatalystLoading || techSignalsLoading
+    || dailyAnalysisLoading || trendingLoading || briefingLoading;
+
+  // Cross-scanner map
+  const SCANNER_LABELS = { briefing: '☀️ בריפינג', techSignals: '📈 סיגנלים', dailyAnalysis: '🎯 ניתוח יומי' };
+  const scannerSets = {
+    briefing:      new Set((briefingData?.stocks || []).map(s => s.ticker)),
+    techSignals:   new Set((techSignalsData?.stocks || []).map(s => s.ticker)),
+    dailyAnalysis: new Set((dailyAnalysisData?.stocks || []).map(s => s.ticker)),
+  };
+  const crossScannerMap = {};
+  for (const [key, tickers] of Object.entries(scannerSets)) {
+    for (const ticker of tickers) {
+      if (!crossScannerMap[ticker]) crossScannerMap[ticker] = [];
+      crossScannerMap[ticker].push(SCANNER_LABELS[key]);
+    }
+  }
+  Object.keys(crossScannerMap).forEach(t => {
+    if (crossScannerMap[t].length < 2) delete crossScannerMap[t];
+  });
+
+  const tabCount =
+    viewMode === 'fda'            ? `${fdaData?.count || 0} אירועים` :
+    viewMode === 'tech-catalyst'  ? `${techCatalystData?.count || 0} אירועים` :
+    viewMode === 'tech-signals'   ? `${techSignalsData?.count || 0} מניות` :
+    viewMode === 'daily-analysis' ? `${dailyAnalysisData?.count || 0} מניות` :
+    viewMode === 'trending'       ? `${trendingData?.trending?.length || 0} מניות` : '';
+
+  const activeTab = TABS.find(t => t.key === viewMode);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Header */}
-      <header className="bg-slate-900/80 backdrop-blur-sm border-b border-slate-700 sticky top-0 z-20 shadow-xl">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg">
-                <Zap size={28} className="text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-white">Momentum Scanner</h1>
-                <p className="text-slate-400 text-sm">Real-time high-momentum opportunities</p>
-              </div>
-            </div>
+    <div className="min-h-screen" style={{ background: '#080c14', color: '#e2e8f0' }}>
 
-            <div className="flex items-center gap-3">
-              {/* Language Toggle */}
-              <div className="flex bg-slate-800 border border-slate-600 rounded-lg overflow-hidden">
-                <button
-                  onClick={() => setLanguage('en')}
-                  className={`px-3 py-2 text-sm font-semibold transition-all ${
-                    language === 'en'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  EN
-                </button>
-                <button
-                  onClick={() => setLanguage('he')}
-                  className={`px-3 py-2 text-sm font-semibold transition-all ${
-                    language === 'he'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  עב
-                </button>
-              </div>
+      {/* ── Slim header ── */}
+      <header className="sticky top-0 z-30 h-14 flex items-center px-5 gap-4 border-b"
+        style={{ background: '#0d1117', borderColor: 'rgba(255,255,255,0.05)' }}>
 
-              {/* Live Mode Toggle */}
-              <button
-                onClick={() => {
-                  setLiveMode(!liveMode);
-                  setAutoRefresh(liveMode ? 0 : 5);
-                }}
-                className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-all font-semibold ${
-                  liveMode
-                    ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-500/50'
-                    : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
-                }`}
-              >
-                {liveMode ? (
-                  <>
-                    <span className="relative flex h-3 w-3">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-                    </span>
-                    LIVE
-                  </>
-                ) : (
-                  <>⏸ Paused</>
-                )}
-              </button>
-
-              {/* Auto-refresh selector */}
-              <select
-                value={autoRefresh}
-                onChange={(e) => {
-                  const val = Number(e.target.value);
-                  setAutoRefresh(val);
-                  setLiveMode(val > 0 && val <= 10);
-                }}
-                className="px-3 py-2 bg-slate-800 text-slate-300 border border-slate-600 rounded-lg text-sm focus:outline-none focus:border-blue-500"
-              >
-                <option value={5}>⚡ Live: 5s</option>
-                <option value={10}>🔥 Fast: 10s</option>
-                <option value={30}>Refresh: 30s</option>
-                <option value={60}>Refresh: 1m</option>
-                <option value={120}>Refresh: 2m</option>
-                <option value={0}>Manual</option>
-              </select>
-
-              <button
-                onClick={handleRefreshAll}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 transition-all shadow-lg hover:shadow-blue-500/50"
-              >
-                <RefreshCw size={18} />
-                Refresh
-              </button>
-            </div>
+        {/* Logo */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+            style={{ background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)' }}>
+            <Zap size={14} className="text-white" />
           </div>
+          <span className="text-white font-black tracking-tight text-sm hidden sm:block">STOCK SCANNER</span>
+        </div>
+
+        {/* Search — center */}
+        <div className="relative flex-1 max-w-sm mx-auto">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2" size={13}
+            style={{ color: '#475569' }} />
+          <input
+            type="text"
+            placeholder="חיפוש טיקר... (AAPL, TSLA...)"
+            value={searchTicker}
+            onChange={e => setSearchTicker(e.target.value.toUpperCase())}
+            className="w-full pl-8 pr-4 py-1.5 text-sm rounded-lg focus:outline-none transition-all"
+            style={{
+              background: '#161b22',
+              border: '1px solid rgba(255,255,255,0.06)',
+              color: '#e2e8f0',
+              fontFamily: 'inherit',
+            }}
+            onFocus={e => (e.target.style.borderColor = 'rgba(59,130,246,0.5)')}
+            onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.06)')}
+          />
+        </div>
+
+        {/* Controls */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Language */}
+          <div className="flex rounded-lg overflow-hidden text-xs font-bold"
+            style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
+            {['en','he'].map(lang => (
+              <button key={lang} onClick={() => setLanguage(lang)}
+                className="px-2.5 py-1.5 transition-all"
+                style={{
+                  background: language === lang ? '#3b82f6' : 'transparent',
+                  color: language === lang ? '#fff' : '#64748b',
+                }}>
+                {lang === 'en' ? 'EN' : 'עב'}
+              </button>
+            ))}
+          </div>
+
+          {/* Live mode */}
+          <button
+            onClick={() => { setLiveMode(!liveMode); setAutoRefresh(liveMode ? 0 : 30); }}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all"
+            style={{
+              background: liveMode ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.04)',
+              border: `1px solid ${liveMode ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.06)'}`,
+              color: liveMode ? '#f87171' : '#64748b',
+            }}>
+            {liveMode ? (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+                LIVE
+              </>
+            ) : '⏸ עצור'}
+          </button>
+
+          {/* Refresh interval */}
+          <select
+            value={autoRefresh}
+            onChange={e => { const v = Number(e.target.value); setAutoRefresh(v); setLiveMode(v > 0 && v <= 10); }}
+            className="px-2 py-1.5 text-xs rounded-lg focus:outline-none"
+            style={{
+              background: '#161b22',
+              border: '1px solid rgba(255,255,255,0.06)',
+              color: '#64748b',
+            }}>
+            <option value={5}>⚡ 5s</option>
+            <option value={10}>🔥 10s</option>
+            <option value={30}>30s</option>
+            <option value={60}>1m</option>
+            <option value={120}>2m</option>
+            <option value={0}>ידני</option>
+          </select>
+
+          {/* Refresh button */}
+          <button onClick={handleQuickRefresh}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all"
+            style={{
+              background: 'rgba(59,130,246,0.12)',
+              border: '1px solid rgba(59,130,246,0.3)',
+              color: '#60a5fa',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(59,130,246,0.2)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'rgba(59,130,246,0.12)')}>
+            <RefreshCw size={11} className={isAnyLoading ? 'animate-spin' : ''} />
+            רענן
+          </button>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6">
-        {/* Market Status Bar */}
-        <MarketStatus lastUpdate={lastUpdateTime} />
+      {/* ── Tab bar ── */}
+      <nav className="sticky top-14 z-20 border-b overflow-x-auto"
+        style={{ background: '#0d1117', borderColor: 'rgba(255,255,255,0.05)' }}>
+        <div className="flex items-stretch px-2">
+          {TABS.map(tab => {
+            const isActive = viewMode === tab.key;
+            return (
+              <button key={tab.key}
+                onClick={() => setViewMode(tab.key)}
+                className="relative px-4 py-3 text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-1.5"
+                style={{ color: isActive ? '#fff' : '#475569' }}
+                onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = '#94a3b8'; }}
+                onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = '#475569'; }}>
+                {tab.label}
+                {/* Active indicator */}
+                {isActive && (
+                  <div className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full"
+                    style={{ background: tab.accent, boxShadow: `0 0 8px ${tab.accent}88` }} />
+                )}
+              </button>
+            );
+          })}
 
-        {/* View Mode Toggle */}
-        <div className="mb-6 flex items-center gap-4">
-          <div className="flex bg-slate-800 border border-slate-700 rounded-lg p-1">
-            <button
-              onClick={() => setViewMode('briefing')}
-              className={`px-4 py-2 rounded-md transition-all flex items-center gap-1.5 ${
-                viewMode === 'briefing'
-                  ? 'bg-amber-600 text-white shadow-lg'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              ☀️ {language === 'he' ? 'בריפינג' : 'Briefing'}
-            </button>
-            <button
-              onClick={() => setViewMode('scanner')}
-              className={`px-4 py-2 rounded-md transition-all ${
-                viewMode === 'scanner'
-                  ? 'bg-blue-600 text-white shadow-lg'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Momentum Scanner
-            </button>
-            <button
-              onClick={() => setViewMode('vwap')}
-              className={`px-4 py-2 rounded-md transition-all flex items-center gap-2 ${
-                viewMode === 'vwap'
-                  ? 'bg-yellow-600 text-white shadow-lg'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              📊 {language === 'he' ? 'VWAP מומנטום' : 'VWAP Momentum'}
-            </button>
-            <button
-              onClick={() => setViewMode('trending')}
-              className={`px-4 py-2 rounded-md transition-all flex items-center gap-2 ${
-                viewMode === 'trending'
-                  ? 'bg-purple-600 text-white shadow-lg'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              🔥 {language === 'he' ? 'המניות הכי מדוברות' : 'Most Talked About'}
-            </button>
-            <button
-              onClick={() => setViewMode('fda')}
-              className={`px-4 py-2 rounded-md transition-all flex items-center gap-2 ${
-                viewMode === 'fda'
-                  ? 'bg-green-600 text-white shadow-lg'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              💊 {language === 'he' ? 'FDA קטליסטים' : 'FDA Catalysts'}
-            </button>
-            <button
-              onClick={() => setViewMode('tech-catalyst')}
-              className={`px-4 py-2 rounded-md transition-all flex items-center gap-2 ${
-                viewMode === 'tech-catalyst'
-                  ? 'bg-cyan-600 text-white shadow-lg'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              🖥️ {language === 'he' ? 'קטליסטים טכנולוגיה' : 'Tech Catalysts'}
-            </button>
-          </div>
-
-          {/* Quick Refresh Button */}
-          <button
-            onClick={() => {
-              setLastUpdateTime(new Date());
-              if (viewMode === 'briefing') {
-                refetchBriefing();
-              } else if (viewMode === 'scanner') {
-                refetchScanner();
-              } else if (viewMode === 'vwap') {
-                refetchVwap();
-              } else if (viewMode === 'fda') {
-                refetchFda();
-              } else if (viewMode === 'tech-catalyst') {
-                refetchTechCatalyst();
-              } else {
-                refetchTrending();
-              }
-            }}
-            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-2 transition-all shadow-lg hover:shadow-green-500/50"
-          >
-            <RefreshCw size={18} />
-            <span className="font-semibold">Quick Refresh</span>
-          </button>
-
-          <div className="flex-1"></div>
-
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500" size={18} />
-            <input
-              type="text"
-              placeholder="Search ticker..."
-              value={searchTicker}
-              onChange={(e) => setSearchTicker(e.target.value.toUpperCase())}
-              className="pl-10 pr-4 py-2 bg-slate-800 border border-slate-600 text-white rounded-lg focus:outline-none focus:border-blue-500 w-64"
-            />
-          </div>
-
-          {/* Momentum Filter */}
-          <div className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2">
-            <Filter size={18} className="text-slate-400" />
-            <label className="text-slate-400 text-sm">Min Score:</label>
-            <select
-              value={minMomentum}
-              onChange={(e) => setMinMomentum(Number(e.target.value))}
-              className="bg-slate-800 text-white text-sm focus:outline-none"
-            >
-              <option value={0}>All</option>
-              <option value={60}>60+</option>
-              <option value={70}>70+</option>
-              <option value={80}>80+ (Extreme)</option>
-            </select>
+          {/* Right side: count + update time */}
+          <div className="ml-auto flex items-center gap-3 px-4">
+            {tabCount && <span className="text-xs" style={{ color: '#475569' }}>{tabCount}</span>}
+            <span className="text-xs flex items-center gap-1" style={{ color: '#475569' }}>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              {new Date(lastUpdateTime).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+            </span>
           </div>
         </div>
+      </nav>
 
-        {/* Quick Stats */}
-        <QuickStats stocks={filteredStocks} />
+      {/* ── Main content ── */}
+      <main className="px-4 py-4 w-full">
+        <div className="grid grid-cols-1 xl:grid-cols-5 lg:grid-cols-4 gap-4">
 
-        {/* Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Momentum Stocks - 2/3 width */}
-          <div className="lg:col-span-2">
-            <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700 shadow-2xl">
-              <div className="px-6 py-4 border-b border-slate-700 bg-gradient-to-r from-blue-900/30 to-purple-900/30">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                      <TrendingUp size={24} />
-                      {viewMode === 'pulse' ? 'Market Pulse' :
-                       viewMode === 'scanner' ? 'Momentum Scanner' :
-                       viewMode === 'vwap' ? 'VWAP Momentum Screener' :
-                       viewMode === 'fda' ? (language === 'he' ? 'קטליסטים FDA' : 'FDA Catalyst Calendar') :
-                       viewMode === 'tech-catalyst' ? (language === 'he' ? 'קטליסטים טכנולוגיה' : 'Tech Catalyst Calendar') :
-                       language === 'he' ? 'המניות הכי מדוברות' : 'Most Talked About Stocks'}
-                      {viewMode === 'scanner' && (
-                        <span className="text-xs bg-blue-500 text-white px-2 py-1 rounded-full font-bold">
-                          LIVE
-                        </span>
-                      )}
-                      {viewMode === 'vwap' && (
-                        <span className="text-xs bg-yellow-500 text-black px-2 py-1 rounded-full font-bold">
-                          PRO
-                        </span>
-                      )}
-                      {viewMode === 'trending' && (
-                        <span className="text-xs bg-purple-500 text-white px-2 py-1 rounded-full animate-pulse">
-                          SOCIAL
-                        </span>
-                      )}
-                      {viewMode === 'fda' && (
-                        <span className="text-xs bg-green-500 text-white px-2 py-1 rounded-full font-bold">
-                          BIO
-                        </span>
-                      )}
-                      {viewMode === 'tech-catalyst' && (
-                        <span className="text-xs bg-cyan-500 text-black px-2 py-1 rounded-full font-bold">
-                          TECH
-                        </span>
-                      )}
-                    </h2>
-                    <p className="text-sm text-slate-400 mt-1">
-                      {isLoading || fdaLoading || techCatalystLoading ? 'Loading...' :
-                       viewMode === 'trending' ?
-                         `${stocks.length} trending stocks from social media` :
-                       viewMode === 'fda' ?
-                         `${fdaData?.count || 0} FDA catalyst events` :
-                       viewMode === 'tech-catalyst' ?
-                         `${techCatalystData?.count || 0} tech catalyst events` :
-                         `${filteredStocks.length} stocks found`}
-                    </p>
+          {/* Left: 4/5 on XL, 3/4 on LG — main content */}
+          <div className="xl:col-span-4 lg:col-span-3 space-y-4">
+
+            {/* Searched stock card */}
+            {searchedStock && (
+              <div className="rounded-xl p-4"
+                style={{ background: '#0d1117', border: '1px solid rgba(59,130,246,0.25)' }}>
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-2xl font-black text-white">{searchedStock.ticker}</span>
+                    {searchedStock.live_data?.price > 0 && (
+                      <span className="text-xl font-black font-mono text-white tabular-nums">
+                        ${searchedStock.live_data.price.toFixed(2)}
+                      </span>
+                    )}
+                    {searchedStock.live_data?.change_percent != null && (
+                      <span className={`text-lg font-black ${searchedStock.live_data.change_percent >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {searchedStock.live_data.change_percent >= 0 ? '▲' : '▼'}{Math.abs(searchedStock.live_data.change_percent || 0).toFixed(2)}%
+                      </span>
+                    )}
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs text-slate-500">Live Feed</p>
-                    <p className="text-xs text-green-400 flex items-center gap-1 justify-end">
-                      <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-                      Active
-                    </p>
+                  <div className="flex items-center gap-2 flex-wrap ml-auto">
+                    {searchedStock.live_data?.company_name && (
+                      <span className="text-sm" style={{ color: '#64748b' }}>{searchedStock.live_data.company_name}</span>
+                    )}
+                    {searchedStock.live_data?.market_cap > 0 && (
+                      <span className="px-2 py-0.5 rounded text-xs font-bold"
+                        style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)', color: '#a5b4fc' }}>
+                        {searchedStock.live_data.market_cap >= 1e12 ? `$${(searchedStock.live_data.market_cap/1e12).toFixed(1)}T`
+                          : searchedStock.live_data.market_cap >= 1e9  ? `$${(searchedStock.live_data.market_cap/1e9).toFixed(1)}B`
+                          : `$${(searchedStock.live_data.market_cap/1e6).toFixed(0)}M`}
+                      </span>
+                    )}
+                    <a href={`https://www.tradingview.com/chart/?symbol=${searchedStock.ticker}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="px-3 py-1 rounded text-xs font-semibold"
+                      style={{ background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', color: '#c4b5fd' }}>
+                      TradingView ↗
+                    </a>
+                    <a href={`https://finance.yahoo.com/quote/${searchedStock.ticker}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="px-3 py-1 rounded text-xs font-semibold"
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8' }}>
+                      Yahoo ↗
+                    </a>
                   </div>
                 </div>
+                {searchedStock.live_data?.volume > 0 && (
+                  <div className="flex gap-4 mt-2 text-xs" style={{ color: '#475569' }}>
+                    <span>Vol: {searchedStock.live_data.volume >= 1e6
+                      ? `${(searchedStock.live_data.volume/1e6).toFixed(1)}M`
+                      : `${(searchedStock.live_data.volume/1e3).toFixed(0)}K`}</span>
+                    {searchedStock.live_data?.day_high > 0 && <span>H: ${searchedStock.live_data.day_high.toFixed(2)}</span>}
+                    {searchedStock.live_data?.day_low  > 0 && <span>L: ${searchedStock.live_data.day_low.toFixed(2)}</span>}
+                  </div>
+                )}
               </div>
+            )}
 
-              <div className="p-4 max-h-[calc(100vh-300px)] overflow-y-auto">
-                {/* Search result card — shows on any tab when ticker is searched */}
-                {searchedStock && (
-                  <div className="mb-4 rounded-lg border border-blue-500/40 bg-blue-900/20 p-4">
-                    <div className="flex items-center justify-between flex-wrap gap-3">
-                      <div className="flex items-center gap-3">
-                        <span className="text-2xl font-bold text-white">{searchedStock.ticker}</span>
-                        {searchedStock.live_data?.price > 0 && (
-                          <span className="text-lg text-slate-300 font-mono">${searchedStock.live_data.price.toFixed(2)}</span>
-                        )}
-                        {searchedStock.live_data?.change_percent != null && (
-                          <span className={`text-lg font-bold ${searchedStock.live_data.change_percent > 0 ? 'text-green-400' : searchedStock.live_data.change_percent < 0 ? 'text-red-400' : 'text-slate-400'}`}>
-                            {searchedStock.live_data.change_percent > 0 ? '▲' : searchedStock.live_data.change_percent < 0 ? '▼' : '—'} {Math.abs(searchedStock.live_data.change_percent || 0).toFixed(2)}%
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3">
-                        {searchedStock.live_data?.company_name && (
-                          <span className="text-sm text-slate-400">{searchedStock.live_data.company_name}</span>
-                        )}
-                        {searchedStock.live_data?.sector && searchedStock.live_data.sector !== 'Unknown' && (
-                          <span className="text-xs text-slate-500">| {searchedStock.live_data.sector}</span>
-                        )}
-                        {searchedStock.live_data?.market_cap > 0 && (
-                          <span className="px-2 py-0.5 rounded bg-indigo-900/50 border border-indigo-500/30 text-indigo-300 text-xs font-bold">
-                            {searchedStock.live_data.market_cap >= 1e12 ? `$${(searchedStock.live_data.market_cap / 1e12).toFixed(1)}T` :
-                             searchedStock.live_data.market_cap >= 1e9 ? `$${(searchedStock.live_data.market_cap / 1e9).toFixed(1)}B` :
-                             searchedStock.live_data.market_cap >= 1e6 ? `$${(searchedStock.live_data.market_cap / 1e6).toFixed(0)}M` :
-                             `$${searchedStock.live_data.market_cap}`}
-                          </span>
-                        )}
-                        <a
-                          href={`https://www.tradingview.com/chart/?symbol=${searchedStock.ticker}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs"
-                        >
-                          TradingView
-                        </a>
-                        <a
-                          href={`https://finance.yahoo.com/quote/${searchedStock.ticker}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-1 bg-slate-600 hover:bg-slate-500 text-white rounded text-xs"
-                        >
-                          Yahoo
-                        </a>
-                      </div>
+            {/* Ticker briefing card */}
+            {searchTicker.length >= 1 && (briefingSearchLoading || searchedBriefing) && (
+              <div className="rounded-xl p-4"
+                style={{ background: '#0d1117', border: '1px solid rgba(139,92,246,0.25)' }}>
+                {briefingSearchLoading && !searchedBriefing ? (
+                  <div className="flex items-center gap-2 text-sm" style={{ color: '#a78bfa' }}>
+                    <RefreshCw size={14} className="animate-spin" />
+                    מנתח את {searchTicker}...
+                  </div>
+                ) : searchedBriefing && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#a78bfa' }}>ניתוח בריפינג</span>
+                      {searchedBriefing.sector && (
+                        <span className="px-2 py-0.5 rounded text-xs" style={{ background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.25)', color: '#c4b5fd' }}>
+                          {searchedBriefing.sector}
+                        </span>
+                      )}
+                      {searchedBriefing.rsi != null && (
+                        <span className="px-2 py-0.5 rounded text-xs font-bold"
+                          style={{ background: searchedBriefing.rsi > 68 ? 'rgba(239,68,68,0.12)' : searchedBriefing.rsi < 42 ? 'rgba(59,130,246,0.12)' : 'rgba(255,255,255,0.05)',
+                            border: `1px solid ${searchedBriefing.rsi > 68 ? 'rgba(239,68,68,0.3)' : searchedBriefing.rsi < 42 ? 'rgba(59,130,246,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                            color: searchedBriefing.rsi > 68 ? '#fca5a5' : searchedBriefing.rsi < 42 ? '#93c5fd' : '#94a3b8' }}>
+                          RSI {searchedBriefing.rsi}
+                        </span>
+                      )}
+                      {searchedBriefing.earnings_surprise_pct != null && (
+                        <span className="px-2 py-0.5 rounded text-xs font-bold"
+                          style={{ background: searchedBriefing.earnings_surprise_pct >= 20 ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.05)',
+                            border: `1px solid ${searchedBriefing.earnings_surprise_pct >= 20 ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                            color: searchedBriefing.earnings_surprise_pct >= 20 ? '#6ee7b7' : '#94a3b8' }}>
+                          Beat {searchedBriefing.earnings_surprise_pct > 0 ? '+' : ''}{searchedBriefing.earnings_surprise_pct}%
+                        </span>
+                      )}
                     </div>
-                    {searchedStock.live_data?.volume > 0 && (
-                      <div className="mt-2 flex items-center gap-4 text-xs text-slate-400">
-                        <span>Vol: {searchedStock.live_data.volume >= 1e6 ? `${(searchedStock.live_data.volume / 1e6).toFixed(1)}M` : searchedStock.live_data.volume >= 1e3 ? `${(searchedStock.live_data.volume / 1e3).toFixed(0)}K` : searchedStock.live_data.volume}</span>
-                        {searchedStock.live_data?.day_high > 0 && <span>H: ${searchedStock.live_data.day_high.toFixed(2)}</span>}
-                        {searchedStock.live_data?.day_low > 0 && <span>L: ${searchedStock.live_data.day_low.toFixed(2)}</span>}
-                        {searchedStock.live_data?.prev_close > 0 && <span>Prev: ${searchedStock.live_data.prev_close.toFixed(2)}</span>}
+                    {searchedBriefing.reason && (
+                      <p className="text-sm leading-relaxed" style={{ color: '#cbd5e1' }} dir="rtl">{searchedBriefing.reason}</p>
+                    )}
+                    <div className="flex items-center gap-4 text-xs flex-wrap" style={{ color: '#475569' }}>
+                      {searchedBriefing.watch_level && (
+                        <span>⚡ לצפות: <span style={{ color: '#fde047' }} className="font-semibold">{searchedBriefing.watch_level}</span></span>
+                      )}
+                      {searchedBriefing.support > 0 && (
+                        <span>תמיכה: <span style={{ color: '#4ade80' }} className="font-mono">${searchedBriefing.support}</span></span>
+                      )}
+                      {searchedBriefing.price_change_since_earnings !== 0 && (
+                        <span>מאז דוח: <span style={{ color: searchedBriefing.price_change_since_earnings > 0 ? '#4ade80' : '#f87171' }} className="font-bold">
+                          {searchedBriefing.price_change_since_earnings > 0 ? '+' : ''}{searchedBriefing.price_change_since_earnings}%
+                        </span></span>
+                      )}
+                    </div>
+                    {((searchedBriefing.tailwinds?.length || 0) + (searchedBriefing.headwinds?.length || 0)) > 0 && (
+                      <div className="flex gap-1.5 flex-wrap">
+                        {(searchedBriefing.tailwinds || []).map((tw, i) => (
+                          <span key={i} className="px-2 py-0.5 rounded-full text-xs"
+                            style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', color: '#6ee7b7' }}>
+                            ↑ {tw}
+                          </span>
+                        ))}
+                        {(searchedBriefing.headwinds || []).map((hw, i) => (
+                          <span key={i} className="px-2 py-0.5 rounded-full text-xs"
+                            style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#fca5a5' }}>
+                            ↓ {hw}
+                          </span>
+                        ))}
                       </div>
                     )}
                   </div>
                 )}
-
-                {viewMode === 'briefing' ? (
-                  <DailyBriefing data={briefingData} loading={briefingLoading} onRefetch={refetchBriefing} />
-                ) : viewMode === 'fda' ? (
-                  <FDACatalystTracker events={fdaData?.events || []} loading={fdaLoading} viewMode="fda" />
-                ) : viewMode === 'tech-catalyst' ? (
-                  <FDACatalystTracker events={techCatalystData?.events || []} loading={techCatalystLoading} viewMode="tech" />
-                ) : viewMode === 'trending' ? (
-                  <TrendingStocks stocks={stocks} loading={isLoading} />
-                ) : viewMode === 'vwap' ? (
-                  <VWAPMomentumScanner stocks={vwapData?.stocks || []} loading={vwapLoading} />
-                ) : (
-                  <MomentumScannerPro stocks={filteredStocks} loading={isLoading} />
-                )}
               </div>
-            </div>
+            )}
+
+            {/* ── Tab content ── */}
+            {viewMode === 'briefing' ? (
+              /* Briefing has its own beautiful header — no wrapper */
+              <DailyBriefing
+                data={briefingData}
+                loading={briefingLoading}
+                onRefetch={refetchBriefing}
+                crossScannerMap={crossScannerMap}
+              />
+            ) : (
+              /* All other tabs: minimal card wrapper */
+              <div className="rounded-xl overflow-hidden"
+                style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)' }}>
+                {/* Thin colored tab accent at top */}
+                {activeTab && (
+                  <div className="h-0.5 w-full"
+                    style={{ background: `linear-gradient(to right, ${activeTab.accent}, transparent)` }} />
+                )}
+                <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 160px)' }}>
+                  {viewMode === 'portfolio' ? (
+                    <DemoPortfolio />
+                  ) : viewMode === 'fda' ? (
+                    <FDACatalystTracker events={fdaData?.events || []} loading={fdaLoading} viewMode="fda" />
+                  ) : viewMode === 'tech-catalyst' ? (
+                    <FDACatalystTracker events={techCatalystData?.events || []} loading={techCatalystLoading} viewMode="tech" />
+                  ) : viewMode === 'tech-signals' ? (
+                    <TechnicalSignalsScanner data={techSignalsData} loading={techSignalsLoading} onRefetch={refetchTechSignals} crossScannerMap={crossScannerMap} />
+                  ) : viewMode === 'daily-analysis' ? (
+                    <DailyAnalysisScanner data={dailyAnalysisData} loading={dailyAnalysisLoading} onRefetch={refetchDailyAnalysis} crossScannerMap={crossScannerMap} />
+                  ) : viewMode === 'ib' ? (
+                    <IBPortfolio />
+                  ) : viewMode === 'finviz-table' ? (
+                    <FinvizTableScanner />
+                  ) : (
+                    <TrendingStocks stocks={trendingData?.trending || []} loading={trendingLoading} />
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* News Panel - 1/3 width */}
-          <div className="lg:col-span-1">
-            <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700 shadow-2xl sticky top-24">
-              <div className="px-6 py-4 border-b border-slate-700 bg-gradient-to-r from-slate-800 to-slate-700">
-                <h2 className="text-lg font-bold text-white">Market News</h2>
-                <p className="text-sm text-slate-400 mt-1">
-                  {newsData?.length || 0} latest articles
-                </p>
+          {/* Right: 1/5 on XL, 1/4 on LG — news panel */}
+          <div className="xl:col-span-1 lg:col-span-1">
+            <div className="rounded-xl overflow-hidden sticky"
+              style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)', top: '7.5rem' }}>
+              <div className="px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                <h2 className="text-sm font-black text-white">חדשות שוק</h2>
+                <p className="text-xs mt-0.5" style={{ color: '#475569' }}>{newsData?.length || 0} כתבות</p>
               </div>
-
-              <div className="p-4 max-h-[calc(100vh-300px)] overflow-y-auto">
+              <div className="p-3 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 160px)' }}>
                 <NewsPanel news={newsData} />
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Footer Info */}
-        <div className="mt-8 text-center text-slate-500 text-sm">
-          <p className="flex items-center justify-center gap-2">
-            {liveMode && (
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-              </span>
-            )}
-            Data updates {autoRefresh > 0 ? `every ${autoRefresh} seconds` : 'manually'}
-            {liveMode && <span className="text-green-400 font-semibold">• LIVE MODE ACTIVE</span>}
-          </p>
-          <p className="mt-1">Showing stocks with momentum score ≥ {minMomentum}</p>
         </div>
       </main>
 
-      <style jsx>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-      `}</style>
     </div>
   );
 }
@@ -601,6 +527,8 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <MomentumDashboard />
+      <AIAssistant />
+      <AlertSystem />
     </QueryClientProvider>
   );
 }
