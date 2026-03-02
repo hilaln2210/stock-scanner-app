@@ -108,12 +108,120 @@ class FinvizFundamentals:
         'Index': 'index',
     }
 
+    ELITE_SCREENER_URL = "https://elite.finviz.com/screener.ashx"
+    PRICE_CACHE_TTL = 60  # 1 minute for live prices
+
     def __init__(self, email: str = '', password: str = '', cookie: str = ''):
         self.email = email
         self.password = password
         self.cookie = cookie
         self._ticker_cache: Dict[str, Dict] = {}
         self._ticker_cache_time: Dict[str, float] = {}
+        self._price_cache: Dict[str, Dict] = {}
+        self._price_cache_time: float = 0
+
+    async def get_prices_batch(self, tickers: List[str]) -> Dict[str, Dict]:
+        """
+        Fetch real-time prices for multiple tickers in a single Finviz screener request.
+        Uses Elite (Pro) session for pre/post-market real-time data.
+        Returns: {ticker: {"price": float, "change_pct": str, "prev_close": float}}
+        """
+        if not tickers:
+            return {}
+
+        now = time.time()
+        # Return cached if fresh (1 minute)
+        if (now - self._price_cache_time) < self.PRICE_CACHE_TTL and self._price_cache:
+            # Check all tickers are in cache
+            if all(t.upper() in self._price_cache for t in tickers):
+                return {t.upper(): self._price_cache[t.upper()] for t in tickers}
+
+        ticker_str = ",".join(t.upper() for t in tickers)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'text/html,application/xhtml+xml',
+        }
+        if self.cookie:
+            headers['Cookie'] = self.cookie
+
+        # Screener with ticker filter + overview columns (price + change)
+        url = f"{self.ELITE_SCREENER_URL}?v=111&t={ticker_str}&o=-change"
+        results = {}
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=12)) as resp:
+                    if resp.status != 200:
+                        return {}
+                    html = await resp.text()
+
+            soup = BeautifulSoup(html, 'html.parser')
+
+            # Find screener table — try multiple selectors
+            table = (soup.find('table', {'id': 'screener-views-table'}) or
+                     soup.find('table', attrs={'cellpadding': '3', 'width': '100%'}))
+            if not table:
+                all_tables = soup.find_all('table')
+                for t in all_tables:
+                    rows = t.find_all('tr')
+                    if len(rows) > 2 and len(rows[1].find_all('td')) >= 8:
+                        table = t
+                        break
+
+            if not table:
+                return {}
+
+            rows = table.find_all('tr')
+
+            # Parse header to find column indices
+            header = []
+            data_rows = []
+            for row in rows:
+                ths = row.find_all('th')
+                if ths:
+                    header = [th.get_text(strip=True).lower() for th in ths]
+                else:
+                    tds = row.find_all('td')
+                    if len(tds) >= 5:
+                        data_rows.append(tds)
+
+            if not header:
+                header = ['no', 'ticker', 'company', 'sector', 'industry',
+                          'country', 'market cap', 'p/e', 'price', 'change', 'volume']
+
+            col = {h: i for i, h in enumerate(header)}
+            ticker_col  = col.get('ticker', 1)
+            price_col   = col.get('price', 8)
+            change_col  = col.get('change', 9)
+
+            for cells in data_rows:
+                texts = [td.get_text(strip=True) for td in cells]
+                if len(texts) <= max(ticker_col, price_col):
+                    continue
+                ticker = texts[ticker_col].upper()
+                if not re.match(r'^[A-Z]{1,5}$', ticker):
+                    continue
+                try:
+                    price_str = texts[price_col].replace(',', '').replace('$', '')
+                    price = float(price_str) if price_str else None
+                except (ValueError, IndexError):
+                    price = None
+                change_str = texts[change_col] if change_col < len(texts) else ''
+                if price:
+                    results[ticker] = {
+                        "price": price,
+                        "change_pct": change_str,
+                        "source": "finviz_elite",
+                    }
+
+            if results:
+                self._price_cache.update(results)
+                self._price_cache_time = now
+
+        except Exception as e:
+            print(f"Finviz get_prices_batch error: {e}")
+
+        return results
 
     async def get_fundamentals_batch(self, tickers: List[str]) -> Dict[str, Dict]:
         """Fetch fundamentals for a batch of tickers with bounded concurrency."""

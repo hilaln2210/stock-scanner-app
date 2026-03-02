@@ -19,7 +19,7 @@ function PnlBadge({ dollar, pct }) {
   );
 }
 
-export default function DemoPortfolio() {
+export default function DemoPortfolio({ briefingData: briefingDataProp, briefingLoading: briefingLoadingProp }) {
   const queryClient = useQueryClient();
   const [confirmReset, setConfirmReset] = useState(false);
   const [selectedTickers, setSelectedTickers] = useState(new Set());
@@ -51,11 +51,14 @@ export default function DemoPortfolio() {
     }
   }, [data?.initial_cash, data?.max_per_position]);
 
-  const { data: briefingData, isLoading: briefingLoading } = useQuery({
+  const { data: ownBriefingData, isLoading: ownBriefingLoading } = useQuery({
     queryKey: ['demoPortfolioBriefing'],
     queryFn: () => api.get('/briefing/daily').then(r => r.data),
     staleTime: 30 * 60 * 1000,
+    enabled: !briefingDataProp,
   });
+  const briefingData    = briefingDataProp    ?? ownBriefingData;
+  const briefingLoading = briefingDataProp != null ? false : ownBriefingLoading;
 
   const { data: advisorData, isLoading: advisorLoading, refetch: refetchAdvisor } = useQuery({
     queryKey: ['portfolioAdvisor'],
@@ -353,6 +356,14 @@ export default function DemoPortfolio() {
                         <span className="text-slate-500">עכשיו: </span>
                         <span className={`font-mono font-bold ${up ? 'text-green-400' : 'text-red-400'}`}>${pos.current_price}</span>
                         {pos.price_time && <span className="text-slate-600 text-[9px] ml-1">{pos.price_time}</span>}
+                        {pos.today_change_pct && (
+                          <span className={`text-[9px] ml-1 font-mono ${pos.today_change_pct.startsWith('-') ? 'text-red-500' : 'text-emerald-500'}`}>
+                            {pos.today_change_pct} היום
+                          </span>
+                        )}
+                        {pos.price_source === 'fallback' && (
+                          <span className="text-[9px] ml-1 text-amber-600" title="מחיר לא זמין — מוצג מחיר קנייה">⚠️</span>
+                        )}
                       </div>
                       <div><span className="text-slate-500">מניות: </span><span className="text-slate-300">{pos.shares?.toFixed(4)}</span></div>
                       <div><span className="text-slate-500">שווי: </span><span className="text-slate-300 font-mono">{fmt$(pos.market_value)}</span></div>

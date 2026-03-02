@@ -1140,9 +1140,33 @@ async def get_daily_analysis():
 
 @router.get("/portfolio/demo")
 async def get_demo_portfolio():
-    """Return demo portfolio with live prices and P&L."""
+    """Return demo portfolio with live prices and P&L.
+    Fetches prices from Finviz Elite (real-time, pre/post market) first;
+    falls back to yfinance for any tickers Finviz doesn't cover.
+    """
     loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(None, portfolio_service.get_portfolio_with_live_prices)
+
+    # Try Finviz Elite prices first (one HTTP request, 10s hard cap)
+    finviz_prices = {}
+    try:
+        raw = portfolio_service._load()
+        tickers = [p["ticker"] for p in raw.get("positions", [])]
+        if tickers:
+            finviz_prices = await asyncio.wait_for(
+                finviz_fundamentals.get_prices_batch(tickers),
+                timeout=10.0
+            )
+            if finviz_prices:
+                print(f"Finviz prices: {list(finviz_prices.keys())}")
+    except Exception as e:
+        print(f"Finviz price fetch failed, falling back to yfinance: {e}")
+
+    result = await loop.run_in_executor(
+        None,
+        lambda: portfolio_service.get_portfolio_with_live_prices(
+            override_prices=finviz_prices or None
+        )
+    )
     return result
 
 
@@ -1718,10 +1742,31 @@ def _fetch_intraday_sync(ticker: str) -> dict:
         return {}
 
 
+_TITLE_TRANSLATE_CACHE: dict = {}  # {original_title: hebrew_title}
+
+def _translate_title_he(title: str) -> str:
+    """Translate text to Hebrew using deep-translator, with in-process cache."""
+    if not title:
+        return title
+    cached = _TITLE_TRANSLATE_CACHE.get(title)
+    if cached:
+        return cached
+    for attempt in range(2):
+        try:
+            from deep_translator import GoogleTranslator
+            result = GoogleTranslator(source='en', target='iw').translate(title)
+            if result and result != title:
+                _TITLE_TRANSLATE_CACHE[title] = result
+                return result
+        except Exception:
+            pass
+    return title
+
+
 def _fetch_ticker_news_sync(ticker: str) -> list:
     """
     Fetch yfinance news for a ticker with a hard 3-second timeout.
-    Returns list of {title, publisher, link, published} dicts.
+    Returns list of {title, publisher, link, published} dicts, titles translated to Hebrew.
     """
     import yfinance as _yf
     from concurrent.futures import ThreadPoolExecutor as _TPE2, TimeoutError as _TE
@@ -1729,18 +1774,50 @@ def _fetch_ticker_news_sync(ticker: str) -> list:
     def _inner():
         return _yf.Ticker(ticker).news or []
 
+    def _normalize(n: dict) -> dict:
+        # New yfinance format: {'id': ..., 'content': {...}}
+        c = n.get('content') or {}
+        if c:
+            pub_date = c.get('pubDate') or c.get('displayTime') or ''
+            import re as _re
+            ts = 0
+            if pub_date:
+                try:
+                    from datetime import datetime as _dt
+                    ts = int(_dt.fromisoformat(pub_date.replace('Z', '+00:00')).timestamp())
+                except Exception:
+                    pass
+            link = ''
+            cu = c.get('canonicalUrl') or {}
+            if isinstance(cu, dict):
+                link = cu.get('url', '')
+            if not link:
+                link = c.get('previewUrl', '')
+            provider = c.get('provider') or {}
+            publisher = provider.get('displayName', '') if isinstance(provider, dict) else ''
+            return {
+                'title':     c.get('title', ''),
+                'publisher': publisher,
+                'link':      link,
+                'published': ts,
+            }
+        # Legacy flat format
+        return {
+            'title':     n.get('title', ''),
+            'publisher': n.get('publisher', ''),
+            'link':      n.get('link', ''),
+            'published': n.get('providerPublishTime', 0),
+        }
+
     try:
         with _TPE2(max_workers=1) as pool:
             raw = pool.submit(_inner).result(timeout=3)
-        return [
-            {
-                'title':     n.get('title', ''),
-                'publisher': n.get('publisher', ''),
-                'link':      n.get('link', ''),
-                'published': n.get('providerPublishTime', 0),
-            }
-            for n in raw[:5]
-        ]
+        items = [_normalize(n) for n in raw[:5]]
+        # Translate titles to Hebrew
+        for item in items:
+            if item.get('title'):
+                item['title'] = _translate_title_he(item['title'])
+        return items
     except Exception:
         return []
 
@@ -1829,8 +1906,10 @@ def _fetch_summary_sync(ticker: str) -> str:
         if summary:
             dot = summary.find('. ')
             if 30 < dot < 220:
-                return summary[:dot + 1]
-            return summary[:200]
+                text = summary[:dot + 1]
+            else:
+                text = summary[:200]
+            return _translate_title_he(text)
         return ''
     except Exception:
         return ''

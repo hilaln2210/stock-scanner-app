@@ -8,6 +8,8 @@ Demo Portfolio Service — paper trading simulation.
 """
 
 import json
+import os
+import shutil
 import pytz
 from datetime import datetime, time as dtime
 from typing import Dict, List, Optional, Tuple
@@ -15,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import yfinance as yf
 
-PORTFOLIO_FILE = "/tmp/demo_portfolio.json"
+PORTFOLIO_FILE = "/home/hila/Desktop/Stocks/backend/data/demo_portfolio.json"
 DEFAULT_INITIAL_CASH = 3000.0
 DEFAULT_MAX_PER_POSITION = 700.0
 _MAX_PRICE_WORKERS = 4
@@ -87,17 +89,28 @@ def _fetch_prices_parallel(tickers: List[str]) -> Dict[str, Tuple[Optional[float
 
 
 def _load() -> Dict:
-    try:
-        with open(PORTFOLIO_FILE, 'r') as f:
-            return json.load(f)
-    except Exception:
-        return _fresh_portfolio()
+    for path in (PORTFOLIO_FILE, PORTFOLIO_FILE + ".bak"):
+        try:
+            with open(path, 'r') as f:
+                data = json.load(f)
+                if isinstance(data, dict) and "positions" in data:
+                    return data
+        except Exception:
+            continue
+    return _fresh_portfolio()
 
 
 def _save(portfolio: Dict) -> None:
+    """Atomic write: write to temp file then rename, plus keep a .bak backup."""
     try:
-        with open(PORTFOLIO_FILE, 'w') as f:
+        os.makedirs(os.path.dirname(PORTFOLIO_FILE), exist_ok=True)
+        tmp = PORTFOLIO_FILE + ".tmp"
+        with open(tmp, 'w') as f:
             json.dump(portfolio, f, indent=2, default=str)
+        # keep a backup of the previous version before overwriting
+        if os.path.exists(PORTFOLIO_FILE):
+            shutil.copy2(PORTFOLIO_FILE, PORTFOLIO_FILE + ".bak")
+        os.replace(tmp, PORTFOLIO_FILE)
     except Exception:
         pass
 
@@ -114,24 +127,45 @@ def _fresh_portfolio(initial_cash: float = DEFAULT_INITIAL_CASH,
     }
 
 
-def get_portfolio_with_live_prices() -> Dict:
-    """Load portfolio and enrich all positions with live prices + P&L (parallel, prepost=True)."""
+def get_portfolio_with_live_prices(override_prices: Dict = None) -> Dict:
+    """Load portfolio and enrich all positions with live prices + P&L.
+
+    override_prices: optional {ticker: {"price": float, "change_pct": str, "source": str}}
+    When provided (e.g. from Finviz Elite), skips yfinance fetching for those tickers.
+    """
     p = _load()
     positions = p.get("positions", [])
     session = _market_session()
     fetched_at = datetime.now(_ET).strftime("%H:%M")
 
     tickers = [pos["ticker"] for pos in positions]
-    price_data = _fetch_prices_parallel(tickers)  # {ticker: (price, price_time)}
+
+    # Only fetch via yfinance for tickers NOT covered by override_prices
+    finviz_covered = set((override_prices or {}).keys())
+    need_yfinance = [t for t in tickers if t not in finviz_covered]
+    yf_price_data = _fetch_prices_parallel(need_yfinance) if need_yfinance else {}
+
+    # Build unified price_data: Finviz takes priority
+    # {ticker: (price, price_time_or_change, today_change_pct)}
+    price_data = {}
+    for ticker in tickers:
+        if ticker in finviz_covered:
+            fv = override_prices[ticker]
+            price_data[ticker] = (fv.get("price"), None, fv.get("change_pct", ""))
+        else:
+            yf_price, yf_time = yf_price_data.get(ticker, (None, None))
+            price_data[ticker] = (yf_price, yf_time, None)
 
     enriched = []
     total_market_value = 0.0
     for pos in positions:
         ticker = pos["ticker"]
-        live_price, price_time = price_data.get(ticker, (None, None))
+        live_price, price_time, today_change_pct = price_data.get(ticker, (None, None, None))
+        price_source = "finviz" if ticker in finviz_covered else "yfinance"
         if live_price is None:
             live_price = pos.get("buy_price", 0)
             price_time = None
+            price_source = "fallback"
 
         shares = pos["shares"]
         cost_basis = pos["cost_basis"]
@@ -143,7 +177,9 @@ def get_portfolio_with_live_prices() -> Dict:
         enriched.append({
             **pos,
             "current_price": live_price,
-            "price_time": price_time,   # HH:MM ET of last trade
+            "price_time": price_time,       # HH:MM ET (yfinance) or None (finviz)
+            "today_change_pct": today_change_pct,  # e.g. "+2.31%" from Finviz
+            "price_source": price_source,
             "market_value": market_value,
             "pnl_dollar": pnl_dollar,
             "pnl_pct": pnl_pct,
