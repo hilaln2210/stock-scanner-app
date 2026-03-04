@@ -99,7 +99,7 @@ function MomentumDashboard() {
   const { data: briefingData, isLoading: briefingLoading } = useQuery({
     queryKey: ['dailyBriefing', briefingForceKey],
     queryFn: async () => (await api.get('/briefing/daily')).data,
-    enabled: viewMode === 'briefing',
+    enabled: viewMode === 'briefing' || viewMode === 'portfolio',
     staleTime: 30 * 60 * 1000,
     refetchInterval: (data) => (data?.loading || !data?.stocks?.length) ? 10000 : 0,
     keepPreviousData: true,
@@ -191,8 +191,8 @@ function MomentumDashboard() {
     <div className="min-h-screen" style={{ background: '#080c14', color: '#e2e8f0' }}>
 
       {/* ── Slim header ── */}
-      <header className="sticky top-0 z-30 h-14 flex items-center px-5 gap-4 border-b"
-        style={{ background: '#0d1117', borderColor: 'rgba(255,255,255,0.05)' }}>
+      <header className="sticky top-0 z-30 h-14 flex items-center px-3 sm:px-5 gap-2 sm:gap-4 border-b safe-top"
+        style={{ background: '#0d1117', borderColor: 'rgba(255,255,255,0.05)', paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
 
         {/* Logo */}
         <div className="flex items-center gap-2.5 shrink-0">
@@ -481,7 +481,7 @@ function MomentumDashboard() {
                 )}
                 <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 160px)' }}>
                   {viewMode === 'portfolio' ? (
-                    <DemoPortfolio />
+                    <DemoPortfolio briefingData={briefingData} briefingLoading={briefingLoading} />
                   ) : viewMode === 'fda' ? (
                     <FDACatalystTracker events={fdaData?.events || []} loading={fdaLoading} viewMode="fda" />
                   ) : viewMode === 'tech-catalyst' ? (

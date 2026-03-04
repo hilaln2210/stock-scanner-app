@@ -1,19 +1,13 @@
+# Render.com Blueprint - פריסה 24/7
+# https://render.com/docs/blueprint-spec
+
 services:
   - type: web
     name: stock-scanner
     runtime: docker
     dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: free
     envVars:
-      - key: DATABASE_URL
-        value: sqlite+aiosqlite:///./stocks.db
-      - key: SCRAPE_INTERVAL_MINUTES
-        value: "10"
-      - key: MAX_NEWS_AGE_HOURS
-        value: "48"
-      - key: FINVIZ_EMAIL
-        sync: false
-      - key: FINVIZ_PASSWORD
-        sync: false
-      - key: FINVIZ_COOKIE
-        sync: false
+      - key: PORT
+        value: "8000"

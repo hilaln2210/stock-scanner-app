@@ -246,7 +246,8 @@ class FinvizScreener:
         for i, h in enumerate(header_row):
             col_map[h] = i
 
-        for row_cells in data_rows[:50]:  # Limit to 50 results
+        # Limit number of rows for performance; 150 שומר על דיוק מול Finviz אבל לא מעמיס
+        for row_cells in data_rows[:150]:
             try:
                 cells_text = [td.get_text(strip=True) for td in row_cells]
 

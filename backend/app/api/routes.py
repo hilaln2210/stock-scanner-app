@@ -1521,6 +1521,96 @@ async def get_alert_movers():
     return out
 
 
+# ── Live Prices (fast poll, pre/post market) ───────────────────────────────────
+
+_LIVE_PRICES_CACHE: dict = {}
+_LIVE_PRICES_CACHE_TIME: float = 0.0
+_LIVE_PRICES_FETCHING: bool = False   # prevent concurrent heavy fetches
+
+
+@router.get("/screener/live-prices")
+async def get_live_prices(tickers: str = Query(...)):
+    """
+    Batch live prices via yfinance (pre/post market aware).
+    Single download call for all tickers. 5-second cache.
+    """
+    global _LIVE_PRICES_CACHE, _LIVE_PRICES_CACHE_TIME, _LIVE_PRICES_FETCHING
+    import time as _t
+
+    ticker_list = [t.strip().upper() for t in tickers.split(',') if t.strip()][:30]
+    if not ticker_list:
+        return {}
+
+    now = _t.time()
+    # Return from cache if fresh
+    if now - _LIVE_PRICES_CACHE_TIME < 5 and _LIVE_PRICES_CACHE:
+        return {t: _LIVE_PRICES_CACHE[t] for t in ticker_list if t in _LIVE_PRICES_CACHE}
+
+    # Avoid concurrent fetches — return stale cache if already fetching
+    if _LIVE_PRICES_FETCHING:
+        return {t: _LIVE_PRICES_CACHE[t] for t in ticker_list if t in _LIVE_PRICES_CACHE}
+
+    _LIVE_PRICES_FETCHING = True
+    loop = asyncio.get_event_loop()
+
+    def _batch_fetch():
+        import yfinance as yf
+        import math
+        results = {}
+        try:
+            tickers_str = " ".join(ticker_list)
+            multi = len(ticker_list) > 1
+            data = yf.download(
+                tickers_str,
+                period='5d',
+                interval='5m',
+                prepost=True,
+                progress=False,
+                auto_adjust=True,
+                threads=True,
+                multi_level_index=multi,
+            )
+            if data is None or data.empty:
+                return results
+
+            if multi:
+                close = data['Close']
+                for ticker in ticker_list:
+                    try:
+                        col = close[ticker].dropna() if ticker in close.columns else None
+                        if col is not None and len(col) > 0:
+                            price = float(col.iloc[-1])
+                            if not math.isnan(price) and price > 0:
+                                results[ticker] = {'price': round(price, 4)}
+                    except Exception:
+                        pass
+            else:
+                t = ticker_list[0]
+                col = data['Close'].dropna()
+                if len(col) > 0:
+                    price = float(col.iloc[-1])
+                    if not math.isnan(price) and price > 0:
+                        results[t] = {'price': round(price, 4)}
+        except Exception as e:
+            print(f"[live-prices] batch fetch error: {e}")
+        return results
+
+    try:
+        results = await asyncio.wait_for(
+            loop.run_in_executor(None, _batch_fetch),
+            timeout=12.0,
+        )
+        if results:
+            _LIVE_PRICES_CACHE.update(results)
+            _LIVE_PRICES_CACHE_TIME = _t.time()
+        return {t: _LIVE_PRICES_CACHE[t] for t in ticker_list if t in _LIVE_PRICES_CACHE}
+    except Exception as e:
+        print(f"[live-prices] timeout: {e}")
+        return {t: _LIVE_PRICES_CACHE[t] for t in ticker_list if t in _LIVE_PRICES_CACHE}
+    finally:
+        _LIVE_PRICES_FETCHING = False
+
+
 # ── Finviz Fundamental Table Screener ─────────────────────────────────────────
 
 _FV_TABLE_CACHE: dict = {}
@@ -1540,8 +1630,7 @@ _FV_SUMMARY_CACHE_TIME: dict = {}   # {ticker: timestamp}
 _FV_SUMMARY_CACHE_TTL: int = 3600   # business description: 1 hour
 
 _FV_DEFAULT_FILTERS = (
-    "cap_midover,sh_avgvol_o2000,sh_curvol_o0,"
-    "sh_instown_o10,sh_short_o5,ta_changeopen_u4,ta_rsi_nos50"
+    "cap_midover,sh_avgvol_o2000,sh_curvol_o300,sh_instown_o10,ta_rsi_nos50"
 )
 
 
@@ -1581,15 +1670,16 @@ def _compute_ev(fund: dict) -> Optional[float]:
 
 def _stock_tags(fund: dict, price: float = 0) -> list:
     """
-    Real-Time Health Tags per spec:
-      ✅ profitable  — Income > 0
-      ❌ loss        — Income < 0
+    Fundamentals layer tags:
+      ✅ profitable  — Net Income > 0
+      ❌ loss        — Net Income < 0
       ⚠️ high_debt   — EV/MC ≥ 1.2
       💰 cash_rich   — EV/MC ≤ 0.9
-      🔥 high_growth — Revenue Q/Q ≥ 20% or EPS Y% ≥ 20%
+      🔥 high_growth — Sales Y/Y ≥ 50 AND Sales Q/Q ≥ 10
+                        (fallback: Sales Q/Q ≥ 30 if Y/Y missing and Sales ≥ 50M)
       📉 high_short  — Short Float > 15%
     """
-    tags = []
+    tags: list[str] = []
 
     income = _parse_fv_num(fund.get('income', ''))
     if income is not None:
@@ -1604,10 +1694,23 @@ def _stock_tags(fund: dict, price: float = 0) -> list:
         elif ratio <= 0.9:
             tags.append('cash_rich')
 
-    eps_y    = _parse_fv_num(fund.get('eps_this_y', ''))
-    sales_qq = _parse_fv_num(fund.get('sales_qq', ''))
-    sales_5y = _parse_fv_num(fund.get('sales_past_5y', ''))
-    if (eps_y and eps_y >= 20) or (sales_qq and sales_qq >= 20) or (sales_5y and sales_5y >= 15):
+    sales      = _parse_fv_num(fund.get('sales', ''))
+    sales_qq   = _parse_fv_num(fund.get('sales_qq', ''))
+    sales_yy   = _parse_fv_num(
+        fund.get('sales_year', '') or fund.get('sales_yoy', '') or fund.get('sales_year_yoy', '')
+    )
+
+    high_growth = False
+    if sales_yy is not None:
+        # Primary rule: Sales Y/Y >= 50 AND Sales Q/Q >= 10
+        if sales_yy >= 50 and (sales_qq is None or sales_qq >= 10):
+            high_growth = True
+    else:
+        # Fallback when Y/Y missing: Sales Q/Q >= 30 and Sales >= 50M
+        if sales_qq is not None and sales_qq >= 30 and sales is not None and sales >= 50_000_000:
+            high_growth = True
+
+    if high_growth:
         tags.append('high_growth')
 
     short = _parse_fv_num(fund.get('short_float', ''))
@@ -1650,19 +1753,52 @@ def _earnings_verdict(fund: dict) -> Optional[str]:
     return None
 
 
-def _health_score(tags: list) -> int:
+def _health_score(tags: list, ev_sales_ratio: Optional[float]) -> int:
     """
-    Financial Health Score 0–100 (base 50, capped).
-      +30  profitable   +20  cash_rich   +20  high_growth
-      −25  loss         −20  high_debt
-    Ranges: 80–100 🟢  60–79 🟡  40–59 🟠  0–39 🔴
+    Health Score (0–100):
+      base 50
+      +30 profitable
+      -25 loss
+      +20 cash_rich
+      -20 high_debt
+      +20 high_growth
+      -10 if EV/Sales > 20
     """
     score = 50
-    if 'profitable'  in tags: score += 30
-    if 'cash_rich'   in tags: score += 20
-    if 'high_growth' in tags: score += 20
-    if 'loss'        in tags: score -= 25
-    if 'high_debt'   in tags: score -= 20
+    if 'profitable' in tags:
+        score += 30
+    if 'loss' in tags:
+        score -= 25
+    if 'cash_rich' in tags:
+        score += 20
+    if 'high_debt' in tags:
+        score -= 20
+    if 'high_growth' in tags:
+        score += 20
+
+    if ev_sales_ratio is not None and ev_sales_ratio > 20:
+        score -= 10
+
+    return max(0, min(100, score))
+
+
+def _risk_score(tags: list, short_pct: Optional[float], rsi: Optional[float]) -> int:
+    """
+    Risk Score (0–100):
+      +30 high_debt
+      +25 loss
+      +20 short > 15%
+      +10 RSI > 75
+    """
+    score = 0
+    if 'high_debt' in tags:
+        score += 30
+    if 'loss' in tags:
+        score += 25
+    if short_pct is not None and short_pct > 15:
+        score += 20
+    if rsi is not None and rsi > 75:
+        score += 10
     return max(0, min(100, score))
 
 
@@ -1693,34 +1829,41 @@ def _fetch_intraday_sync(ticker: str) -> dict:
       extended_price   — current live price (pre/post/regular)
       extended_chg_pct — % change from last regular-session close
       prev_close       — last regular-session closing price
+    Fallback: if 5m returns too few bars, try 15m (chg_5m ≈ 1 bar, chg_30m = 2 bars).
     """
     import yfinance as _yf
     from concurrent.futures import ThreadPoolExecutor as _TPE2
 
-    def _inner():
-        # period='2d' gives yesterday's regular-hours close + today's extended bars
-        return _yf.Ticker(ticker).history(period='2d', interval='5m', prePost=True, timeout=6)
+    def _get_bars(interval: str, period: str):
+        return _yf.Ticker(ticker).history(period=period, interval=interval, prepost=True, timeout=8)
 
-    try:
-        with _TPE2(max_workers=1) as pool:
-            hist = pool.submit(_inner).result(timeout=10)
+    def _build_result(hist, is_5m: bool):
         if hist is None or len(hist) < 2:
-            return {}
+            return None
         closes = hist['Close'].dropna()
         if len(closes) < 2:
-            return {}
-
-        cur   = float(closes.iloc[-1])
+            return None
+        cur = float(closes.iloc[-1])
         result = {'extended_price': round(cur, 4)}
+        if is_5m:
+            # 5m bars: 1 bar=5m, 2 bars=10m, 6 bars=30m
+            ago5  = float(closes.iloc[-2]) if len(closes) >= 2 else None
+            ago10 = float(closes.iloc[-3]) if len(closes) >= 3 else None
+            ago30 = float(closes.iloc[-7]) if len(closes) >= 7 else (float(closes.iloc[0]) if len(closes) >= 2 else None)
+        else:
+            # 15m bars: 1 bar≈15m, 2 bars≈30m
+            ago5  = float(closes.iloc[-2]) if len(closes) >= 2 else None
+            ago10 = None  # not enough resolution in 15m bars
+            ago30 = float(closes.iloc[-3]) if len(closes) >= 3 else (float(closes.iloc[0]) if len(closes) >= 2 else None)
+        if ago5 and ago5 > 0:
+            result['chg_5m'] = round((cur - ago5) / ago5 * 100, 2)
+        if ago10 and ago10 > 0:
+            result['chg_10m'] = round((cur - ago10) / ago10 * 100, 2)
+        if ago30 and ago30 > 0:
+            result['chg_30m'] = round((cur - ago30) / ago30 * 100, 2)
+        return result
 
-        # Intraday momentum (works in extended hours too)
-        ago5  = float(closes.iloc[-2]) if len(closes) >= 2 else None
-        ago30 = float(closes.iloc[-7]) if len(closes) >= 7 else (
-                float(closes.iloc[0])  if len(closes) >= 2 else None)
-        if ago5  and ago5  > 0: result['chg_5m']  = round((cur - ago5)  / ago5  * 100, 2)
-        if ago30 and ago30 > 0: result['chg_30m'] = round((cur - ago30) / ago30 * 100, 2)
-
-        # Extended change vs last regular-session close (9:30–16:00 ET)
+    def _add_extended_chg(hist, result):
         try:
             import pytz as _pytz
             et = _pytz.timezone('US/Eastern')
@@ -1731,13 +1874,24 @@ def _fetch_intraday_sync(ticker: str) -> dict:
             reg_closes = hist_et[reg_mask]['Close'].dropna()
             if not reg_closes.empty:
                 prev_close = float(reg_closes.iloc[-1])
-                if prev_close > 0:
+                cur = result.get('extended_price')
+                if prev_close > 0 and cur is not None:
                     result['prev_close'] = round(prev_close, 4)
                     result['extended_chg_pct'] = round((cur - prev_close) / prev_close * 100, 2)
         except Exception:
             pass
 
-        return result
+    try:
+        with _TPE2(max_workers=1) as pool:
+            hist = pool.submit(lambda: _get_bars('5m', '7d')).result(timeout=12)
+        result = _build_result(hist, is_5m=True)
+        if result is None:
+            with _TPE2(max_workers=1) as pool2:
+                hist = pool2.submit(lambda: _get_bars('15m', '5d')).result(timeout=12)
+            result = _build_result(hist, is_5m=False)
+        if result and hist is not None and len(hist) >= 2:
+            _add_extended_chg(hist, result)
+        return result if result else {}
     except Exception:
         return {}
 
@@ -1915,6 +2069,93 @@ def _fetch_summary_sync(ticker: str) -> str:
         return ''
 
 
+def _fetch_sales_qq_sync(ticker: str) -> Optional[float]:
+    """
+    Best-effort fallback for Sales Q/Q using yfinance quarterly financials.
+    Returns percentage growth (latest quarter vs previous) or None.
+    """
+    import yfinance as _yf
+    from concurrent.futures import ThreadPoolExecutor as _TPE2
+
+    def _inner():
+        stk = _yf.Ticker(ticker)
+        # yfinance API may expose quarterly_financials or quarterly_income_stmt
+        fin = getattr(stk, "quarterly_financials", None)
+        if fin is None or len(getattr(fin, "columns", [])) < 2:
+            fin = getattr(stk, "quarterly_income_stmt", None)
+        if fin is None or 'Total Revenue' not in getattr(fin, "index", []):
+            return None
+        cols = list(fin.columns)
+        if len(cols) < 2:
+            return None
+        latest = fin[cols[0]].get('Total Revenue')
+        prev   = fin[cols[1]].get('Total Revenue')
+        if latest is None or prev is None or prev == 0:
+            return None
+        return float((latest - prev) / prev * 100.0)
+
+    try:
+        with _TPE2(max_workers=1) as pool:
+            val = pool.submit(_inner).result(timeout=6)
+        return val
+    except Exception:
+        return None
+
+
+async def _fallback_sales_qq_batch(tickers: list[str]) -> dict:
+    """
+    Fetch Sales Q/Q for a small batch of tickers via yfinance (fallback when Finviz missing).
+    Hard-capped concurrency and timeouts.
+    """
+    if not tickers:
+        return {}
+    loop = asyncio.get_running_loop()
+    results: dict = {}
+    # Limit to first 15 to avoid heavy calls
+    subset = tickers[:15]
+    with _TPE(max_workers=3) as pool:
+        futs = [
+            loop.run_in_executor(pool, _fetch_sales_qq_sync, t)
+            for t in subset
+        ]
+        done = await asyncio.gather(*futs, return_exceptions=True)
+    for t, val in zip(subset, done):
+        if isinstance(val, (int, float)):
+            results[t] = float(val)
+    return results
+
+
+@router.get("/screener/prices")
+async def get_screener_prices(tickers: str = Query(...)):
+    """Fetch live prices (pre/post-market aware) for portfolio tickers via yfinance."""
+    ticker_list = [t.strip().upper() for t in tickers.split(',') if t.strip()]
+    if not ticker_list:
+        return {}
+
+    loop = asyncio.get_event_loop()
+    results = {}
+
+    async def fetch_one(ticker: str):
+        try:
+            intra = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda t=ticker: _fetch_intraday_sync(t)),
+                timeout=8.0,
+            )
+            price = intra.get('extended_price') or intra.get('prev_close')
+            if price:
+                results[ticker] = {
+                    "price": float(price),
+                    "change_pct": intra.get('extended_chg_pct'),
+                    "prev_close": intra.get('prev_close'),
+                    "source": "yfinance_extended",
+                }
+        except Exception:
+            pass
+
+    await asyncio.gather(*[fetch_one(t) for t in ticker_list])
+    return results
+
+
 @router.get("/screener/finviz-table")
 async def get_finviz_table(
     filters: str = Query(default=_FV_DEFAULT_FILTERS),
@@ -2014,6 +2255,21 @@ async def get_finviz_table(
                 _FV_SUMMARY_CACHE[t] = res
                 _FV_SUMMARY_CACHE_TIME[t] = now
 
+    # ── 5b. Fallback Sales Q/Q from yfinance for tickers שחסר להם הנתון ──────
+    missing_salesqq = [
+        t for t in tickers
+        if not _parse_fv_num((_FV_FUND_CACHE.get(t) or {}).get('sales_qq', ''))
+    ]
+    if missing_salesqq:
+        try:
+            salesqq_fallback = await _fallback_sales_qq_batch(missing_salesqq)
+            for t, val in salesqq_fallback.items():
+                fund = _FV_FUND_CACHE.get(t)
+                if fund is not None and 'sales_qq' not in fund:
+                    fund['sales_qq'] = f"{val:.1f}%"
+        except Exception:
+            pass
+
     # ── 6. Merge, classify reasons, build response ────────────────────────────
     stocks = []
     for raw in raw_stocks:
@@ -2029,6 +2285,38 @@ async def get_finviz_table(
         tags    = _stock_tags(fund, price)
         ev      = _compute_ev(fund)
         ev_mc_ratio = round(ev / mc, 3) if ev and mc and mc > 0 else None
+
+        # Numeric EV / ratios for scores
+        ev      = _compute_ev(fund)
+        ev_sales_field = _parse_fv_num(fund.get('ev_sales', ''))
+        ev_sales_ratio = None
+        if ev_sales_field is not None:
+            ev_sales_ratio = ev_sales_field
+        elif ev and _parse_fv_num(fund.get('sales', '')):
+            sales_val = _parse_fv_num(fund.get('sales', ''))
+            if sales_val and sales_val > 0:
+                ev_sales_ratio = ev / sales_val
+
+        tags = _stock_tags(fund, price)
+        short_pct = _parse_fv_num(fund.get('short_float', ''))
+        rsi_val   = _parse_fv_num(fund.get('rsi', ''))
+        health    = _health_score(tags, ev_sales_ratio)
+        risk      = _risk_score(tags, short_pct, rsi_val)
+        ai_signal = health - risk * 0.6
+        if   ai_signal >= 70: ai_label = 'Strong Setup'
+        elif ai_signal >= 50: ai_label = 'Watchlist'
+        else:                 ai_label = 'Avoid'
+
+        # שינוי טרום/אחרי שעות: אם יש מחיר נוכחי אבל אין extended_chg_pct, לחשב מ־prev_close (מ־intra או מ־Finviz)
+        ext_price = intra.get('extended_price')
+        prev_close = intra.get('prev_close')
+        if prev_close is None:
+            prev_close = _parse_fv_num(fund.get('prev_close', ''))
+        extended_chg_pct = intra.get('extended_chg_pct')
+        if extended_chg_pct is None and ext_price is not None and prev_close is not None and prev_close > 0:
+            extended_chg_pct = round((float(ext_price) - prev_close) / prev_close * 100, 2)
+        if prev_close is not None and isinstance(prev_close, (int, float)):
+            prev_close = round(float(prev_close), 4)
 
         stocks.append({
             'ticker':         t,
@@ -2046,6 +2334,13 @@ async def get_finviz_table(
             'income_str':     fund.get('income', ''),
             'sales':          _parse_fv_num(fund.get('sales', '')),
             'sales_str':      fund.get('sales', ''),
+            # Year-over-year sales growth (Sales Y/Y) אם קיים בפינויז (לדוגמה Sales YoY)
+            'sales_yy':       _parse_fv_num(fund.get('sales_year', '') or fund.get('sales_yoy', '') or fund.get('sales_year_yoy', '')),
+            # Enterprise Value & ratios
+            'ev':             ev,
+            'ev_str':         fund.get('enterprise_value', ''),
+            'ev_mc_ratio':    ev_mc_ratio,
+            'ev_sales_ratio': ev_sales_ratio,
             'pe':             fund.get('pe_ratio', ''),
             'forward_pe':     fund.get('forward_pe', ''),
             'eps_this_y':     fund.get('eps_this_y', ''),
@@ -2076,18 +2371,21 @@ async def get_finviz_table(
             'ev_sales':       fund.get('ev_sales', ''),
             # Intraday momentum (extended hours aware)
             'chg_5m':            intra.get('chg_5m'),
+            'chg_10m':           intra.get('chg_10m'),
             'chg_30m':           intra.get('chg_30m'),
             'extended_price':    intra.get('extended_price'),
-            'extended_chg_pct':  intra.get('extended_chg_pct'),
-            'prev_close':        intra.get('prev_close'),
+            'extended_chg_pct':  extended_chg_pct,
+            'prev_close':        prev_close,
             # Earnings status
             'eps_surpr':      fund.get('eps_surpr', ''),
             'eps_sales_surpr':fund.get('eps_sales_surpr', ''),
             'earnings_verdict': _earnings_verdict(fund),
-            # Enrichments
+            # Enrichments & scores
             'tags':           tags,
-            'health_score':   _health_score(tags),
-            'ev_mc_ratio':    ev_mc_ratio,
+            'health_score':   health,
+            'risk_score':     risk,
+            'ai_signal':      round(ai_signal, 1),
+            'ai_label':       ai_label,
             'reasons':        reasons,
             'news':           news,
             'business_summary': _FV_SUMMARY_CACHE.get(t, ''),

@@ -114,9 +114,17 @@ if FRONTEND_DIR.exists():
     # Serve other static files (manifest, icons, etc.)
     @app.get("/manifest.json")
     async def serve_manifest():
-        manifest_path = FRONTEND_DIR / "manifest.json"
-        if manifest_path.exists():
-            return FileResponse(str(manifest_path))
+        for name in ("manifest.webmanifest", "manifest.json"):
+            p = FRONTEND_DIR / name
+            if p.exists():
+                return FileResponse(str(p))
+        return {"error": "not found"}
+
+    @app.get("/manifest.webmanifest")
+    async def serve_manifest_webmanifest():
+        p = FRONTEND_DIR / "manifest.webmanifest"
+        if p.exists():
+            return FileResponse(str(p))
         return {"error": "not found"}
 
     @app.get("/icon-{size}.png")
@@ -129,7 +137,7 @@ if FRONTEND_DIR.exists():
     # Catch-all: serve index.html for any non-API route (SPA routing)
     @app.get("/{full_path:path}")
     async def serve_spa(request: Request, full_path: str):
-        # Don't serve index.html for API routes or docs
+        # Don't serve index.html for API routes, docs, or PWA
         if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("openapi"):
             return {"error": "not found"}
         # Try to serve the exact file first

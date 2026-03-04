@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { ExternalLink, Clock, TrendingUp, TrendingDown, Zap } from 'lucide-react';
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = '/api';
 
 function formatTime(timestamp) {
   const date = new Date(timestamp);
