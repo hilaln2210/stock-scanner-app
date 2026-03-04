@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RefreshCw, Zap, Search } from 'lucide-react';
 import axios from 'axios';
@@ -41,10 +41,36 @@ const TABS = [
   { key: 'finviz-table',   label: '📋 סורק בסיסי',           accent: '#14b8a6' },
 ];
 
+// רק סורק בסיסי + חדשות באפליקציה הניידת
+const MOBILE_TABS = [
+  { key: 'finviz-table', label: '📋 סורק בסיסי', accent: '#14b8a6' },
+  { key: 'news',         label: '📰 חדשות',      accent: '#3b82f6' },
+];
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const handler = () => setIsMobile(mq.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return isMobile;
+}
+
 function MomentumDashboard() {
+  const isMobile = useIsMobile();
+  const tabs = isMobile ? MOBILE_TABS : TABS;
   const [autoRefresh, setAutoRefresh]         = useState(30);
   const [searchTicker, setSearchTicker]       = useState('');
   const [viewMode, setViewMode]               = useState('briefing');
+  useEffect(() => {
+    if (isMobile && !['finviz-table', 'news'].includes(viewMode)) {
+      setViewMode('finviz-table');
+    }
+  }, [isMobile]);
   const [lastUpdateTime, setLastUpdateTime]   = useState(new Date());
   const [language, setLanguage]               = useState('he');
   const [liveMode, setLiveMode]               = useState(false);
@@ -183,9 +209,10 @@ function MomentumDashboard() {
     viewMode === 'tech-catalyst'  ? `${techCatalystData?.count || 0} אירועים` :
     viewMode === 'tech-signals'   ? `${techSignalsData?.count || 0} מניות` :
     viewMode === 'daily-analysis' ? `${dailyAnalysisData?.count || 0} מניות` :
-    viewMode === 'trending'       ? `${trendingData?.trending?.length || 0} מניות` : '';
+    viewMode === 'trending'       ? `${trendingData?.trending?.length || 0} מניות` :
+    viewMode === 'news'           ? `${newsData?.length || 0} כתבות` : '';
 
-  const activeTab = TABS.find(t => t.key === viewMode);
+  const activeTab = tabs.find(t => t.key === viewMode);
 
   return (
     <div className="min-h-screen" style={{ background: '#080c14', color: '#e2e8f0' }}>
@@ -296,7 +323,7 @@ function MomentumDashboard() {
       <nav className="sticky top-14 z-20 border-b overflow-x-auto"
         style={{ background: '#0d1117', borderColor: 'rgba(255,255,255,0.05)' }}>
         <div className="flex items-stretch px-2">
-          {TABS.map(tab => {
+          {tabs.map(tab => {
             const isActive = viewMode === tab.key;
             return (
               <button key={tab.key}
@@ -494,6 +521,10 @@ function MomentumDashboard() {
                     <IBPortfolio />
                   ) : viewMode === 'finviz-table' ? (
                     <FinvizTableScanner />
+                  ) : viewMode === 'news' ? (
+                    <div className="p-4">
+                      <NewsPanel news={newsData} />
+                    </div>
                   ) : (
                     <TrendingStocks stocks={trendingData?.trending || []} loading={trendingLoading} />
                   )}
@@ -502,8 +533,8 @@ function MomentumDashboard() {
             )}
           </div>
 
-          {/* Right: 1/5 on XL, 1/4 on LG — news panel */}
-          <div className="xl:col-span-1 lg:col-span-1">
+          {/* Right: 1/5 on XL, 1/4 on LG — news panel (מסתיר כשבמובייל בחרנו tab חדשות) */}
+          <div className={`xl:col-span-1 lg:col-span-1 ${isMobile && viewMode === 'news' ? 'hidden' : ''}`}>
             <div className="rounded-xl overflow-hidden sticky"
               style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)', top: '7.5rem' }}>
               <div className="px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
