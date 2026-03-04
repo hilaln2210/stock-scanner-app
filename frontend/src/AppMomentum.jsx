@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RefreshCw, Zap, Search } from 'lucide-react';
 import axios from 'axios';
@@ -41,36 +41,17 @@ const TABS = [
   { key: 'finviz-table',   label: '📋 סורק בסיסי',           accent: '#14b8a6' },
 ];
 
-// רק סורק בסיסי + חדשות באפליקציה הניידת
-const MOBILE_TABS = [
+// האפליקציה המוצגת: רק סורק בסיסי + חדשות (כפי שביקשת)
+const APP_TABS = [
   { key: 'finviz-table', label: '📋 סורק בסיסי', accent: '#14b8a6' },
   { key: 'news',         label: '📰 חדשות',      accent: '#3b82f6' },
 ];
 
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(() =>
-    typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches
-  );
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 768px)');
-    const handler = () => setIsMobile(mq.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-  return isMobile;
-}
-
 function MomentumDashboard() {
-  const isMobile = useIsMobile();
-  const tabs = isMobile ? MOBILE_TABS : TABS;
+  const tabs = APP_TABS;
   const [autoRefresh, setAutoRefresh]         = useState(30);
   const [searchTicker, setSearchTicker]       = useState('');
-  const [viewMode, setViewMode]               = useState('briefing');
-  useEffect(() => {
-    if (isMobile && !['finviz-table', 'news'].includes(viewMode)) {
-      setViewMode('finviz-table');
-    }
-  }, [isMobile]);
+  const [viewMode, setViewMode]               = useState('finviz-table');
   const [lastUpdateTime, setLastUpdateTime]   = useState(new Date());
   const [language, setLanguage]               = useState('he');
   const [liveMode, setLiveMode]               = useState(false);
@@ -534,7 +515,7 @@ function MomentumDashboard() {
           </div>
 
           {/* Right: 1/5 on XL, 1/4 on LG — news panel (מסתיר כשבמובייל בחרנו tab חדשות) */}
-          <div className={`xl:col-span-1 lg:col-span-1 ${isMobile && viewMode === 'news' ? 'hidden' : ''}`}>
+          <div className={`xl:col-span-1 lg:col-span-1 ${viewMode === 'news' ? 'hidden' : ''}`}>
             <div className="rounded-xl overflow-hidden sticky"
               style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)', top: '7.5rem' }}>
               <div className="px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
