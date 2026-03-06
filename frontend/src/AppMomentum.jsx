@@ -1,57 +1,63 @@
-import { useState } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useQuery, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RefreshCw, Zap, Search } from 'lucide-react';
 import axios from 'axios';
-import TrendingStocks from './components/TrendingStocks';
-import FDACatalystTracker from './components/FDACatalystTracker';
-import DailyBriefing from './components/DailyBriefing';
-import DemoPortfolio from './components/DemoPortfolio';
-import TechnicalSignalsScanner from './components/TechnicalSignalsScanner';
-import DailyAnalysisScanner from './components/DailyAnalysisScanner';
-import NewsPanel from './components/NewsPanel';
-import AIAssistant from './components/AIAssistant';
-import IBPortfolio from './components/IBPortfolio';
-import AlertSystem from './components/AlertSystem';
-import FinvizTableScanner from './components/FinvizTableScanner';
+import FinvizTableScanner, { SmartPortfolioDashboard } from './components/FinvizTableScanner';
+const AlertSystem = lazy(() => import('./components/AlertSystem'));
+
+const FDACatalystTracker = lazy(() => import('./components/FDACatalystTracker'));
+const DailyBriefing = lazy(() => import('./components/DailyBriefing'));
+const TechnicalSignalsScanner = lazy(() => import('./components/TechnicalSignalsScanner'));
+const DailyAnalysisScanner = lazy(() => import('./components/DailyAnalysisScanner'));
+const NewsPanel = lazy(() => import('./components/NewsPanel'));
+const IBPortfolio = lazy(() => import('./components/IBPortfolio'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: true,  // sync when switching desktop ↔ mobile (PWA)
+      refetchOnReconnect: true,
       retry: 1,
-      staleTime: 30000,
-      cacheTime: 5 * 60000,
+      staleTime: 60000,
+      cacheTime: 15 * 60000,
     },
   },
 });
 
 const API_BASE = '/api';
-const api = axios.create({ baseURL: API_BASE, timeout: 30000 });
+const api = axios.create({ baseURL: API_BASE, timeout: 45000 });
 
 // Tab definitions with accent hex colors for the active underline
 const TABS = [
   { key: 'briefing',        label: '☀️ בריפינג',            accent: '#f59e0b' },
-  { key: 'portfolio',       label: '💼 תיק דמו',             accent: '#f43f5e' },
-  { key: 'trending',        label: '🔥 הכי מדוברות',         accent: '#a855f7' },
   { key: 'fda',             label: '💊 FDA',                  accent: '#22c55e' },
-  { key: 'tech-catalyst',   label: '🖥️ קטליסטים',            accent: '#06b6d4' },
   { key: 'tech-signals',    label: '📈 סיגנלים',             accent: '#6366f1' },
   { key: 'daily-analysis',  label: '🎯 ניתוח יומי',           accent: '#8b5cf6' },
   { key: 'ib',              label: '🏦 IB חשבון',             accent: '#3b82f6' },
-  { key: 'finviz-table',   label: '📋 סורק בסיסי',           accent: '#14b8a6' },
+  { key: 'finviz-table',    label: '📋 סורק בסיסי',           accent: '#14b8a6' },
+  { key: 'news',            label: '📰 חדשות',               accent: '#3b82f6' },
 ];
 
-// האפליקציה המוצגת: רק סורק בסיסי + חדשות (כפי שביקשת)
+// האפליקציה המלאה: כל הסורקים
 const APP_TABS = [
   { key: 'finviz-table', label: '📋 סורק בסיסי', accent: '#14b8a6' },
   { key: 'news',         label: '📰 חדשות',      accent: '#3b82f6' },
 ];
 
 function MomentumDashboard() {
-  const tabs = APP_TABS;
+  const tabs = TABS; // אפליקציה מלאה עם כל הסורקים
   const [autoRefresh, setAutoRefresh]         = useState(30);
+  const [searchInput, setSearchInput]         = useState('');
   const [searchTicker, setSearchTicker]       = useState('');
+  const debounceRef = useRef(null);
+  const handleSearchChange = useCallback((e) => {
+    const val = e.target.value.toUpperCase();
+    setSearchInput(val);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setSearchTicker(val), 400);
+  }, []);
   const [viewMode, setViewMode]               = useState('finviz-table');
+  const [newsCollapsed, setNewsCollapsed]     = useState(false);
   const [lastUpdateTime, setLastUpdateTime]   = useState(new Date());
   const [language, setLanguage]               = useState('he');
   const [liveMode, setLiveMode]               = useState(false);
@@ -59,28 +65,11 @@ function MomentumDashboard() {
 
   const normalInterval = autoRefresh > 0 ? autoRefresh * 1000 : 0;
 
-  const { data: trendingData, refetch: refetchTrending, isLoading: trendingLoading } = useQuery({
-    queryKey: ['trendingStocks', language],
-    queryFn: async () => (await api.get(`/trending/social?lang=${language}`)).data,
-    refetchInterval: viewMode === 'trending' ? normalInterval : 0,
-    enabled: viewMode === 'trending',
-    keepPreviousData: true,
-  });
-
   const { data: fdaData, refetch: refetchFda, isLoading: fdaLoading } = useQuery({
     queryKey: ['fdaCatalysts', language],
     queryFn: async () => (await api.get(`/catalyst/fda?lang=${language}`)).data,
     refetchInterval: viewMode === 'fda' ? Math.max(autoRefresh, 120) * 1000 : 0,
     enabled: viewMode === 'fda',
-    keepPreviousData: true,
-    staleTime: 120000,
-  });
-
-  const { data: techCatalystData, refetch: refetchTechCatalyst, isLoading: techCatalystLoading } = useQuery({
-    queryKey: ['techCatalysts', language],
-    queryFn: async () => (await api.get(`/catalyst/tech?lang=${language}`)).data,
-    refetchInterval: viewMode === 'tech-catalyst' ? Math.max(autoRefresh, 120) * 1000 : 0,
-    enabled: viewMode === 'tech-catalyst',
     keepPreviousData: true,
     staleTime: 120000,
   });
@@ -106,7 +95,7 @@ function MomentumDashboard() {
   const { data: briefingData, isLoading: briefingLoading } = useQuery({
     queryKey: ['dailyBriefing', briefingForceKey],
     queryFn: async () => (await api.get('/briefing/daily')).data,
-    enabled: viewMode === 'briefing' || viewMode === 'portfolio',
+    enabled: viewMode === 'briefing',
     staleTime: 30 * 60 * 1000,
     refetchInterval: (data) => (data?.loading || !data?.stocks?.length) ? 10000 : 0,
     keepPreviousData: true,
@@ -122,7 +111,8 @@ function MomentumDashboard() {
         : `?hours=24&limit=30&lang=${language}&midcap_plus=true`;
       return (await api.get(`/news${params}`)).data;
     },
-    refetchInterval: normalInterval,
+    refetchInterval: viewMode === 'news' ? normalInterval : 60000,
+    staleTime: 30000,
     keepPreviousData: true,
   });
 
@@ -135,8 +125,8 @@ function MomentumDashboard() {
         return r.data.error ? null : r.data;
       } catch { return null; }
     },
-    enabled: searchTicker.length >= 1,
-    refetchInterval: normalInterval,
+    enabled: searchTicker.length >= 2,
+    staleTime: 60000,
     keepPreviousData: true,
   });
 
@@ -156,41 +146,40 @@ function MomentumDashboard() {
 
   const handleQuickRefresh = () => {
     setLastUpdateTime(new Date());
-    if (viewMode === 'briefing')         refetchBriefing();
-    else if (viewMode === 'fda')         refetchFda();
-    else if (viewMode === 'tech-catalyst') refetchTechCatalyst();
+    if (viewMode === 'briefing')           refetchBriefing();
+    else if (viewMode === 'fda')           refetchFda();
     else if (viewMode === 'tech-signals')  refetchTechSignals();
     else if (viewMode === 'daily-analysis') refetchDailyAnalysis();
-    else refetchTrending();
   };
 
-  const isAnyLoading = fdaLoading || techCatalystLoading || techSignalsLoading
-    || dailyAnalysisLoading || trendingLoading || briefingLoading;
+  const isAnyLoading = fdaLoading || techSignalsLoading
+    || dailyAnalysisLoading || briefingLoading;
 
-  // Cross-scanner map
+  // Cross-scanner map (memoized)
   const SCANNER_LABELS = { briefing: '☀️ בריפינג', techSignals: '📈 סיגנלים', dailyAnalysis: '🎯 ניתוח יומי' };
-  const scannerSets = {
-    briefing:      new Set((briefingData?.stocks || []).map(s => s.ticker)),
-    techSignals:   new Set((techSignalsData?.stocks || []).map(s => s.ticker)),
-    dailyAnalysis: new Set((dailyAnalysisData?.stocks || []).map(s => s.ticker)),
-  };
-  const crossScannerMap = {};
-  for (const [key, tickers] of Object.entries(scannerSets)) {
-    for (const ticker of tickers) {
-      if (!crossScannerMap[ticker]) crossScannerMap[ticker] = [];
-      crossScannerMap[ticker].push(SCANNER_LABELS[key]);
+  const crossScannerMap = useMemo(() => {
+    const scannerSets = {
+      briefing:      new Set((briefingData?.stocks || []).map(s => s.ticker)),
+      techSignals:   new Set((techSignalsData?.stocks || []).map(s => s.ticker)),
+      dailyAnalysis: new Set((dailyAnalysisData?.stocks || []).map(s => s.ticker)),
+    };
+    const map = {};
+    for (const [key, tickers] of Object.entries(scannerSets)) {
+      for (const ticker of tickers) {
+        if (!map[ticker]) map[ticker] = [];
+        map[ticker].push(SCANNER_LABELS[key]);
+      }
     }
-  }
-  Object.keys(crossScannerMap).forEach(t => {
-    if (crossScannerMap[t].length < 2) delete crossScannerMap[t];
-  });
+    Object.keys(map).forEach(t => {
+      if (map[t].length < 2) delete map[t];
+    });
+    return map;
+  }, [briefingData, techSignalsData, dailyAnalysisData]);
 
   const tabCount =
     viewMode === 'fda'            ? `${fdaData?.count || 0} אירועים` :
-    viewMode === 'tech-catalyst'  ? `${techCatalystData?.count || 0} אירועים` :
     viewMode === 'tech-signals'   ? `${techSignalsData?.count || 0} מניות` :
     viewMode === 'daily-analysis' ? `${dailyAnalysisData?.count || 0} מניות` :
-    viewMode === 'trending'       ? `${trendingData?.trending?.length || 0} מניות` :
     viewMode === 'news'           ? `${newsData?.length || 0} כתבות` : '';
 
   const activeTab = tabs.find(t => t.key === viewMode);
@@ -209,6 +198,7 @@ function MomentumDashboard() {
             <Zap size={14} className="text-white" />
           </div>
           <span className="text-white font-black tracking-tight text-sm hidden sm:block">STOCK SCANNER</span>
+          <span className="text-[10px] text-slate-500 hidden sm:inline" title="גרסה נוכחית">v2</span>
         </div>
 
         {/* Search — center */}
@@ -218,8 +208,8 @@ function MomentumDashboard() {
           <input
             type="text"
             placeholder="חיפוש טיקר... (AAPL, TSLA...)"
-            value={searchTicker}
-            onChange={e => setSearchTicker(e.target.value.toUpperCase())}
+            value={searchInput}
+            onChange={handleSearchChange}
             className="w-full pl-8 pr-4 py-1.5 text-sm rounded-lg focus:outline-none transition-all"
             style={{
               background: '#161b22',
@@ -230,6 +220,11 @@ function MomentumDashboard() {
             onFocus={e => (e.target.style.borderColor = 'rgba(59,130,246,0.5)')}
             onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.06)')}
           />
+        </div>
+
+        {/* תיק דמו חכם — מיקום אסטרטגי בהדר, תמיד גלוי */}
+        <div className="shrink-0">
+          <SmartPortfolioDashboard placement="header" />
         </div>
 
         {/* Controls */}
@@ -336,10 +331,121 @@ function MomentumDashboard() {
 
       {/* ── Main content ── */}
       <main className="px-4 py-4 w-full">
-        <div className="grid grid-cols-1 xl:grid-cols-5 lg:grid-cols-4 gap-4">
 
-          {/* Left: 4/5 on XL, 3/4 on LG — main content */}
-          <div className="xl:col-span-4 lg:col-span-3 space-y-4">
+        {/* ── Horizontal news ticker (replaces right sidebar) ── */}
+        {viewMode !== 'news' && newsData && newsData.length > 0 && (
+          <div className="mb-4 rounded-xl overflow-hidden"
+            style={{
+              background: '#0d1117',
+              border: '1px solid rgba(255,255,255,0.06)',
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            }}>
+            <div
+              className="flex items-center gap-3 px-4 py-2"
+              style={{
+                borderBottom: newsCollapsed ? 'none' : '1px solid rgba(255,255,255,0.05)',
+                cursor: 'pointer',
+              }}
+              onClick={() => setNewsCollapsed(c => !c)}
+            >
+              <span className="text-xs font-black text-white whitespace-nowrap">📰 חדשות שוק</span>
+              <span className="text-xs" style={{ color: '#475569' }}>{newsData.length} כתבות</span>
+
+              {/* Collapsed: show mini preview of top tickers */}
+              {newsCollapsed && (
+                <div className="flex items-center gap-2 overflow-hidden" style={{ maxWidth: '60%' }}>
+                  {newsData.slice(0, 5).map((item, i) => {
+                    const tk = item.tickers ? item.tickers.split(',')[0]?.trim() : '';
+                    return tk ? (
+                      <span key={i} className="font-mono text-xs font-bold px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24', fontSize: 10 }}>
+                        {tk}
+                      </span>
+                    ) : null;
+                  })}
+                </div>
+              )}
+
+              <div className="flex-1" />
+              <button
+                onClick={(e) => { e.stopPropagation(); setViewMode('news'); }}
+                className="text-xs px-2 py-1 rounded-md transition-colors"
+                style={{ color: '#60a5fa', background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.15)' }}
+              >
+                הכל →
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setNewsCollapsed(c => !c); }}
+                className="text-xs px-1.5 py-1 rounded-md transition-all"
+                style={{ color: '#94a3b8', background: 'rgba(148,163,184,0.08)', border: '1px solid rgba(148,163,184,0.12)' }}
+                title={newsCollapsed ? 'הרחב חדשות' : 'מזער חדשות'}
+              >
+                <span style={{
+                  display: 'inline-block',
+                  transition: 'transform 0.3s ease',
+                  transform: newsCollapsed ? 'rotate(180deg)' : 'rotate(0deg)',
+                }}>▲</span>
+              </button>
+            </div>
+            <div style={{
+              maxHeight: newsCollapsed ? 0 : 200,
+              opacity: newsCollapsed ? 0 : 1,
+              overflow: 'hidden',
+              transition: 'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease',
+            }}>
+              <div className="flex gap-3 px-4 py-3 overflow-x-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#1e293b transparent' }}>
+                {newsData.slice(0, 12).map((item, idx) => {
+                  const tickers = item.tickers ? item.tickers.split(',').map(t => t.trim()).filter(t => t) : [];
+                  const timeAgo = (() => {
+                    const d = new Date(item.published_at);
+                    const diff = Math.floor((Date.now() - d) / 60000);
+                    if (diff < 60) return `${diff}m`;
+                    if (diff < 1440) return `${Math.floor(diff / 60)}h`;
+                    return d.toLocaleDateString();
+                  })();
+                  return (
+                    <a key={item.id || idx} href={item.url} target="_blank" rel="noopener noreferrer"
+                      className="flex-shrink-0 rounded-lg p-3 transition-all hover:scale-[1.02]"
+                      style={{
+                        width: 260, minWidth: 260,
+                        background: 'rgba(30,41,59,0.3)', border: '1px solid rgba(51,65,85,0.3)',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(96,165,250,0.3)'; e.currentTarget.style.background = 'rgba(30,41,59,0.5)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(51,65,85,0.3)'; e.currentTarget.style.background = 'rgba(30,41,59,0.3)'; }}
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="px-1.5 py-0.5 rounded text-xs font-semibold"
+                          style={{ background: 'rgba(96,165,250,0.12)', color: '#60a5fa', fontSize: 9 }}>
+                          {item.source?.replace(/_/g, ' ').substring(0, 20)}
+                        </span>
+                        {tickers.length > 0 && (
+                          <span className="font-mono text-xs font-bold" style={{ color: '#fbbf24' }}>
+                            {tickers[0]}
+                          </span>
+                        )}
+                        <span className="text-xs ml-auto" style={{ color: '#475569' }}>{timeAgo}</span>
+                      </div>
+                      <div className="text-xs font-medium leading-snug line-clamp-2" style={{ color: '#e2e8f0' }} dir="rtl">
+                        {item.title}
+                      </div>
+                      {item.sentiment_score !== 0 && (
+                        <div className="mt-1.5 text-xs font-medium"
+                          style={{ color: item.sentiment_score > 0 ? '#4ade80' : '#f87171' }}>
+                          {item.sentiment_score > 0 ? '↑' : '↓'} {Math.abs(item.sentiment_score).toFixed(2)}
+                        </div>
+                      )}
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="w-full">
+
+          {/* Full-width main content */}
+          <div className="space-y-4">
 
             {/* Searched stock card */}
             {searchedStock && (
@@ -470,8 +576,8 @@ function MomentumDashboard() {
             )}
 
             {/* ── Tab content ── */}
+            <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>טוען...</div>}>
             {viewMode === 'briefing' ? (
-              /* Briefing has its own beautiful header — no wrapper */
               <DailyBriefing
                 data={briefingData}
                 loading={briefingLoading}
@@ -479,21 +585,15 @@ function MomentumDashboard() {
                 crossScannerMap={crossScannerMap}
               />
             ) : (
-              /* All other tabs: minimal card wrapper */
               <div className="rounded-xl overflow-hidden"
                 style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)' }}>
-                {/* Thin colored tab accent at top */}
                 {activeTab && (
                   <div className="h-0.5 w-full"
                     style={{ background: `linear-gradient(to right, ${activeTab.accent}, transparent)` }} />
                 )}
                 <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 160px)' }}>
-                  {viewMode === 'portfolio' ? (
-                    <DemoPortfolio briefingData={briefingData} briefingLoading={briefingLoading} />
-                  ) : viewMode === 'fda' ? (
+                  {viewMode === 'fda' ? (
                     <FDACatalystTracker events={fdaData?.events || []} loading={fdaLoading} viewMode="fda" />
-                  ) : viewMode === 'tech-catalyst' ? (
-                    <FDACatalystTracker events={techCatalystData?.events || []} loading={techCatalystLoading} viewMode="tech" />
                   ) : viewMode === 'tech-signals' ? (
                     <TechnicalSignalsScanner data={techSignalsData} loading={techSignalsLoading} onRefetch={refetchTechSignals} crossScannerMap={crossScannerMap} />
                   ) : viewMode === 'daily-analysis' ? (
@@ -501,31 +601,16 @@ function MomentumDashboard() {
                   ) : viewMode === 'ib' ? (
                     <IBPortfolio />
                   ) : viewMode === 'finviz-table' ? (
-                    <FinvizTableScanner />
+                    <FinvizTableScanner ensureTickers={searchTicker?.trim().toUpperCase() || undefined} refreshSec={autoRefresh} />
                   ) : viewMode === 'news' ? (
                     <div className="p-4">
                       <NewsPanel news={newsData} />
                     </div>
-                  ) : (
-                    <TrendingStocks stocks={trendingData?.trending || []} loading={trendingLoading} />
-                  )}
+                  ) : null}
                 </div>
               </div>
             )}
-          </div>
-
-          {/* Right: 1/5 on XL, 1/4 on LG — news panel (מסתיר כשבמובייל בחרנו tab חדשות) */}
-          <div className={`xl:col-span-1 lg:col-span-1 ${viewMode === 'news' ? 'hidden' : ''}`}>
-            <div className="rounded-xl overflow-hidden sticky"
-              style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)', top: '7.5rem' }}>
-              <div className="px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-                <h2 className="text-sm font-black text-white">חדשות שוק</h2>
-                <p className="text-xs mt-0.5" style={{ color: '#475569' }}>{newsData?.length || 0} כתבות</p>
-              </div>
-              <div className="p-3 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 160px)' }}>
-                <NewsPanel news={newsData} />
-              </div>
-            </div>
+            </Suspense>
           </div>
 
         </div>
@@ -539,8 +624,9 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <MomentumDashboard />
-      <AIAssistant />
-      <AlertSystem />
+      <Suspense fallback={null}>
+        <AlertSystem />
+      </Suspense>
     </QueryClientProvider>
   );
 }

@@ -27,6 +27,21 @@ export default defineConfig({
       }
     })
   ],
+  build: {
+    target: 'es2020',
+    minify: 'esbuild',
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-query': ['@tanstack/react-query'],
+          'vendor-icons': ['lucide-react'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 600,
+  },
   server: {
     port: 3000,
     allowedHosts: true,

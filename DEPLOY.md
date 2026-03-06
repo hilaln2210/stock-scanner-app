@@ -1,5 +1,12 @@
 # פריסה לענן (24/7)
 
+## 📱 נייד בלי תלות במחשב
+
+**כדי שהאפליקציה בנייד תעבוד גם כשהמחשב כבוי** — תפרוס ל־Render / Railway / VPS. אחרי הפריסה פותחים מהנייד את כתובת השרת ומוסיפים למסך הבית.  
+**מדריך מפורט:** [docs/DEPLOY-MOBILE.md](docs/DEPLOY-MOBILE.md)
+
+---
+
 ## PWA + נייד
 
 האפליקציה מוכנה כ־PWA:
@@ -14,6 +21,8 @@
 3. חבר את ה־repo (GitHub)
 4. Render יזהה את `render.yaml` ויבנה מהדוקר
 5. תקבל קישור כמו `stock-scanner.onrender.com`
+
+**דיפלוי אוטומטי:** יש GitHub Action שמפעיל דיפלוי ב-Render בכל push ל־`main`. צריך להגדיר פעם אחת: [docs/RENDER-CLEANUP-AND-DEPLOY.md](docs/RENDER-CLEANUP-AND-DEPLOY.md) (Deploy Hook ב-Render + סוד `RENDER_DEPLOY_HOOK_URL` ב-GitHub).
 
 **הערה:** ה־free tier נרדם אחרי ~15 דקות חוסר פעילות. הפעלה ראשונה תיקח ~30 שניות.
 

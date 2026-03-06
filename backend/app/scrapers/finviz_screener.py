@@ -172,16 +172,22 @@ class FinvizScreener:
                 params = '&'.join(f'{k}={v}' for k, v in filters.items())
                 url = f"{base}?{params}"
 
-                async with session.get(url, headers=headers) as response:
-                    if response.status != 200:
-                        print(f"Finviz Screener [{source_label}] returned {response.status}")
-                        return results
+                timeout = aiohttp.ClientTimeout(total=15)
+                for attempt in range(3):
+                    async with session.get(url, headers=headers, timeout=timeout) as response:
+                        if response.status == 429:
+                            wait = 2 ** attempt + 1
+                            print(f"Finviz Screener [{source_label}] 429 — retry in {wait}s (attempt {attempt+1}/3)")
+                            await asyncio.sleep(wait)
+                            continue
+                        if response.status != 200:
+                            print(f"Finviz Screener [{source_label}] returned {response.status}")
+                            return results
 
-                    html = await response.text()
-                    soup = BeautifulSoup(html, "html.parser")
-
-                    # Parse screener table
-                    results = self._parse_screener_table(soup, source_label)
+                        html = await response.text()
+                        soup = BeautifulSoup(html, "html.parser")
+                        results = self._parse_screener_table(soup, source_label)
+                        break
 
         except Exception as e:
             print(f"Finviz Screener [{source_label}] error: {e}")

@@ -1,7 +1,8 @@
 import axios from 'axios';
 import i18n from '../i18n';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+// Same origin = synced data on desktop and mobile (PWA). Override with VITE_API_URL for custom backend.
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,

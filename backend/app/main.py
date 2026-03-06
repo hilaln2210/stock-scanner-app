@@ -1,10 +1,12 @@
 import os
+import traceback
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from contextlib import asynccontextmanager
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import datetime
@@ -54,6 +56,23 @@ async def lifespan(app: FastAPI):
     print("Initializing database...")
     await init_db()
 
+    # Finviz Elite login — share cookie across screener + fundamentals
+    import asyncio
+    from app.api.routes import finviz_screener, finviz_fundamentals
+    if settings.finviz_email and settings.finviz_password and not settings.finviz_cookie:
+        import aiohttp
+        try:
+            async with aiohttp.ClientSession() as sess:
+                cookie = await finviz_screener._login(sess)
+                if cookie:
+                    finviz_screener.cookie = cookie
+                    finviz_fundamentals.cookie = cookie
+                    print(f"Finviz Elite: logged in, cookie shared across services")
+                else:
+                    print("Finviz Elite: login returned no cookie")
+        except Exception as e:
+            print(f"Finviz Elite login failed: {e}")
+
     print(f"Starting scheduler (interval: {settings.scrape_interval_minutes} minutes)...")
     scheduler.add_job(
         scheduled_scrape,
@@ -63,10 +82,30 @@ async def lifespan(app: FastAPI):
     )
     scheduler.start()
 
-    # Run initial scrape in background (don't block startup)
-    print("Scheduling initial scrape (running in background)...")
-    import asyncio
-    asyncio.create_task(scheduled_scrape())
+    # Delay initial scrape to avoid Finviz rate limits on user's first request
+    print("Scheduling initial scrape (delayed 60s to avoid rate limits)...")
+    async def _delayed_scrape():
+        await asyncio.sleep(60)
+        await scheduled_scrape()
+    asyncio.create_task(_delayed_scrape())
+
+    # Smart Portfolio AI Brain — runs every 5 minutes during market hours
+    async def _smart_portfolio_tick():
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=60) as client:
+                r = await client.post("http://localhost:8000/api/smart-portfolio/think")
+                data = r.json()
+                d = data.get('decision', {})
+                if d and d.get('action') != 'HOLD':
+                    print(f"[Brain] {d.get('action')} {d.get('ticker')} (confidence: {d.get('confidence')}%)")
+                else:
+                    print(f"[Brain] HOLD — {d.get('reason', 'no decision') if d else 'no data'}")
+        except Exception as e:
+            print(f"[Brain] Error: {e}")
+
+    scheduler.add_job(_smart_portfolio_tick, "interval", minutes=5, id="brain_job")
+    print("Smart Portfolio Brain: scheduled every 5 minutes")
 
     # Pre-warm briefing cache in background
     async def _prewarm_briefing():
@@ -80,11 +119,24 @@ async def lifespan(app: FastAPI):
             print(f"Briefing pre-warm failed: {e}")
     asyncio.create_task(_prewarm_briefing())
 
+    # Interactive Telegram Bot — listen for user messages (non-blocking; failures don't kill server)
+    async def _run_bot_safe():
+        try:
+            from app.services.telegram_bot import start_telegram_bot
+            await start_telegram_bot()
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            print(f"[TG Bot] Startup failed (server continues): {e}")
+    asyncio.create_task(_run_bot_safe())
+
     yield
 
     # Shutdown
     print("Shutting down scheduler...")
     scheduler.shutdown()
+
+    print("Cleanup complete.")
 
 
 # Create FastAPI app
@@ -93,6 +145,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# GZip — compress all responses > 500 bytes (huge win for JSON payloads)
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # CORS
 app.add_middleware(
@@ -103,12 +158,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# Global exception handler — prevents 500 crashes from killing the server
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error", "error": str(exc)[:200]},
+    )
+
 # Include API routes
 app.include_router(router, prefix="/api")
 
+# Cache headers for API responses
+@app.middleware("http")
+async def add_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/assets/"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
 # Serve frontend static files in production
 if FRONTEND_DIR.exists():
-    # Serve static assets (JS, CSS, images)
+    # Serve static assets (JS, CSS, images) — hashed filenames enable aggressive caching
     app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIR / "assets")), name="static-assets")
 
     # Serve other static files (manifest, icons, etc.)

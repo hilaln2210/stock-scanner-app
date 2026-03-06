@@ -13,4 +13,7 @@ lxml==5.1.0
 yfinance==0.2.36
 deep-translator==1.11.4
 anthropic>=0.84.0
+groq>=1.0.0
 ib_insync
+pytest>=7.0.0
+pytest-asyncio>=0.21.0

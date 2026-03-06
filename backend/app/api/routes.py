@@ -1,7 +1,7 @@
 import asyncio
+import re
 import json as _json
 from fastapi import APIRouter, Body, Depends, Query
-from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from typing import List, Optional
@@ -17,7 +17,6 @@ from app.scrapers.price_monitor import PriceMonitor
 from app.scrapers.ipo_tracker import IPOTracker
 from app.scrapers.market_pulse import MarketPulseScraper, get_high_momentum_stocks
 from app.scrapers.momentum_scanner import MomentumScanner
-from app.scrapers.social_trending import SocialTrendingScanner
 from app.scrapers.finviz_screener import FinvizScreener
 from app.scrapers.fda_calendar import FDACalendarScraper
 from app.scrapers.finviz_fundamentals import FinvizFundamentals
@@ -26,12 +25,12 @@ from app.services.catalyst_tracker import CatalystTrackerService
 from app.services.translator import translation_service
 from app.services.live_prices import LivePriceService
 from app.services.move_tracker import move_tracker
+from app.services.technical_analysis import compute_technicals as _compute_ta
 from app.services.briefing_service import BriefingService, fetch_single_ticker_briefing as _fetch_single_briefing
 from app.services.technical_signals import TechnicalSignalsService
 from app.services.daily_analysis import DailyAnalysisService
 from app.services import portfolio_service
 from app.config import settings
-from app.services.ai_context import build_trading_context, SYSTEM_PROMPT_TEMPLATE
 from app.services.ib_service import ib_service
 
 router = APIRouter()
@@ -44,7 +43,6 @@ market_pulse_scraper = MarketPulseScraper(
     cookie=settings.finviz_cookie
 )
 momentum_scanner = MomentumScanner()
-social_trending_scanner = SocialTrendingScanner()
 finviz_screener = FinvizScreener(
     email=settings.finviz_email,
     password=settings.finviz_password,
@@ -70,7 +68,23 @@ daily_analysis_service = DailyAnalysisService()
 import time as _time
 _response_cache: dict = {}
 _response_cache_time: dict = {}
-_RESPONSE_CACHE_TTL = 60  # seconds
+_RESPONSE_CACHE_TTL = 120  # seconds
+_MAX_CACHE_ENTRIES = 50
+
+def _evict_expired_caches():
+    """Remove expired entries from all caches to prevent unbounded memory growth."""
+    now = _time.time()
+    expired = [k for k, t in _response_cache_time.items() if now - t > _RESPONSE_CACHE_TTL * 10]
+    for k in expired:
+        _response_cache.pop(k, None)
+        _response_cache_time.pop(k, None)
+
+    if hasattr(_evict_expired_caches, '_sparkline'):
+        sc, st = _evict_expired_caches._sparkline
+        expired_sp = [k for k, t in st.items() if now - t > 600]
+        for k in expired_sp:
+            sc.pop(k, None)
+            st.pop(k, None)
 
 # Lock to prevent concurrent heavy scans (created lazily)
 _vwap_lock = None
@@ -506,31 +520,6 @@ async def get_stock_live_data(ticker: str, lang: Optional[str] = Query('en')):
         return {"error": str(e)}
 
 
-@router.get("/trending/social")
-async def get_trending_social(limit: int = Query(30, le=50), lang: Optional[str] = Query('en')):
-    """
-    Get most talked about stocks from social media
-    Aggregates mentions from Reddit (r/wallstreetbets, r/stocks), StockTwits, and more
-    Shows: mention count, sentiment, source breakdown, if stock is climbing
-    """
-    try:
-        # Get trending stocks from social media
-        trending_stocks = await social_trending_scanner.get_trending_stocks(limit=limit)
-
-        # Enrich with live price/volume data to show if stocks are climbing
-        enriched_trending = await live_price_service.enrich_stocks_with_live_data(trending_stocks)
-
-        # Translate to Hebrew if requested
-        if lang == 'he':
-            translated_trending = await translation_service.translate_stocks(enriched_trending, 'he')
-            return {"trending": translated_trending, "count": len(translated_trending)}
-
-        return {"trending": enriched_trending, "count": len(enriched_trending)}
-    except Exception as e:
-        print(f"Error getting social trending stocks: {e}")
-        import traceback
-        traceback.print_exc()
-        return {"trending": [], "count": 0, "error": str(e)}
 
 
 @router.get("/screener/vwap-momentum")
@@ -615,19 +604,12 @@ async def get_vwap_momentum_stocks(lang: Optional[str] = Query('en')):
 # ─── FDA Catalyst Endpoints ─────────────────────────────────────
 
 _fda_lock = None
-_tech_lock = None
 
 def _get_fda_lock():
     global _fda_lock
     if _fda_lock is None:
         _fda_lock = asyncio.Lock()
     return _fda_lock
-
-def _get_tech_lock():
-    global _tech_lock
-    if _tech_lock is None:
-        _tech_lock = asyncio.Lock()
-    return _tech_lock
 
 
 @router.get("/catalyst/fda")
@@ -841,69 +823,6 @@ async def get_biotech_movers_today():
         return {"movers": [], "count": 0, "today": empty_section, "yesterday": empty_section, "error": str(e)}
 
 
-@router.get("/catalyst/tech")
-async def get_tech_catalysts(
-    days_forward: int = Query(90, le=365),
-    lang: Optional[str] = Query('en'),
-):
-    """
-    Tech Catalyst Calendar — tech stocks with upcoming earnings, product launches.
-    Cached for 5 minutes.
-    """
-    cache_key = f"tech_{lang}_{days_forward}"
-    now = _time.time()
-
-    if cache_key in _response_cache and (now - _response_cache_time.get(cache_key, 0)) < _RESPONSE_CACHE_TTL * 5:
-        return _response_cache[cache_key]
-
-    lock = _get_tech_lock()
-    if lock.locked():
-        if cache_key in _response_cache:
-            return _response_cache[cache_key]
-        return {"events": [], "count": 0, "loading": True}
-
-    async with lock:
-        now = _time.time()
-        if cache_key in _response_cache and (now - _response_cache_time.get(cache_key, 0)) < _RESPONSE_CACHE_TTL * 5:
-            return _response_cache[cache_key]
-
-        try:
-            events = await asyncio.wait_for(
-                catalyst_tracker.get_tech_catalyst_events(days_forward=days_forward, enriched=True),
-                timeout=130
-            )
-
-            if lang == 'he':
-                try:
-                    events = await asyncio.wait_for(
-                        translation_service.translate_stocks(events, 'he'),
-                        timeout=15
-                    )
-                except asyncio.TimeoutError:
-                    pass
-
-            response = {
-                "events": events,
-                "count": len(events),
-                "last_updated": datetime.now().isoformat(),
-            }
-
-            _response_cache[cache_key] = response
-            _response_cache_time[cache_key] = _time.time()
-            return response
-
-        except asyncio.TimeoutError:
-            print("Tech catalyst OVERALL TIMEOUT (>75s)")
-            if cache_key in _response_cache:
-                return _response_cache[cache_key]
-            return {"events": [], "count": 0, "error": "timeout"}
-        except Exception as e:
-            print(f"Error in tech catalysts: {e}")
-            import traceback
-            traceback.print_exc()
-            if cache_key in _response_cache:
-                return _response_cache[cache_key]
-            return {"events": [], "count": 0, "error": str(e)}
 
 
 # ── Daily Briefing ────────────────────────────────────────────────────────────
@@ -1278,53 +1197,6 @@ async def get_ticker_briefing(ticker: str):
     return result
 
 
-# ── AI Assistant ────────────────────────────────────────────────────────────
-
-@router.post("/ai/chat")
-async def ai_chat(body: dict = Body(...)):
-    """
-    Streaming AI chat endpoint. Accepts {messages: [{role, content}]} and
-    injects real-time dashboard context into every conversation.
-    Returns SSE stream: data: {"token": "..."}\n\n  or  data: {"done": true}\n\n
-    """
-    if not settings.anthropic_api_key:
-        async def _no_key():
-            yield "data: " + _json.dumps({"error": "ANTHROPIC_API_KEY לא מוגדר ב-.env"}) + "\n\n"
-        return StreamingResponse(_no_key(), media_type="text/event-stream")
-
-    messages = body.get("messages", [])
-    if not messages:
-        async def _empty():
-            yield "data: " + _json.dumps({"error": "no messages"}) + "\n\n"
-        return StreamingResponse(_empty(), media_type="text/event-stream")
-
-    # Build context from live dashboard data
-    context = build_trading_context(_response_cache)
-    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(context=context)
-
-    async def _stream():
-        try:
-            import anthropic as _anthropic
-            client = _anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-            async with client.messages.stream(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=1024,
-                system=system_prompt,
-                messages=messages,
-            ) as stream:
-                async for text in stream.text_stream:
-                    yield "data: " + _json.dumps({"token": text}) + "\n\n"
-            yield "data: " + _json.dumps({"done": True}) + "\n\n"
-        except Exception as e:
-            yield "data: " + _json.dumps({"error": str(e)}) + "\n\n"
-
-    return StreamingResponse(
-        _stream(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
-
-
 # ── Interactive Brokers ──────────────────────────────────────────────────────
 
 @router.get("/ib/status")
@@ -1528,11 +1400,44 @@ _LIVE_PRICES_CACHE_TIME: float = 0.0
 _LIVE_PRICES_FETCHING: bool = False   # prevent concurrent heavy fetches
 
 
+_SPARKLINE_CACHE: dict = {}
+_SPARKLINE_CACHE_TIME: dict = {}
+_evict_expired_caches._sparkline = (_SPARKLINE_CACHE, _SPARKLINE_CACHE_TIME)
+
+@router.get("/screener/sparkline")
+async def get_sparkline(ticker: str = Query(...)):
+    """Intraday 5-min price points for sparkline chart."""
+    import time as _t
+    ticker = ticker.strip().upper()
+    now = _t.time()
+    if ticker in _SPARKLINE_CACHE and (now - _SPARKLINE_CACHE_TIME.get(ticker, 0)) < 120:
+        return {'prices': _SPARKLINE_CACHE[ticker]}
+    try:
+        import yfinance as _yf
+        loop = asyncio.get_running_loop()
+        def _fetch():
+            t = _yf.Ticker(ticker)
+            h = t.history(period='1d', interval='5m', prepost=True, timeout=6)
+            if h is not None and len(h) >= 2:
+                return [round(float(p), 2) for p in h['Close'].dropna().tolist()]
+            h = t.history(period='5d', interval='15m', prepost=True, timeout=6)
+            if h is not None and len(h) > 0:
+                return [round(float(p), 2) for p in h['Close'].dropna().tolist()[-50:]]
+            return []
+        prices = await asyncio.wait_for(loop.run_in_executor(None, _fetch), timeout=8)
+        if prices:
+            _SPARKLINE_CACHE[ticker] = prices
+            _SPARKLINE_CACHE_TIME[ticker] = now
+        return {'prices': prices}
+    except Exception:
+        return {'prices': _SPARKLINE_CACHE.get(ticker, [])}
+
+
 @router.get("/screener/live-prices")
 async def get_live_prices(tickers: str = Query(...)):
     """
-    Batch live prices via yfinance (pre/post market aware).
-    Single download call for all tickers. 5-second cache.
+    Real-time data from Finviz screener: price, change%, volume, market cap.
+    All columns sync with what Finviz shows (including pre/post market on Elite).
     """
     global _LIVE_PRICES_CACHE, _LIVE_PRICES_CACHE_TIME, _LIVE_PRICES_FETCHING
     import time as _t
@@ -1542,70 +1447,44 @@ async def get_live_prices(tickers: str = Query(...)):
         return {}
 
     now = _t.time()
-    # Return from cache if fresh
-    if now - _LIVE_PRICES_CACHE_TIME < 5 and _LIVE_PRICES_CACHE:
-        return {t: _LIVE_PRICES_CACHE[t] for t in ticker_list if t in _LIVE_PRICES_CACHE}
+    cache_ttl = 12
+    if now - _LIVE_PRICES_CACHE_TIME < cache_ttl and _LIVE_PRICES_CACHE:
+        hit = {t: _LIVE_PRICES_CACHE[t] for t in ticker_list if t in _LIVE_PRICES_CACHE}
+        if len(hit) >= len(ticker_list) * 0.5:
+            return hit
 
-    # Avoid concurrent fetches — return stale cache if already fetching
     if _LIVE_PRICES_FETCHING:
         return {t: _LIVE_PRICES_CACHE[t] for t in ticker_list if t in _LIVE_PRICES_CACHE}
 
     _LIVE_PRICES_FETCHING = True
-    loop = asyncio.get_event_loop()
-
-    def _batch_fetch():
-        import yfinance as yf
-        import math
-        results = {}
-        try:
-            tickers_str = " ".join(ticker_list)
-            multi = len(ticker_list) > 1
-            data = yf.download(
-                tickers_str,
-                period='5d',
-                interval='5m',
-                prepost=True,
-                progress=False,
-                auto_adjust=True,
-                threads=True,
-                multi_level_index=multi,
-            )
-            if data is None or data.empty:
-                return results
-
-            if multi:
-                close = data['Close']
-                for ticker in ticker_list:
-                    try:
-                        col = close[ticker].dropna() if ticker in close.columns else None
-                        if col is not None and len(col) > 0:
-                            price = float(col.iloc[-1])
-                            if not math.isnan(price) and price > 0:
-                                results[ticker] = {'price': round(price, 4)}
-                    except Exception:
-                        pass
-            else:
-                t = ticker_list[0]
-                col = data['Close'].dropna()
-                if len(col) > 0:
-                    price = float(col.iloc[-1])
-                    if not math.isnan(price) and price > 0:
-                        results[t] = {'price': round(price, 4)}
-        except Exception as e:
-            print(f"[live-prices] batch fetch error: {e}")
-        return results
-
     try:
-        results = await asyncio.wait_for(
-            loop.run_in_executor(None, _batch_fetch),
-            timeout=12.0,
-        )
+        fv_data = await finviz_fundamentals.get_prices_batch(ticker_list)
+        results = {}
+        for t in ticker_list:
+            fv = fv_data.get(t)
+            if fv and fv.get('price'):
+                results[t] = {
+                    'price': round(float(fv['price']), 4),
+                    'change_pct': fv.get('change_pct', ''),
+                    'volume': fv.get('volume', 0),
+                    'volume_str': fv.get('volume_str', ''),
+                    'market_cap_str': fv.get('market_cap_str', ''),
+                }
+            elif t in _FV_FUND_CACHE:
+                fund = _FV_FUND_CACHE[t]
+                p = _parse_fv_num(fund.get('price', ''))
+                if p:
+                    results[t] = {
+                        'price': round(p, 4),
+                        'change_pct': fund.get('change_pct', ''),
+                        'volume': _parse_fv_num(fund.get('volume', '')) or 0,
+                    }
         if results:
             _LIVE_PRICES_CACHE.update(results)
             _LIVE_PRICES_CACHE_TIME = _t.time()
         return {t: _LIVE_PRICES_CACHE[t] for t in ticker_list if t in _LIVE_PRICES_CACHE}
     except Exception as e:
-        print(f"[live-prices] timeout: {e}")
+        print(f"[live-prices] error: {e}")
         return {t: _LIVE_PRICES_CACHE[t] for t in ticker_list if t in _LIVE_PRICES_CACHE}
     finally:
         _LIVE_PRICES_FETCHING = False
@@ -1615,19 +1494,23 @@ async def get_live_prices(tickers: str = Query(...)):
 
 _FV_TABLE_CACHE: dict = {}
 _FV_TABLE_CACHE_TIME: float = 0.0
-_FV_TABLE_CACHE_TTL: int = 25       # price/change: 25 s (refresh before 30 s frontend)
+_FV_TABLE_CACHE_TTL: int = 25       # price/change: 25 s (frontend polls every 30 s)
 _FV_FUND_CACHE: dict = {}           # {ticker: fund_data}
 _FV_FUND_CACHE_TIME: float = 0.0
 _FV_FUND_CACHE_TTL: int = 1800      # fundamentals: 30 min
 _FV_NEWS_CACHE: dict = {}           # {ticker: [news_items]}
 _FV_NEWS_CACHE_TIME: dict = {}      # {ticker: timestamp}
-_FV_NEWS_CACHE_TTL: int = 300       # news: 5 min per ticker
-_FV_INTRA_CACHE: dict = {}          # {ticker: {chg_5m, chg_30m}}
+_FV_NEWS_CACHE_TTL: int = 600       # news: 10 min per ticker
+_FV_INTRA_CACHE: dict = {}          # {ticker: {chg_5m, chg_30m, chg_4h}}
 _FV_INTRA_CACHE_TIME: dict = {}     # {ticker: timestamp}
-_FV_INTRA_CACHE_TTL: int = 25       # intraday: same as price refresh
+_FV_INTRA_CACHE_TTL: int = 25       # intraday: same as table refresh
 _FV_SUMMARY_CACHE: dict = {}        # {ticker: summary_str}
 _FV_SUMMARY_CACHE_TIME: dict = {}   # {ticker: timestamp}
 _FV_SUMMARY_CACHE_TTL: int = 3600   # business description: 1 hour
+
+_FV_TA_CACHE: dict = {}             # {ticker: tech analysis result}
+_FV_TA_CACHE_TIME: dict = {}        # {ticker: timestamp}
+_FV_TA_CACHE_TTL: int = 60          # technical analysis: 60s
 
 _FV_DEFAULT_FILTERS = (
     "cap_midover,sh_avgvol_o2000,sh_curvol_o300,sh_instown_o10,ta_rsi_nos50"
@@ -1782,6 +1665,29 @@ def _health_score(tags: list, ev_sales_ratio: Optional[float]) -> int:
     return max(0, min(100, score))
 
 
+def _health_detail(tags: list, ev_sales_ratio: Optional[float], short_pct: Optional[float], rsi_val: Optional[float]) -> list:
+    """Readable breakdown of what raises/lowers the Health and Risk scores."""
+    items = []
+    items.append({'text': 'בסיס', 'pts': 50})
+    if 'profitable' in tags:
+        items.append({'text': '✅ רווחית (Net Income > 0)', 'pts': 30})
+    if 'loss' in tags:
+        items.append({'text': '❌ הפסדית', 'pts': -25})
+    if 'cash_rich' in tags:
+        items.append({'text': '💰 EV/MC ≤ 0.9 (מזומן גבוה)', 'pts': 20})
+    if 'high_debt' in tags:
+        items.append({'text': '⚠️ EV/MC ≥ 1.2 (חוב גבוה)', 'pts': -20})
+    if 'high_growth' in tags:
+        items.append({'text': '🔥 צמיחה גבוהה', 'pts': 20})
+    if ev_sales_ratio is not None and ev_sales_ratio > 20:
+        items.append({'text': '📊 EV/Sales > 20 (מוערכת ביתר)', 'pts': -10})
+    if short_pct is not None and short_pct > 15:
+        items.append({'text': f'📉 שורט {short_pct:.0f}% (סיכון)', 'pts': -12})
+    if rsi_val is not None and rsi_val > 75:
+        items.append({'text': f'⚡ RSI {rsi_val:.0f} (קניית יתר)', 'pts': -6})
+    return items
+
+
 def _risk_score(tags: list, short_pct: Optional[float], rsi: Optional[float]) -> int:
     """
     Risk Score (0–100):
@@ -1846,21 +1752,25 @@ def _fetch_intraday_sync(ticker: str) -> dict:
         cur = float(closes.iloc[-1])
         result = {'extended_price': round(cur, 4)}
         if is_5m:
-            # 5m bars: 1 bar=5m, 2 bars=10m, 6 bars=30m
+            # 5m bars: 1 bar=5m, 2 bars=10m, 6 bars=30m, 48 bars=4h
             ago5  = float(closes.iloc[-2]) if len(closes) >= 2 else None
             ago10 = float(closes.iloc[-3]) if len(closes) >= 3 else None
             ago30 = float(closes.iloc[-7]) if len(closes) >= 7 else (float(closes.iloc[0]) if len(closes) >= 2 else None)
+            ago4h = float(closes.iloc[-49]) if len(closes) >= 49 else (float(closes.iloc[0]) if len(closes) >= 2 else None)
         else:
-            # 15m bars: 1 bar≈15m, 2 bars≈30m
+            # 15m bars: 1 bar≈15m, 2 bars≈30m, 16 bars≈4h
             ago5  = float(closes.iloc[-2]) if len(closes) >= 2 else None
-            ago10 = None  # not enough resolution in 15m bars
+            ago10 = None
             ago30 = float(closes.iloc[-3]) if len(closes) >= 3 else (float(closes.iloc[0]) if len(closes) >= 2 else None)
+            ago4h = float(closes.iloc[-17]) if len(closes) >= 17 else (float(closes.iloc[0]) if len(closes) >= 2 else None)
         if ago5 and ago5 > 0:
             result['chg_5m'] = round((cur - ago5) / ago5 * 100, 2)
         if ago10 and ago10 > 0:
             result['chg_10m'] = round((cur - ago10) / ago10 * 100, 2)
         if ago30 and ago30 > 0:
             result['chg_30m'] = round((cur - ago30) / ago30 * 100, 2)
+        if ago4h and ago4h > 0:
+            result['chg_4h'] = round((cur - ago4h) / ago4h * 100, 2)
         return result
 
     def _add_extended_chg(hist, result):
@@ -1976,70 +1886,114 @@ def _fetch_ticker_news_sync(ticker: str) -> list:
         return []
 
 
+_CATALYST_RULES = [
+    (['beat', 'earn', 'eps', 'revenue', 'q4', 'q3', 'q2', 'q1',
+      'profit', 'quarter', 'results', 'record sales', 'record revenue',
+      'surprise', 'topped estimates', 'exceeds'],
+     'earnings', '📊 תוצאות פיננסיות', 'high'),
+    (['upgrade', 'overweight', 'outperform', 'strong buy',
+      'target raised', 'price target', 'initiates', 'rate buy', 'reiterate buy',
+      'bull', 'top pick'],
+     'upgrade', '⬆️ שדרוג אנליסט', 'high'),
+    (['downgrade', 'underweight', 'underperform', 'sell rating',
+      'target cut', 'target lowered', 'reduces', 'bear'],
+     'downgrade', '⬇️ הורדת דירוג', 'high'),
+    (['fda', 'approval', 'approved', 'clearance', 'phase 3', 'phase iii',
+      'nda', 'bla', 'pdufa', 'phase 2', 'clinical trial', 'efficacy'],
+     'fda', '💊 FDA / רגולציה', 'high'),
+    (['acqui', 'merger', 'buyout', 'takeover', 'deal',
+      'agreement', 'transaction', 'purchase', 'tender offer'],
+     'ma', '🤝 מיזוג / רכישה', 'high'),
+    (['guidance', 'outlook', 'forecast', 'raises guidance',
+      'lowers guidance', 'reiterates', 'sees fy', 'sees q'],
+     'guidance', '🔮 תחזית החברה', 'medium'),
+    (['contract', 'award', 'wins', 'partnership', 'collaboration',
+      'selected', 'chosen', 'signed', 'expands'],
+     'contract', '📝 חוזה / שותפות', 'medium'),
+    (['short', 'fraud', 'investigation', 'lawsuit', 'sec filing',
+      'subpoena', 'recall', 'warning letter', 'class action'],
+     'risk', '⚠️ חקירה / סיכון', 'medium'),
+    (['offering', 'dilut', 'shares', 'secondary', 'atm', 'shelf'],
+     'dilution', '📉 הנפקת מניות', 'medium'),
+    (['insider buy', 'insider purchas', 'ceo buy', 'director buy', '10b5'],
+     'insider', '🏷️ קניית פנים', 'medium'),
+    (['split', 'stock split', 'reverse split'],
+     'split', '✂️ פיצול מניה', 'medium'),
+    (['dividend', 'special dividend', 'distribution'],
+     'dividend', '💵 דיבידנד', 'medium'),
+    (['ai ', 'artificial intelligence', 'machine learning', 'gpu',
+      'data center', 'quantum', 'chip', 'semiconductor'],
+     'ai_sector', '🤖 AI / סמיקונדקטור', 'medium'),
+]
+
+
 def _classify_move_reason(fund: dict, news: list, change_pct) -> list:
     """
     Derive reasons why the stock is moving today.
-    Returns list of {type, label, confidence} — at most 3 reasons.
+    Scans ALL news headlines and fundamental data to find real catalysts.
+    Returns list of {type, label, confidence, source} — at most 4 reasons.
     """
     reasons = []
+    seen_types = set()
     chg = float(change_pct) if change_pct else 0
 
-    # 1. Earnings date matches today / yesterday
     earnings_date_str = fund.get('earnings_date', '') or ''
-    today     = datetime.now()
+    today = datetime.now()
     yesterday = today - timedelta(days=1)
     for d in [today, yesterday]:
         if d.strftime('%b %d') in earnings_date_str or d.strftime('%-d %b') in earnings_date_str:
-            reasons.append({'type': 'earnings', 'label': '📊 דוח רבעוני', 'confidence': 'high'})
+            reasons.append({'type': 'earnings', 'label': '📊 דוח רבעוני', 'confidence': 'high', 'source': f'דוח {earnings_date_str}'})
+            seen_types.add('earnings')
             break
 
-    # 2. Large gap (pre-market catalyst)
     gap = _parse_fv_num(fund.get('gap_pct', ''))
-    if gap and abs(gap) >= 5:
+    if gap and abs(gap) >= 3:
         sign = '+' if gap > 0 else ''
         reasons.append({
-            'type': 'gap',
+            'type': 'gap', 'confidence': 'high',
             'label': f'{"📈" if gap > 0 else "📉"} Gap {sign}{gap:.1f}%',
-            'confidence': 'high',
+            'source': 'פתיחה עם פער',
+        })
+        seen_types.add('gap')
+
+    rel_vol = _parse_fv_num(fund.get('rel_volume', ''))
+    if rel_vol and rel_vol >= 3:
+        reasons.append({
+            'type': 'volume_spike', 'confidence': 'medium',
+            'label': f'📊 נפח x{rel_vol:.1f}', 'source': 'נפח חריג',
+        })
+        seen_types.add('volume_spike')
+
+    for article in (news or [])[:5]:
+        if len(reasons) >= 4:
+            break
+        title = (article.get('title', '') or '').lower()
+        publisher = article.get('publisher', '') or ''
+        for keywords, rtype, label, conf in _CATALYST_RULES:
+            if rtype in seen_types:
+                continue
+            if any(w in title for w in keywords):
+                source_short = publisher.strip('()') if publisher else ''
+                reasons.append({
+                    'type': rtype, 'label': label, 'confidence': conf,
+                    'source': source_short or article.get('title', '')[:60],
+                })
+                seen_types.add(rtype)
+                break
+
+    sma20 = _parse_fv_num(fund.get('sma20_dist', ''))
+    if sma20 is not None and abs(sma20) > 8 and 'technical' not in seen_types:
+        reasons.append({
+            'type': 'technical', 'confidence': 'low',
+            'label': f'{"📈" if sma20 > 0 else "📉"} {abs(sma20):.0f}% {"מעל" if sma20 > 0 else "מתחת"} SMA20',
+            'source': 'סטייה מהממוצע',
         })
 
-    # 3. Classify top news headline
-    if news:
-        title = news[0].get('title', '').lower()
-        if any(w in title for w in ['beat', 'earn', 'eps', 'revenue', 'q4', 'q3', 'q2', 'q1',
-                                     'profit', 'quarter', 'results', 'record sales', 'record revenue']):
-            if not any(r['type'] == 'earnings' for r in reasons):
-                reasons.append({'type': 'earnings', 'label': '📊 תוצאות', 'confidence': 'high'})
-        elif any(w in title for w in ['upgrade', 'overweight', 'outperform', 'buy', 'strong buy',
-                                       'target raised', 'price target', 'initiates']):
-            reasons.append({'type': 'upgrade', 'label': '⬆️ שדרוג אנליסט', 'confidence': 'high'})
-        elif any(w in title for w in ['downgrade', 'underweight', 'underperform', 'sell',
-                                       'target cut', 'target lowered', 'reduces']):
-            reasons.append({'type': 'downgrade', 'label': '⬇️ הורדת דירוג', 'confidence': 'high'})
-        elif any(w in title for w in ['fda', 'approval', 'approved', 'clearance',
-                                       'phase 3', 'phase iii', 'nda', 'bla', 'pdufa']):
-            reasons.append({'type': 'fda', 'label': '💊 FDA / רגולציה', 'confidence': 'high'})
-        elif any(w in title for w in ['acqui', 'merger', 'buyout', 'takeover', 'deal',
-                                       'agreement', 'transaction', 'purchase']):
-            reasons.append({'type': 'ma', 'label': '🤝 מיזוג / רכישה', 'confidence': 'high'})
-        elif any(w in title for w in ['guidance', 'outlook', 'forecast', 'raises guidance',
-                                       'lowers guidance', 'reiterates', 'sees']):
-            reasons.append({'type': 'guidance', 'label': '🔮 תחזית', 'confidence': 'medium'})
-        elif any(w in title for w in ['contract', 'award', 'wins', 'partnership',
-                                       'collaboration', 'selected', 'chosen']):
-            reasons.append({'type': 'contract', 'label': '📝 חוזה / שותפות', 'confidence': 'medium'})
-        elif any(w in title for w in ['short', 'fraud', 'investigation', 'lawsuit', 'sec',
-                                       'subpoena', 'recall', 'warning']):
-            reasons.append({'type': 'risk', 'label': '⚠️ חקירה / סיכון', 'confidence': 'medium'})
-        elif any(w in title for w in ['offering', 'dilut', 'shares', 'secondary', 'atm']):
-            reasons.append({'type': 'dilution', 'label': '📉 הנפקת מניות', 'confidence': 'medium'})
-
-    # 4. Fallback: generic technical move
     if not reasons and abs(chg) > 0:
         label = f'{"📈" if chg > 0 else "📉"} תנועה טכנית ({chg:+.1f}%)'
-        reasons.append({'type': 'technical', 'label': label, 'confidence': 'low'})
+        reasons.append({'type': 'technical', 'label': label, 'confidence': 'low', 'source': ''})
 
-    return reasons[:3]
+    return reasons[:4]
 
 
 def _fetch_summary_sync(ticker: str) -> str:
@@ -2141,6 +2095,9 @@ async def get_screener_prices(tickers: str = Query(...)):
                 loop.run_in_executor(None, lambda t=ticker: _fetch_intraday_sync(t)),
                 timeout=8.0,
             )
+            if intra:
+                _FV_INTRA_CACHE[ticker] = intra
+                _FV_INTRA_CACHE_TIME[ticker] = _time.time()
             price = intra.get('extended_price') or intra.get('prev_close')
             if price:
                 results[ticker] = {
@@ -2156,9 +2113,18 @@ async def get_screener_prices(tickers: str = Query(...)):
     return results
 
 
+_fv_table_lock: asyncio.Lock | None = None
+
+def _get_fv_table_lock():
+    global _fv_table_lock
+    if _fv_table_lock is None:
+        _fv_table_lock = asyncio.Lock()
+    return _fv_table_lock
+
 @router.get("/screener/finviz-table")
 async def get_finviz_table(
     filters: str = Query(default=_FV_DEFAULT_FILTERS),
+    ensure_tickers: str = Query(default=""),
 ):
     """
     Finviz-style fundamental table screener with move reasons + news.
@@ -2170,19 +2136,122 @@ async def get_finviz_table(
     import time as _t
     now = _t.time()
 
-    # Serve from cache if still fresh and same filters
+    _evict_expired_caches()
+
+    cache_key = f"{filters}|{ensure_tickers}"
     if (
         _FV_TABLE_CACHE
-        and _FV_TABLE_CACHE.get('filters') == filters
+        and _FV_TABLE_CACHE.get("cache_key") == cache_key
         and (now - _FV_TABLE_CACHE_TIME) < _FV_TABLE_CACHE_TTL
     ):
-        return _FV_TABLE_CACHE['data']
+        return _FV_TABLE_CACHE["data"]
 
-    # ── 1. Scrape tickers + basic price data from Finviz screener ─────────────
-    raw_stocks = await finviz_screener._scrape_screener(
-        {'v': '111', 'f': filters, 'o': '-changeopen'},
-        'finviz-table',
-    )
+    lock = _get_fv_table_lock()
+    if lock.locked():
+        if _FV_TABLE_CACHE and _FV_TABLE_CACHE.get("data"):
+            return _FV_TABLE_CACHE["data"]
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=202,
+            content={'stocks': [], 'count': 0, 'loading': True,
+                     'message': 'First scan in progress — please wait'},
+        )
+
+    async with lock:
+        now = _t.time()
+        if (
+            _FV_TABLE_CACHE
+            and _FV_TABLE_CACHE.get("cache_key") == cache_key
+            and (now - _FV_TABLE_CACHE_TIME) < _FV_TABLE_CACHE_TTL
+        ):
+            return _FV_TABLE_CACHE["data"]
+
+        return await _do_finviz_table_scan(filters, ensure_tickers, now, cache_key)
+
+
+async def _do_finviz_table_scan(filters, ensure_tickers, now, cache_key):
+    """Actual scanning logic — called under lock."""
+    global _FV_TABLE_CACHE, _FV_TABLE_CACHE_TIME
+    global _FV_FUND_CACHE, _FV_FUND_CACHE_TIME
+    global _FV_NEWS_CACHE, _FV_NEWS_CACHE_TIME
+
+    has_cache = bool(_FV_TABLE_CACHE and _FV_TABLE_CACHE.get("data"))
+    scan_timeout = 90 if not has_cache else 50
+
+    try:
+        return await asyncio.wait_for(
+            _finviz_table_inner(filters, ensure_tickers, now, cache_key),
+            timeout=scan_timeout,
+        )
+    except asyncio.TimeoutError:
+        print(f"[finviz-table] TIMEOUT (>{scan_timeout}s)")
+        if has_cache:
+            return _FV_TABLE_CACHE["data"]
+        return {'stocks': [], 'count': 0, 'error': 'timeout'}
+    except Exception as e:
+        print(f"[finviz-table] Error: {e}")
+        import traceback; traceback.print_exc()
+        if _FV_TABLE_CACHE and _FV_TABLE_CACHE.get("data"):
+            return _FV_TABLE_CACHE["data"]
+        return {'stocks': [], 'count': 0, 'error': str(e)[:200]}
+
+
+async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
+    """Core scanning — scrapes, merges, caches."""
+    global _FV_TABLE_CACHE, _FV_TABLE_CACHE_TIME
+    global _FV_FUND_CACHE, _FV_FUND_CACHE_TIME
+    global _FV_NEWS_CACHE, _FV_NEWS_CACHE_TIME
+
+    raw_stocks = []
+    seen_tickers = set()
+    pages = await asyncio.gather(*[
+        finviz_screener._scrape_screener(
+            {'v': '111', 'f': filters, 'o': '-changeopen', 'r': str(r_start)},
+            'finviz-table',
+        )
+        for r_start in [1, 21, 41]
+    ], return_exceptions=True)
+    for page in pages:
+        if isinstance(page, Exception):
+            continue
+        for s in page:
+            t = s.get('ticker')
+            if t and t not in seen_tickers:
+                seen_tickers.add(t)
+                raw_stocks.append(s)
+
+    # ── 1b. ensure_tickers: טיקרים לחיזוק — נשלוף מ-Finviz quote אם לא בסריקה ───
+    # נתונים מגיעים כולם מ-Finviz (screener + quote.ashx)
+    _WATCHLIST = ["AAOI"]  # תמיד לכלול
+    portfolio_tickers = set(smart_portfolio.positions.keys()) if smart_portfolio.positions else set()
+    ensure_set = set(_WATCHLIST) | portfolio_tickers | {t.strip().upper() for t in ensure_tickers.split(",") if t.strip()}
+    ensure_set -= seen_tickers
+    if ensure_set:
+        for ticker in ensure_set:
+            if not re.match(r"^[A-Z]{1,5}$", ticker):
+                continue
+            try:
+                funds = await finviz_fundamentals.get_fundamentals_batch([ticker])
+                f = funds.get(ticker)
+                if not f:
+                    continue
+                raw_stocks.insert(
+                    0,
+                    {
+                        "ticker": ticker,
+                        "company": f.get("company", ticker),
+                        "sector": f.get("sector", ""),
+                        "industry": f.get("industry", ""),
+                        "price": _parse_fv_num(f.get("price", "")),
+                        "change_pct": _parse_fv_num(f.get("change_pct", "")),
+                        "volume": _parse_fv_num(f.get("volume", "")),
+                        "market_cap_str": f.get("market_cap", ""),
+                        "scan_sources": ["ensure_tickers"],
+                    },
+                )
+                seen_tickers.add(ticker)
+            except Exception:
+                pass
 
     if not raw_stocks:
         return {'stocks': [], 'count': 0, 'filters': filters,
@@ -2190,93 +2259,114 @@ async def get_finviz_table(
 
     tickers = [s['ticker'] for s in raw_stocks if s.get('ticker')]
 
-    # ── 2. Fundamentals (30-min cache) ────────────────────────────────────────
+    # ── 2. Fundamentals מ-Finviz בלבד (EPS, RSI, Short%, מחיר, שינוי) ──────────
     fund_stale = (now - _FV_FUND_CACHE_TIME) > _FV_FUND_CACHE_TTL
     fund_missing = tickers if fund_stale else [t for t in tickers if t not in _FV_FUND_CACHE]
     if fund_missing:
-        new_funds = await finviz_fundamentals.get_fundamentals_batch(fund_missing)
-        _FV_FUND_CACHE.update({k: v for k, v in new_funds.items() if v})
+        batches = [fund_missing[i:i+15] for i in range(0, min(len(fund_missing), 30), 15)]
+        results = await asyncio.gather(*[
+            finviz_fundamentals.get_fundamentals_batch(b) for b in batches
+        ], return_exceptions=True)
+        for res in results:
+            if isinstance(res, dict):
+                _FV_FUND_CACHE.update({k: v for k, v in res.items() if v})
         _FV_FUND_CACHE_TIME = now
 
-    # ── 3. News (5-min per-ticker cache) ──────────────────────────────────────
-    news_missing = [
-        t for t in tickers
-        if (now - _FV_NEWS_CACHE_TIME.get(t, 0)) > _FV_NEWS_CACHE_TTL
-    ]
-    if news_missing:
-        loop = asyncio.get_running_loop()
-        with _TPE(max_workers=4) as pool:
-            news_futs = [
-                loop.run_in_executor(pool, _fetch_ticker_news_sync, t)
-                for t in news_missing
-            ]
-            news_results = await asyncio.gather(*news_futs, return_exceptions=True)
-        for t, res in zip(news_missing, news_results):
-            if isinstance(res, list):
-                _FV_NEWS_CACHE[t] = res
-                _FV_NEWS_CACHE_TIME[t] = now
+    # ── 3. News from Finviz fundamentals (already scraped) ──────────────────
+    for t in tickers:
+        fund = _FV_FUND_CACHE.get(t)
+        if fund and fund.get('news') and t not in _FV_NEWS_CACHE:
+            _FV_NEWS_CACHE[t] = fund['news']
+            _FV_NEWS_CACHE_TIME[t] = now
 
-    # ── 4. Intraday 5m/30m changes (25-s cache) ───────────────────────────────
-    global _FV_INTRA_CACHE, _FV_INTRA_CACHE_TIME
+    # ── 3b. Translate news titles to Hebrew in background ─────────────────
+    news_to_translate = [
+        t for t in tickers
+        if _FV_NEWS_CACHE.get(t)
+        and any(not n.get('title_he') for n in _FV_NEWS_CACHE[t])
+    ]
+
+    def _translate_news_batch(ticker_list):
+        for t in ticker_list:
+            items = _FV_NEWS_CACHE.get(t) or []
+            for item in items:
+                if item.get('title') and not item.get('title_he'):
+                    item['title_he'] = _translate_title_he(item['title'])
+
+    if news_to_translate:
+        loop = asyncio.get_running_loop()
+        asyncio.ensure_future(
+            loop.run_in_executor(_TPE(max_workers=2), _translate_news_batch, news_to_translate)
+        )
+
+    # ── 4. Intraday momentum — ברקע (chg_5m, chg_10m, chg_30m) ─────────
     intra_missing = [
-        t for t in tickers
-        if (now - _FV_INTRA_CACHE_TIME.get(t, 0)) > _FV_INTRA_CACHE_TTL
+        t for t in tickers[:25]
+        if t not in _FV_INTRA_CACHE or (now - _FV_INTRA_CACHE_TIME.get(t, 0)) > _FV_INTRA_CACHE_TTL
     ]
-    if intra_missing:
-        loop = asyncio.get_running_loop()
-        with _TPE(max_workers=4) as pool:
-            intra_futs = [
-                loop.run_in_executor(pool, _fetch_intraday_sync, t)
-                for t in intra_missing
-            ]
-            intra_results = await asyncio.gather(*intra_futs, return_exceptions=True)
-        for t, res in zip(intra_missing, intra_results):
-            if isinstance(res, dict):
-                _FV_INTRA_CACHE[t] = res
-                _FV_INTRA_CACHE_TIME[t] = now
 
-    # ── 5. Business summaries (1-hour cache) ──────────────────────────────────
-    global _FV_SUMMARY_CACHE, _FV_SUMMARY_CACHE_TIME
+    # ── 5. Summary — ברקע (לא חוסם) ──────────────────────────────────────
     summary_missing = [
         t for t in tickers
-        if t not in _FV_SUMMARY_CACHE
-        or (now - _FV_SUMMARY_CACHE_TIME.get(t, 0)) > _FV_SUMMARY_CACHE_TTL
+        if t not in _FV_SUMMARY_CACHE or (now - _FV_SUMMARY_CACHE_TIME.get(t, 0)) > _FV_SUMMARY_CACHE_TTL
     ]
-    if summary_missing:
+
+    # ── 5b. Technical Analysis — ברקע (top 25 tickers) ──────────────────
+    ta_missing = [
+        t for t in tickers[:25]
+        if t not in _FV_TA_CACHE or (now - _FV_TA_CACHE_TIME.get(t, 0)) > _FV_TA_CACHE_TTL
+    ]
+
+    def _compute_ta_sync(ticker: str):
+        return _compute_ta(ticker)
+
+    async def _enrich_in_background():
+        """Intraday + Summary + TA — ברקע."""
         loop = asyncio.get_running_loop()
-        with _TPE(max_workers=3) as pool:
-            summ_futs = [
-                loop.run_in_executor(pool, _fetch_summary_sync, t)
-                for t in summary_missing
-            ]
-            summ_results = await asyncio.gather(*summ_futs, return_exceptions=True)
-        for t, res in zip(summary_missing, summ_results):
-            if isinstance(res, str):
-                _FV_SUMMARY_CACHE[t] = res
-                _FV_SUMMARY_CACHE_TIME[t] = now
+        if intra_missing:
+            try:
+                with _TPE(max_workers=4) as pool:
+                    futs = [loop.run_in_executor(pool, _fetch_intraday_sync, t) for t in intra_missing]
+                    ress = await asyncio.gather(*futs, return_exceptions=True)
+                for t, res in zip(intra_missing, ress):
+                    if isinstance(res, dict) and res:
+                        _FV_INTRA_CACHE[t] = res
+                        _FV_INTRA_CACHE_TIME[t] = _time.time()
+            except Exception:
+                pass
+        if summary_missing:
+            try:
+                with _TPE(max_workers=3) as pool:
+                    futs = [loop.run_in_executor(pool, _fetch_summary_sync, t) for t in summary_missing]
+                    ress = await asyncio.gather(*futs, return_exceptions=True)
+                for t, res in zip(summary_missing, ress):
+                    if isinstance(res, str):
+                        _FV_SUMMARY_CACHE[t] = res
+                        _FV_SUMMARY_CACHE_TIME[t] = now
+            except Exception:
+                pass
+        if ta_missing:
+            try:
+                with _TPE(max_workers=4) as pool:
+                    futs = [loop.run_in_executor(pool, _compute_ta_sync, t) for t in ta_missing]
+                    ress = await asyncio.gather(*futs, return_exceptions=True)
+                for t, res in zip(ta_missing, ress):
+                    if isinstance(res, dict) and res:
+                        _FV_TA_CACHE[t] = res
+                        _FV_TA_CACHE_TIME[t] = _time.time()
+            except Exception:
+                pass
 
-    # ── 5b. Fallback Sales Q/Q from yfinance for tickers שחסר להם הנתון ──────
-    missing_salesqq = [
-        t for t in tickers
-        if not _parse_fv_num((_FV_FUND_CACHE.get(t) or {}).get('sales_qq', ''))
-    ]
-    if missing_salesqq:
-        try:
-            salesqq_fallback = await _fallback_sales_qq_batch(missing_salesqq)
-            for t, val in salesqq_fallback.items():
-                fund = _FV_FUND_CACHE.get(t)
-                if fund is not None and 'sales_qq' not in fund:
-                    fund['sales_qq'] = f"{val:.1f}%"
-        except Exception:
-            pass
+    asyncio.create_task(_enrich_in_background())
 
-    # ── 6. Merge, classify reasons, build response ────────────────────────────
+    # ── 6. Merge — בונה טבלה עם fundamentals מ-Finviz ─────────────────────────
     stocks = []
     for raw in raw_stocks:
         t     = raw.get('ticker', '')
         fund  = _FV_FUND_CACHE.get(t) or {}
         news  = _FV_NEWS_CACHE.get(t) or []
         intra = _FV_INTRA_CACHE.get(t) or {}
+        ta_data = _FV_TA_CACHE.get(t) or {}
         price = raw.get('price') or _parse_fv_num(fund.get('price', '')) or 0
         mc    = _parse_fv_num(raw.get('market_cap_str', '') or fund.get('market_cap', ''))
 
@@ -2354,6 +2444,7 @@ async def get_finviz_table(
             'short_ratio':    fund.get('short_ratio', ''),
             'inst_own':       fund.get('inst_own', ''),
             'insider_own':    fund.get('insider_own', ''),
+            'insider_trans':  fund.get('insider_trans', ''),
             'rsi':            fund.get('rsi', ''),
             'sma20':          fund.get('sma20_dist', ''),
             'sma50':          fund.get('sma50_dist', ''),
@@ -2373,6 +2464,7 @@ async def get_finviz_table(
             'chg_5m':            intra.get('chg_5m'),
             'chg_10m':           intra.get('chg_10m'),
             'chg_30m':           intra.get('chg_30m'),
+            'chg_4h':            intra.get('chg_4h'),
             'extended_price':    intra.get('extended_price'),
             'extended_chg_pct':  extended_chg_pct,
             'prev_close':        prev_close,
@@ -2380,15 +2472,33 @@ async def get_finviz_table(
             'eps_surpr':      fund.get('eps_surpr', ''),
             'eps_sales_surpr':fund.get('eps_sales_surpr', ''),
             'earnings_verdict': _earnings_verdict(fund),
+            # Rel Volume
+            'rel_volume':     fund.get('rel_volume', ''),
             # Enrichments & scores
             'tags':           tags,
             'health_score':   health,
             'risk_score':     risk,
             'ai_signal':      round(ai_signal, 1),
             'ai_label':       ai_label,
+            'health_detail':  _health_detail(tags, ev_sales_ratio, short_pct, rsi_val),
             'reasons':        reasons,
             'news':           news,
             'business_summary': _FV_SUMMARY_CACHE.get(t, ''),
+            # Technical Analysis
+            'tech_signal':    ta_data.get('tech_signal', ''),
+            'tech_score':     ta_data.get('tech_score', None),
+            'tech_detail':    ta_data.get('tech_detail', ''),
+            'tech_timing':    ta_data.get('tech_timing', ''),
+            'tech_timing_up':       ta_data.get('tech_timing_up', ''),
+            'tech_timing_down':     ta_data.get('tech_timing_down', ''),
+            'tech_timing_up_desc':  ta_data.get('tech_timing_up_desc', ''),
+            'tech_timing_down_desc': ta_data.get('tech_timing_down_desc', ''),
+            'tech_timing_up_conf':  ta_data.get('tech_timing_up_conf', ''),
+            'tech_timing_down_conf': ta_data.get('tech_timing_down_conf', ''),
+            'tech_support':   ta_data.get('tech_support', None),
+            'tech_resistance': ta_data.get('tech_resistance', None),
+            'tech_patterns':  ta_data.get('tech_patterns', ''),
+            'tech_indicators': ta_data.get('tech_indicators', {}),
         })
 
     out = {
@@ -2398,6 +2508,200 @@ async def get_finviz_table(
         'session':      _get_market_session(),
         'generated_at': datetime.now().isoformat(),
     }
-    _FV_TABLE_CACHE = {'data': out, 'filters': filters}
+    _FV_TABLE_CACHE = {'data': out, 'filters': filters, 'cache_key': cache_key}
     _FV_TABLE_CACHE_TIME = now
     return out
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Smart Portfolio + Alerts endpoints
+# ═══════════════════════════════════════════════════════════════════════════════
+
+from app.services.smart_portfolio import smart_portfolio
+from app.services.alerts_service import send_signal_alert, send_telegram, get_signal_log
+from app.services.gemini_brain import get_ai_decision, post_mortem, _load_strategy, detect_market_regime, evaluate_exits, _load_regime, _safe_float
+
+
+@router.get("/smart-portfolio/status")
+async def smart_portfolio_status():
+    """Current smart portfolio state, positions, equity curve."""
+    live = {}
+    for ticker in smart_portfolio.positions:
+        if ticker in _LIVE_PRICES_CACHE:
+            live[ticker] = _LIVE_PRICES_CACHE[ticker].get('price', 0)
+        elif ticker in _FV_FUND_CACHE:
+            p = _parse_fv_num(_FV_FUND_CACHE[ticker].get('price', ''))
+            if p:
+                live[ticker] = p
+
+    stats = smart_portfolio.get_stats(live)
+
+    # Enrich positions with current_price + unrealized P&L so the Telegram bot
+    # and frontend get accurate per-position data from a single endpoint.
+    enriched_pos = {}
+    for ticker, pos in stats.get('positions', {}).items():
+        entry = pos.get('entry_price', 0)
+        current = live.get(ticker, entry)
+        side = pos.get('side', 'long')
+        qty = pos.get('qty', 1)
+        if entry > 0:
+            if side == 'long':
+                upnl_pct = (current - entry) / entry * 100
+                upnl = (current - entry) * qty
+            else:
+                upnl_pct = (entry - current) / entry * 100
+                upnl = (entry - current) * qty
+        else:
+            upnl_pct = upnl = 0.0
+        enriched_pos[ticker] = {
+            **pos,
+            'current_price': round(current, 4),
+            'has_live_price': ticker in live,
+            'unrealized_pnl': round(upnl, 2),
+            'unrealized_pnl_pct': round(upnl_pct, 2),
+        }
+
+    stats['positions'] = enriched_pos
+    return stats
+
+
+@router.get("/smart-portfolio/trades")
+async def smart_portfolio_trades():
+    """Trade history."""
+    return smart_portfolio.get_trade_history()
+
+
+@router.post("/smart-portfolio/think")
+async def smart_portfolio_think():
+    """
+    Trigger the AI brain to analyze current market and make a decision.
+    Can be called periodically (every 5 minutes) or on-demand.
+    """
+    cached = _FV_TABLE_CACHE.get('data', {})
+    stocks = cached.get('stocks', [])
+    if not stocks:
+        return {'decision': None, 'error': 'No stock data available'}
+
+    live_prices = {}
+    for s in stocks:
+        t = s.get('ticker')
+        if t in _LIVE_PRICES_CACHE:
+            live_prices[t] = _LIVE_PRICES_CACHE[t].get('price', s.get('price', 0))
+        else:
+            live_prices[t] = s.get('price', 0)
+
+    stock_data_map = {s.get('ticker'): s for s in stocks if s.get('ticker')}
+    closed = smart_portfolio.check_stops(live_prices, stock_data_map)
+    for trade in closed:
+        await send_signal_alert({
+            'action': 'CLOSED', 'ticker': trade['ticker'],
+            'price': trade['exit_price'], 'confidence': 100,
+            'reason': trade['exit_reason'],
+            'stop_loss': 0, 'target': 0,
+        })
+        await post_mortem(trade, _load_strategy())
+
+    # Smart exit suggestions — close positions the brain recommends exiting
+    regime = detect_market_regime(stocks)
+    exit_suggestions = evaluate_exits(smart_portfolio.positions, stocks, live_prices, regime)
+    for suggestion in exit_suggestions:
+        if suggestion.get('urgency') == 'high' and suggestion.get('action') == 'close':
+            ticker = suggestion['ticker']
+            if ticker in smart_portfolio.positions:
+                price = live_prices.get(ticker, 0)
+                if price:
+                    r = smart_portfolio.close_position(ticker, price, suggestion['reason'])
+                    if r.get('success'):
+                        closed.append(r['trade'])
+                        await send_signal_alert({
+                            'action': 'SMART_EXIT', 'ticker': ticker,
+                            'price': price, 'confidence': 90,
+                            'reason': suggestion['reason'],
+                            'stop_loss': 0, 'target': 0,
+                        })
+                        await post_mortem(r['trade'], _load_strategy())
+
+    portfolio_state = smart_portfolio.get_stats(live_prices)
+    history = smart_portfolio.get_trade_history()
+
+    decision = await get_ai_decision(stocks, portfolio_state, history)
+    if not decision:
+        return {'decision': None, 'error': 'AI did not return a decision'}
+
+    result = {'decision': decision, 'executed': False, 'closed_trades': closed}
+
+    if decision.get('action') in ('BUY', 'SHORT') and decision.get('confidence', 0) >= 60:
+        ticker = decision.get('ticker', '').upper()
+        if not ticker or ticker in smart_portfolio.positions:
+            return result
+
+        if not smart_portfolio.can_open_position(live_prices):
+            result['error'] = 'Daily loss limit reached'
+            return result
+
+        price = live_prices.get(ticker, 0)
+        if not price:
+            return result
+
+        equity = smart_portfolio.get_total_equity(live_prices)
+        position_pct = min(decision.get('position_pct', 10), 20) / 100
+        qty = max(1, int((equity * position_pct) / price))
+        sl_pct = decision.get('stop_loss_pct', 5) / 100
+        tgt_pct = decision.get('target_pct', 10) / 100
+
+        if decision['action'] == 'BUY':
+            stop = round(price * (1 - sl_pct), 2)
+            target = round(price * (1 + tgt_pct), 2)
+        else:
+            stop = round(price * (1 + sl_pct), 2)
+            target = round(price * (1 - tgt_pct), 2)
+
+        trade_result = smart_portfolio.open_position(
+            ticker, 'long' if decision['action'] == 'BUY' else 'short',
+            price, qty, stop, target, decision.get('reason', '')
+        )
+        result['executed'] = trade_result.get('success', False)
+        result['trade'] = trade_result
+
+        if trade_result.get('success'):
+            await send_signal_alert({
+                'action': decision['action'], 'ticker': ticker,
+                'price': price, 'confidence': decision.get('confidence', 0),
+                'reason': decision.get('reason', ''),
+                'analysis': decision.get('analysis', ''),
+                'engine': decision.get('engine', ''),
+                'stop_loss': stop, 'target': target,
+            })
+
+    smart_portfolio.record_equity(live_prices)
+    return result
+
+
+@router.post("/smart-portfolio/reset")
+async def smart_portfolio_reset():
+    """Reset the demo portfolio to initial state."""
+    smart_portfolio.reset()
+    return {'success': True, 'message': 'Portfolio reset to $3,000'}
+
+
+@router.get("/smart-portfolio/regime")
+async def get_market_regime():
+    """Get current market regime analysis."""
+    cached = _FV_TABLE_CACHE.get('data', {})
+    stocks = cached.get('stocks', [])
+    if stocks:
+        return detect_market_regime(stocks)
+    return _load_regime()
+
+
+@router.get("/alerts/log")
+async def alerts_log():
+    """Recent signal alerts log."""
+    return get_signal_log()
+
+
+@router.post("/alerts/test-telegram")
+async def test_telegram():
+    """Send a test message to Telegram."""
+    ok = await send_telegram("🧪 <b>Test</b> — Stock Scanner connected!")
+    return {'success': ok}

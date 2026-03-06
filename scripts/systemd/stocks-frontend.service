@@ -1,0 +1,17 @@
+[Unit]
+Description=Stocks Frontend (Vite on :3000)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory={{PROJECT_ROOT}}/frontend
+ExecStart={{NPM_FULL}} run dev
+Restart=always
+RestartSec=3
+StandardOutput=append:{{PROJECT_ROOT}}/frontend/frontend.log
+StandardError=append:{{PROJECT_ROOT}}/frontend/frontend.log
+Environment=PATH={{NODE_DIR}}:/usr/bin:/bin
+KillMode=mixed
+
+[Install]
+WantedBy=default.target

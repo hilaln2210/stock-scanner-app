@@ -21,7 +21,7 @@ class FinvizFundamentals:
     QUOTE_URL = "https://finviz.com/quote.ashx"
     ELITE_QUOTE_URL = "https://elite.finviz.com/quote.ashx"
     TICKER_CACHE_TTL = 300  # 5 minutes
-    MAX_CONCURRENT = 3
+    MAX_CONCURRENT = 8
 
     # Maps Finviz label text to our key names
     LABEL_MAP = {
@@ -109,7 +109,8 @@ class FinvizFundamentals:
     }
 
     ELITE_SCREENER_URL = "https://elite.finviz.com/screener.ashx"
-    PRICE_CACHE_TTL = 60  # 1 minute for live prices
+    PUBLIC_SCREENER_URL = "https://finviz.com/screener.ashx"
+    PRICE_CACHE_TTL = 8  # seconds — real-time during extended hours
 
     def __init__(self, email: str = '', password: str = '', cookie: str = ''):
         self.email = email
@@ -122,17 +123,15 @@ class FinvizFundamentals:
 
     async def get_prices_batch(self, tickers: List[str]) -> Dict[str, Dict]:
         """
-        Fetch real-time prices for multiple tickers in a single Finviz screener request.
-        Uses Elite (Pro) session for pre/post-market real-time data.
-        Returns: {ticker: {"price": float, "change_pct": str, "prev_close": float}}
+        Fetch real-time overview data for multiple tickers in a single Finviz screener request.
+        Uses Elite session for pre/post-market real-time data.
+        Returns per ticker: price, change_pct, volume, market_cap_str (all real-time from Finviz).
         """
         if not tickers:
             return {}
 
         now = time.time()
-        # Return cached if fresh (1 minute)
         if (now - self._price_cache_time) < self.PRICE_CACHE_TTL and self._price_cache:
-            # Check all tickers are in cache
             if all(t.upper() in self._price_cache for t in tickers):
                 return {t.upper(): self._price_cache[t.upper()] for t in tickers}
 
@@ -144,36 +143,42 @@ class FinvizFundamentals:
         if self.cookie:
             headers['Cookie'] = self.cookie
 
-        # Screener with ticker filter + overview columns (price + change)
-        url = f"{self.ELITE_SCREENER_URL}?v=111&t={ticker_str}&o=-change"
+        use_elite = bool(self.cookie)
+        base = self.ELITE_SCREENER_URL if use_elite else self.PUBLIC_SCREENER_URL
+        url = f"{base}?v=111&t={ticker_str}&o=-change"
         results = {}
 
         try:
+            html = None
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=12)) as resp:
-                    if resp.status != 200:
-                        return {}
-                    html = await resp.text()
+                for _attempt in range(2):
+                    async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=12)) as resp:
+                        if resp.status == 429:
+                            await asyncio.sleep(2)
+                            continue
+                        if resp.status != 200:
+                            return self._price_cache_fallback(tickers)
+                        html = await resp.text()
+                        break
+
+            if not html:
+                return self._price_cache_fallback(tickers)
 
             soup = BeautifulSoup(html, 'html.parser')
 
-            # Find screener table — try multiple selectors
             table = (soup.find('table', {'id': 'screener-views-table'}) or
                      soup.find('table', attrs={'cellpadding': '3', 'width': '100%'}))
             if not table:
-                all_tables = soup.find_all('table')
-                for t in all_tables:
+                for t in soup.find_all('table'):
                     rows = t.find_all('tr')
                     if len(rows) > 2 and len(rows[1].find_all('td')) >= 8:
                         table = t
                         break
 
             if not table:
-                return {}
+                return self._price_cache_fallback(tickers)
 
             rows = table.find_all('tr')
-
-            # Parse header to find column indices
             header = []
             data_rows = []
             for row in rows:
@@ -190,9 +195,11 @@ class FinvizFundamentals:
                           'country', 'market cap', 'p/e', 'price', 'change', 'volume']
 
             col = {h: i for i, h in enumerate(header)}
-            ticker_col  = col.get('ticker', 1)
-            price_col   = col.get('price', 8)
-            change_col  = col.get('change', 9)
+            ticker_col = col.get('ticker', 1)
+            price_col  = col.get('price', 8)
+            change_col = col.get('change', 9)
+            vol_col    = col.get('volume', 10)
+            mcap_col   = col.get('market cap', 6)
 
             for cells in data_rows:
                 texts = [td.get_text(strip=True) for td in cells]
@@ -206,12 +213,19 @@ class FinvizFundamentals:
                     price = float(price_str) if price_str else None
                 except (ValueError, IndexError):
                     price = None
+
                 change_str = texts[change_col] if change_col < len(texts) else ''
+                vol_str    = texts[vol_col] if vol_col < len(texts) else ''
+                mcap_str   = texts[mcap_col] if mcap_col < len(texts) else ''
+
                 if price:
                     results[ticker] = {
                         "price": price,
                         "change_pct": change_str,
-                        "source": "finviz_elite",
+                        "volume": self._parse_vol(vol_str),
+                        "volume_str": vol_str,
+                        "market_cap_str": mcap_str,
+                        "source": "finviz_elite" if use_elite else "finviz",
                     }
 
             if results:
@@ -221,7 +235,24 @@ class FinvizFundamentals:
         except Exception as e:
             print(f"Finviz get_prices_batch error: {e}")
 
-        return results
+        return results if results else self._price_cache_fallback(tickers)
+
+    def _price_cache_fallback(self, tickers: List[str]) -> Dict[str, Dict]:
+        return {t.upper(): self._price_cache[t.upper()] for t in tickers if t.upper() in self._price_cache}
+
+    @staticmethod
+    def _parse_vol(vol_str: str) -> int:
+        vol_str = vol_str.strip().upper().replace(',', '')
+        try:
+            if 'B' in vol_str:
+                return int(float(vol_str.replace('B', '')) * 1_000_000_000)
+            elif 'M' in vol_str:
+                return int(float(vol_str.replace('M', '')) * 1_000_000)
+            elif 'K' in vol_str:
+                return int(float(vol_str.replace('K', '')) * 1_000)
+            return int(float(vol_str)) if vol_str else 0
+        except (ValueError, TypeError):
+            return 0
 
     async def get_fundamentals_batch(self, tickers: List[str]) -> Dict[str, Dict]:
         """Fetch fundamentals for a batch of tickers with bounded concurrency."""
@@ -237,8 +268,7 @@ class FinvizFundamentals:
                 if (now - cached_time) < self.TICKER_CACHE_TTL and ticker in self._ticker_cache:
                     return ticker, self._ticker_cache[ticker]
 
-                # Stagger within each batch of MAX_CONCURRENT
-                await asyncio.sleep((idx % self.MAX_CONCURRENT) * 0.2)
+                await asyncio.sleep((idx % self.MAX_CONCURRENT) * 0.05)
 
                 try:
                     data = await self._fetch_fundamentals(ticker)
@@ -254,7 +284,7 @@ class FinvizFundamentals:
             tasks = [fetch_one(t, i) for i, t in enumerate(tickers)]
             completed = await asyncio.wait_for(
                 asyncio.gather(*tasks, return_exceptions=True),
-                timeout=50  # Overall timeout
+                timeout=20
             )
 
             for item in completed:
@@ -263,7 +293,7 @@ class FinvizFundamentals:
                     if data:
                         results[ticker] = data
         except asyncio.TimeoutError:
-            print("Finviz fundamentals OVERALL TIMEOUT (>30s)")
+            print("Finviz fundamentals OVERALL TIMEOUT (>35s) — returning partial")
 
         return results
 
@@ -282,35 +312,40 @@ class FinvizFundamentals:
         url = f"{base_url}?t={ticker}&ty=c&p=d&b=1"
 
         try:
+            html = None
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
-                    if response.status != 200:
-                        return None
+                for _attempt in range(3):
+                    async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                        if response.status == 429:
+                            await asyncio.sleep(2 ** _attempt + 0.5)
+                            continue
+                        if response.status != 200:
+                            return None
+                        html = await response.text()
+                        break
 
-                    html = await response.text()
-                    soup = BeautifulSoup(html, 'html.parser')
+            if not html:
+                return None
+            soup = BeautifulSoup(html, 'html.parser')
 
-                    # Parse the snapshot table
-                    data = self._parse_snapshot_table(soup)
-                    if not data:
-                        return None
+            data = self._parse_snapshot_table(soup)
+            if not data:
+                return None
 
-                    # Extract company name from title
-                    title_elem = soup.find('title')
-                    if title_elem:
-                        title_text = title_elem.get_text()
-                        # Format: "MRNA Stock Price | Moderna Inc. Stock Quote (U.S.: Nasdaq) | FinViz"
-                        parts = title_text.split('|')
-                        if len(parts) >= 2:
-                            company_part = parts[1].strip()
-                            data['company_name'] = company_part.replace('Stock Quote', '').strip().rstrip('.')
-                            data['company_name'] = re.sub(r'\s*\(.*?\)\s*$', '', data['company_name']).strip()
+            title_elem = soup.find('title')
+            if title_elem:
+                title_text = title_elem.get_text()
+                parts = title_text.split('|')
+                if len(parts) >= 2:
+                    company_part = parts[1].strip()
+                    data['company_name'] = company_part.replace('Stock Quote', '').strip().rstrip('.')
+                    data['company_name'] = re.sub(r'\s*\(.*?\)\s*$', '', data['company_name']).strip()
 
-                    # Post-process values
-                    data['ticker'] = ticker
-                    data['analyst_recom'] = self._convert_recom_to_text(data.get('analyst_recom_raw', ''))
+            data['ticker'] = ticker
+            data['analyst_recom'] = self._convert_recom_to_text(data.get('analyst_recom_raw', ''))
+            data['news'] = self._parse_news_table(soup)
 
-                    return data
+            return data
 
         except Exception as e:
             print(f"Finviz fetch error {ticker}: {e}")
@@ -344,6 +379,36 @@ class FinvizFundamentals:
                     data[key] = value
 
         return data
+
+    @staticmethod
+    def _parse_news_table(soup: BeautifulSoup) -> list:
+        """Extract news items from the Finviz quote page news table."""
+        news = []
+        news_table = soup.find('table', {'id': 'news-table'})
+        if not news_table:
+            return news
+        current_date = ''
+        for row in news_table.find_all('tr')[:8]:
+            cells = row.find_all('td')
+            if len(cells) < 2:
+                continue
+            date_cell = cells[0].get_text(strip=True)
+            if len(date_cell) > 8:
+                current_date = date_cell
+            link_tag = cells[1].find('a')
+            if not link_tag:
+                continue
+            title = link_tag.get_text(strip=True)
+            href = link_tag.get('href', '')
+            source_tag = cells[1].find('span')
+            source = source_tag.get_text(strip=True) if source_tag else ''
+            news.append({
+                'title': title,
+                'publisher': source,
+                'link': href,
+                'date': current_date,
+            })
+        return news
 
     def _convert_recom_to_text(self, recom_str: str) -> str:
         """Convert Finviz recommendation number to text."""

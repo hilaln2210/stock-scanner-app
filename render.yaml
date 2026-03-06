@@ -1,5 +1,6 @@
-# Render.com Blueprint - פריסה 24/7
+# Render.com Blueprint - פריסה 24/7 (נייד לא תלוי במחשב)
 # https://render.com/docs/blueprint-spec
+# אחרי פריסה: פתח מהנייד את ה-URL ומוסיפים למסך הבית (PWA). ראה docs/DEPLOY-MOBILE.md
 
 services:
   - type: web
@@ -11,3 +12,4 @@ services:
     envVars:
       - key: PORT
         value: "8000"
+      # הוסף ב-Dashboard → Environment את כל משתני backend/.env (GROQ_API_KEY, GEMINI_API_KEY, FINVIZ_*, TELEGRAM_*, וכו')
