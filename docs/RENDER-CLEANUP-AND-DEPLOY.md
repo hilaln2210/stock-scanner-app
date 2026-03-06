@@ -53,13 +53,13 @@
 
 ### מעכשיו: דיפלוי בתהליך
 
-- **בכל `git push origin main`** — ה-GitHub Action ירוץ ויפעיל את ה-Deploy Hook, ו-Render יתחיל דיפלוי.
+- **בכל `git push origin master`** — ה-GitHub Action ירוץ ויפעיל את ה-Deploy Hook, ו-Render יתחיל דיפלוי.
 - אפשר גם להריץ ידנית: GitHub → **Actions** → **Deploy to Render** → **Run workflow**.
 
 ### אם עדיין אין דיפלוי (גיבוי ידני)
 
 1. ב-Render → השירות **stock-scanner-app** → **Manual Deploy** → **Clear build cache & deploy**.
-2. או דחיפת קומיט ל־main (אם Auto-Deploy מופעל ב-Render).
+2. או דחיפת קומיט ל־master (אם Auto-Deploy מופעל ב-Render).
 
 ---
 
