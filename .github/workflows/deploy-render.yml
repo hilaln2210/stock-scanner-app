@@ -1,0 +1,26 @@
+# דיפלוי אוטומטי ל-Render בכל push ל-main
+# דרוש: ב-GitHub → Settings → Secrets → הוסף RENDER_DEPLOY_HOOK_URL
+# (מקבלים ב-Render: השירות → Settings → Deploy Hook → Copy)
+
+name: Deploy to Render
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:  # הרצה ידנית מ-Actions
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render Deploy
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::warning::RENDER_DEPLOY_HOOK_URL not set. Add it in GitHub repo Secrets (from Render → Settings → Deploy Hook)."
+            exit 0
+          fi
+          echo "Triggering Render deploy..."
+          curl -f -X POST "$RENDER_DEPLOY_HOOK_URL"
+          echo "Deploy triggered."
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
