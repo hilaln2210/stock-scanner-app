@@ -2357,6 +2357,20 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
             except Exception:
                 pass
 
+    # המתנה קצרה ל-intraday עבור הטיקרים הראשונים כדי שעמודת 30דק תמולא גם בבקשה ראשונה (כולל בענן)
+    _first_batch = (intra_missing or [])[:15]
+    if _first_batch:
+        try:
+            _loop = asyncio.get_running_loop()
+            with _TPE(max_workers=4) as _pool:
+                _futs = [_loop.run_in_executor(_pool, _fetch_intraday_sync, t) for t in _first_batch]
+                _ress = await asyncio.wait_for(asyncio.gather(*_futs, return_exceptions=True), timeout=8.0)
+            for _t, _res in zip(_first_batch, _ress):
+                if isinstance(_res, dict) and _res:
+                    _FV_INTRA_CACHE[_t] = _res
+                    _FV_INTRA_CACHE_TIME[_t] = _time.time()
+        except (asyncio.TimeoutError, Exception):
+            pass
     asyncio.create_task(_enrich_in_background())
 
     # ── 6. Merge — בונה טבלה עם fundamentals מ-Finviz ─────────────────────────
@@ -2522,47 +2536,66 @@ from app.services.alerts_service import send_signal_alert, send_telegram, get_si
 from app.services.gemini_brain import get_ai_decision, post_mortem, _load_strategy, detect_market_regime, evaluate_exits, _load_regime, _safe_float
 
 
+def _default_smart_portfolio_stats():
+    """תשובת ברירת מחדל כש־Smart Portfolio לא זמין (למשל בענן בלי אחסון נתונים)."""
+    return {
+        'equity': 3000.0,
+        'cash': 3000.0,
+        'positions': {},
+        'total_pnl': 0,
+        'total_pnl_pct': 0,
+        'daily_pnl': 0,
+        'total_trades': 0,
+        'winning_trades': 0,
+        'peak_equity': 3000.0,
+        'note': 'דמו — נתונים מתאפסים בענן',
+    }
+
+
 @router.get("/smart-portfolio/status")
 async def smart_portfolio_status():
     """Current smart portfolio state, positions, equity curve."""
-    live = {}
-    for ticker in smart_portfolio.positions:
-        if ticker in _LIVE_PRICES_CACHE:
-            live[ticker] = _LIVE_PRICES_CACHE[ticker].get('price', 0)
-        elif ticker in _FV_FUND_CACHE:
-            p = _parse_fv_num(_FV_FUND_CACHE[ticker].get('price', ''))
-            if p:
-                live[ticker] = p
+    try:
+        live = {}
+        for ticker in smart_portfolio.positions:
+            if ticker in _LIVE_PRICES_CACHE:
+                live[ticker] = _LIVE_PRICES_CACHE[ticker].get('price', 0)
+            elif ticker in _FV_FUND_CACHE:
+                p = _parse_fv_num(_FV_FUND_CACHE[ticker].get('price', ''))
+                if p:
+                    live[ticker] = p
 
-    stats = smart_portfolio.get_stats(live)
+        stats = smart_portfolio.get_stats(live)
 
-    # Enrich positions with current_price + unrealized P&L so the Telegram bot
-    # and frontend get accurate per-position data from a single endpoint.
-    enriched_pos = {}
-    for ticker, pos in stats.get('positions', {}).items():
-        entry = pos.get('entry_price', 0)
-        current = live.get(ticker, entry)
-        side = pos.get('side', 'long')
-        qty = pos.get('qty', 1)
-        if entry > 0:
-            if side == 'long':
-                upnl_pct = (current - entry) / entry * 100
-                upnl = (current - entry) * qty
+        # Enrich positions with current_price + unrealized P&L so the Telegram bot
+        # and frontend get accurate per-position data from a single endpoint.
+        enriched_pos = {}
+        for ticker, pos in stats.get('positions', {}).items():
+            entry = pos.get('entry_price', 0)
+            current = live.get(ticker, entry)
+            side = pos.get('side', 'long')
+            qty = pos.get('qty', 1)
+            if entry > 0:
+                if side == 'long':
+                    upnl_pct = (current - entry) / entry * 100
+                    upnl = (current - entry) * qty
+                else:
+                    upnl_pct = (entry - current) / entry * 100
+                    upnl = (entry - current) * qty
             else:
-                upnl_pct = (entry - current) / entry * 100
-                upnl = (entry - current) * qty
-        else:
-            upnl_pct = upnl = 0.0
-        enriched_pos[ticker] = {
-            **pos,
-            'current_price': round(current, 4),
-            'has_live_price': ticker in live,
-            'unrealized_pnl': round(upnl, 2),
-            'unrealized_pnl_pct': round(upnl_pct, 2),
-        }
+                upnl_pct = upnl = 0.0
+            enriched_pos[ticker] = {
+                **pos,
+                'current_price': round(current, 4),
+                'has_live_price': ticker in live,
+                'unrealized_pnl': round(upnl, 2),
+                'unrealized_pnl_pct': round(upnl_pct, 2),
+            }
 
-    stats['positions'] = enriched_pos
-    return stats
+        stats['positions'] = enriched_pos
+        return stats
+    except Exception as e:
+        return _default_smart_portfolio_stats()
 
 
 @router.get("/smart-portfolio/trades")

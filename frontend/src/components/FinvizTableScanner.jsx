@@ -1512,15 +1512,18 @@ function SmartPortfolioDashboard({ floating = false, placement }) {
     >
       <span style={{ fontSize: 14 }}>🧠</span>
       <span style={{ color: A }}>תיק</span>
-      {data && (
+      {data ? (
         <>
-          <span style={{ fontFamily: 'monospace', color: '#f8fafc' }}>${data.equity?.toFixed(0)}</span>
+          <span style={{ fontFamily: 'monospace', color: '#f8fafc' }}>${(data.equity ?? 3000).toFixed(0)}</span>
           <span style={{ color: returnPct >= 0 ? W : L, fontFamily: 'monospace' }}>
             {returnPct >= 0 ? '+' : ''}{returnPct.toFixed(1)}%
           </span>
           <span style={{ color: '#64748b' }}>·</span>
           <span style={{ color: '#94a3b8' }}>{posCount} פוזיציות</span>
+          {data.note && <span style={{ color: '#64748b', fontSize: 9 }} title={data.note}> (ענן)</span>}
         </>
+      ) : (
+        <span style={{ color: '#64748b' }}>טוען…</span>
       )}
       <span style={{ color: '#475569', fontSize: 10 }}>▼</span>
     </button>
@@ -2102,6 +2105,27 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
   // Keep screener tickers ref in sync (used by live poll)
   useEffect(() => {
     screenerTickersRef.current = stocks.map(s => s.ticker);
+  }, [stocks]);
+
+  // התראה קופצת: מניה שעלתה מעל 7% בחצי שעה האחרונה
+  const alerted30mRef = useRef(new Set());
+  useEffect(() => {
+    if (!stocks.length) return;
+    const parseChg = (v) => {
+      if (v == null) return null;
+      const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/[%,]/g, ''));
+      return Number.isFinite(n) ? n : null;
+    };
+    const over7 = stocks.filter(s => {
+      const chg = parseChg(s.chg_30m);
+      return chg != null && chg >= 7;
+    });
+    if (!over7.length) return;
+    const newTickers = over7.map(s => s.ticker).filter(t => !alerted30mRef.current.has(t));
+    if (!newTickers.length) return;
+    newTickers.forEach(t => alerted30mRef.current.add(t));
+    const list = over7.map(s => `${s.ticker} ${parseChg(s.chg_30m) >= 0 ? '+' : ''}${parseChg(s.chg_30m).toFixed(1)}%`).join('\n');
+    window.alert(`🚀 עלייה מעל 7% ב-30 דקות:\n\n${list}`);
   }, [stocks]);
 
   // Live price polling — 5s בפרה/אפטר, 10s ברגיל (pre/post market aware)

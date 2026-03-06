@@ -15,7 +15,10 @@ from pathlib import Path
 from app.config import settings
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
-DATA_DIR.mkdir(exist_ok=True)
+try:
+    DATA_DIR.mkdir(exist_ok=True)
+except OSError:
+    pass  # read-only או סביבה בענן — נתונים יתאפסו
 PORTFOLIO_FILE = DATA_DIR / "smart_portfolio.json"
 TRADE_HISTORY_FILE = DATA_DIR / "trade_history.json"
 LEARNING_FILE = DATA_DIR / "ai_learning.json"
@@ -68,17 +71,21 @@ class SmartPortfolio:
         self.peak_equity = state.get('peak_equity', INITIAL_CAPITAL)
 
     def _save(self):
-        _save_json(PORTFOLIO_FILE, {
-            'cash': self.cash,
-            'positions': self.positions,
-            'equity_history': self.equity_history[-500:],
-            'daily_pnl': self.daily_pnl,
-            'last_reset_date': self.last_reset_date,
-            'total_trades': self.total_trades,
-            'winning_trades': self.winning_trades,
-            'total_pnl': self.total_pnl,
-            'peak_equity': self.peak_equity,
-        })
+        try:
+            DATA_DIR.mkdir(exist_ok=True)
+            _save_json(PORTFOLIO_FILE, {
+                'cash': self.cash,
+                'positions': self.positions,
+                'equity_history': self.equity_history[-500:],
+                'daily_pnl': self.daily_pnl,
+                'last_reset_date': self.last_reset_date,
+                'total_trades': self.total_trades,
+                'winning_trades': self.winning_trades,
+                'total_pnl': self.total_pnl,
+                'peak_equity': self.peak_equity,
+            })
+        except OSError:
+            pass  # סביבה read-only (למשל בענן בלי volume)
 
     def _check_daily_reset(self):
         today = datetime.now().strftime('%Y-%m-%d')
