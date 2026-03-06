@@ -28,7 +28,7 @@
 
 ## 2. עדכון האפליקציה הקיימת (Stock Scanner) — תהליך דיפלוי
 
-**בפרויקט יש GitHub Action** שמפעיל דיפלוי ב-Render בכל push ל־`main`. כדי שזה יעבוד:
+**בפרויקט יש GitHub Action** שמפעיל דיפלוי ב-Render בכל push ל־`master`. כדי שזה יעבוד:
 
 ### שלב 1: Deploy Hook ב-Render
 
@@ -48,7 +48,7 @@
 
 1. ב-Render → השירות → **Settings** → **Build & Deploy**.
 2. **Repository** חייב להיות ה-repo של הפרויקט (אותו repo ב-GitHub).
-3. **Branch:** `main` (או הענף שאת עובדת עליו).
+3. **Branch:** `master` (או הענף שאת עובדת עליו).
 4. מומלץ: **Auto-Deploy** = **Yes** (אז גם Render יבנה מחדש כשיש push, בנוסף ל-Deploy Hook).
 
 ### מעכשיו: דיפלוי בתהליך

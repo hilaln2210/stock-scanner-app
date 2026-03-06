@@ -1,0 +1,3 @@
+#!/bin/sh
+# דחיפה אוטומטית ל-GitHub אחרי כל commit (כדי ש-Render יקבל עדכונים)
+exec git push origin master
