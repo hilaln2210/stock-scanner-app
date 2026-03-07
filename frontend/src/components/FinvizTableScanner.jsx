@@ -1873,10 +1873,21 @@ function SmartPortfolioDashboard({ floating = false, placement }) {
                       </div>
                       <span style={{ fontSize: 9, color: '#475569' }}>{elapsed} דק׳</span>
                     </div>
-                    <div style={{ display: 'flex', gap: 16, fontSize: 11 }}>
+                    <div style={{ display: 'flex', gap: 14, fontSize: 11, flexWrap: 'wrap', alignItems: 'center' }}>
                       <div><span style={{ color: '#64748b' }}>כניסה: </span><span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>${pos.entry_price?.toFixed(2)}</span></div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <span style={{ color: '#64748b' }}>עכשיו: </span>
+                        <span style={{ color: '#f8fafc', fontFamily: 'monospace', fontWeight: 700 }}>${pos.current_price?.toFixed(2) ?? '—'}</span>
+                        {pos.has_live_price && <span style={{ fontSize: 7, color: '#22c55e', fontWeight: 800 }}>● live</span>}
+                      </div>
+                      <div>
+                        <span style={{ color: '#64748b' }}>P&L: </span>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 800, color: (pos.unrealized_pnl_pct ?? 0) >= 0 ? '#4ade80' : '#f87171' }}>
+                          {(pos.unrealized_pnl_pct ?? 0) >= 0 ? '+' : ''}{(pos.unrealized_pnl_pct ?? 0).toFixed(2)}%
+                          {pos.unrealized_pnl != null && <span style={{ fontSize: 10, marginLeft: 3, opacity: 0.8 }}>(${pos.unrealized_pnl >= 0 ? '+' : ''}{pos.unrealized_pnl.toFixed(0)})</span>}
+                        </span>
+                      </div>
                       <div><span style={{ color: '#64748b' }}>כמות: </span><span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{pos.qty}</span></div>
-                      <div><span style={{ color: '#64748b' }}>שווי: </span><span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>${(pos.qty * pos.entry_price).toFixed(0)}</span></div>
                     </div>
                     {/* SL / Target bar */}
                     <div style={{ marginTop: 8 }}>
