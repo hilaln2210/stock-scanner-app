@@ -315,11 +315,14 @@ def _calc_indicators(df: pd.DataFrame) -> dict:
     except Exception:
         result['obv_trend'] = 'neutral'
 
-    # --- CCI 20 (extremes detector) ---
+    # --- CCI 20 (extremes detector) — manual impl: pandas_ta CCI has a precision bug on tight bars ---
     try:
-        cci = ta.cci(high, low, close, length=20)
-        if cci is not None and len(cci) > 0 and not pd.isna(cci.iloc[-1]):
-            result['cci'] = float(cci.iloc[-1])
+        if len(close) >= 20:
+            tp = (high + low + close) / 3
+            tp_s = tp.iloc[-20:]
+            sma_tp = float(tp_s.mean())
+            mad = float(np.mean(np.abs(tp_s.values - sma_tp)))
+            result['cci'] = round((float(tp.iloc[-1]) - sma_tp) / (0.015 * mad), 1) if mad > 1e-8 else 0.0
         else:
             result['cci'] = 0.0
     except Exception:
