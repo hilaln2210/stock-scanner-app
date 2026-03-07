@@ -125,6 +125,8 @@ def _compute(ticker: str) -> Optional[dict]:
             'stoch_k_5m': round(ind_5m.get('stoch_k', 50), 1),
             'vwap_bias': ind_5m.get('vwap_bias', 'neutral'),
             'bb_squeeze': ind_5m.get('bb_squeeze', False),
+            'atr_pct_5m': round(ind_5m.get('atr_pct', 0), 2),
+            'atr_pct_1h': round(ind_1h.get('atr_pct', 0), 2),
         },
     }
 
@@ -261,6 +263,21 @@ def _calc_indicators(df: pd.DataFrame) -> dict:
         result['vol_ratio'] = cur_vol / avg_vol if avg_vol > 0 else 1.0
     else:
         result['vol_ratio'] = 1.0
+
+    # --- ATR 14 ---
+    try:
+        atr_series = ta.atr(high, low, close, length=14)
+        if atr_series is not None and len(atr_series) > 0 and not pd.isna(atr_series.iloc[-1]):
+            atr_val = float(atr_series.iloc[-1])
+            price = float(close.iloc[-1])
+            result['atr'] = atr_val
+            result['atr_pct'] = round((atr_val / price * 100), 2) if price > 0 else 0.0
+        else:
+            result['atr'] = 0.0
+            result['atr_pct'] = 0.0
+    except Exception:
+        result['atr'] = 0.0
+        result['atr_pct'] = 0.0
 
     return result
 
@@ -431,6 +448,28 @@ def _confluence_signal(ind_5m: dict, ind_1h: dict, patterns: list) -> tuple:
     if bb_squeeze:
         vol_score += 5
         details.append("BB Squeeze: פריצה צפויה!")
+
+    # ATR regime: high ATR amplifies directional signals; low ATR + squeeze = coiled spring
+    atr_pct_1h = ind_1h.get('atr_pct', 0)
+    if atr_pct_1h > 4:
+        # Highly volatile stock — oversold bounces are larger, overbought drops steeper
+        if bb_pct < 0.35:
+            vol_score += 10
+            details.append(f"ATR {atr_pct_1h:.1f}% תנודתי+נמוך ✓")
+        elif bb_pct > 0.65:
+            vol_score -= 10
+            details.append(f"ATR {atr_pct_1h:.1f}% תנודתי+גבוה ✗")
+        else:
+            details.append(f"ATR {atr_pct_1h:.1f}% (תנודתי)")
+    elif 0 < atr_pct_1h < 1.5:
+        # Low volatility / compression — squeeze breakouts are more explosive
+        if bb_squeeze:
+            vol_score += 8
+            details.append(f"ATR {atr_pct_1h:.1f}% לחץ+Squeeze ⚡")
+        else:
+            details.append(f"ATR {atr_pct_1h:.1f}% (שקט)")
+    elif atr_pct_1h >= 1.5:
+        details.append(f"ATR {atr_pct_1h:.1f}%")
 
     score += vol_score * 0.20
 
