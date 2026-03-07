@@ -318,6 +318,34 @@ function SmaCell({ val }) {
   );
 }
 
+function GapCell({ val }) {
+  if (!val) return <span style={{ color: '#475569' }}>—</span>;
+  const n = parseFloat(val);
+  if (isNaN(n)) return <span style={{ color: '#475569' }}>—</span>;
+  const color = n > 2 ? '#4ade80' : n > 0 ? '#a3e635' : n < -2 ? '#f87171' : '#fde047';
+  return (
+    <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color }}
+      title={n > 0 ? `גאפ פתיחה +${n.toFixed(1)}% — מומנטום חיובי` : `גאפ פתיחה ${n.toFixed(1)}% — חולשה`}>
+      {n > 0 ? '+' : ''}{n.toFixed(1)}%
+    </span>
+  );
+}
+
+function EpsQqCell({ val }) {
+  if (!val) return <span style={{ color: '#475569' }}>—</span>;
+  const n = parseFloat(val);
+  if (isNaN(n)) return <span style={{ color: '#475569' }}>—</span>;
+  // EPS QoQ: >25% = strong acceleration (green), >0% = growth (light green), <0% = decline (red)
+  const color = n > 50 ? '#4ade80' : n > 25 ? '#a3e635' : n > 0 ? '#fde047' : '#f87171';
+  const icon = n > 50 ? '🚀' : n > 25 ? '↑' : n > 0 ? '~' : '↓';
+  return (
+    <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color }}
+      title={`EPS רבעון על רבעון: ${n > 0 ? '+' : ''}${n.toFixed(0)}%`}>
+      {icon}{n > 0 ? '+' : ''}{n.toFixed(0)}%
+    </span>
+  );
+}
+
 // ── Technical Analysis signal badge ─────────────────────────────────────────────
 const TA_SIGNAL_META = {
   'Strong Buy':  { label: 'קנייה חזקה', short: '🟢🟢', bg: '#052e16', border: '#166534', text: '#4ade80' },
@@ -2495,7 +2523,7 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
 
       {sorted.length > 0 && (
         <div className="finviz-scroll" style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
-          <table className="fv-table" style={{ width: '100%', minWidth: 1360, borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
+          <table className="fv-table" style={{ width: '100%', minWidth: 1480, borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
             <thead>
               <tr>
                 <th style={{ ...TH_BASE, width: 28, padding: '6px 2px', background: TH_BASE.background }} />
@@ -2503,12 +2531,14 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                 <SortTh label="סקטור"   col="sector"       sort={sort} onSort={handleSort} style={{ width: 66 }} />
                 <SortTh label="מחיר"     col="price"        sort={sort} onSort={handleSort} style={{ width: 78 }} />
                 <SortTh label="שינוי%"   col="change_pct"   sort={sort} onSort={handleSort} style={{ width: 68 }} sub={isExtended ? 'טרום' : null} />
+                <SortTh label="Gap%"    col="gap_pct"      sort={sort} onSort={handleSort} style={{ width: 52 }} />
                 <SortTh label="30דק"    col="chg_30m"      sort={sort} onSort={handleSort} style={{ width: 52 }} />
                 <SortTh label="4שע"     col="chg_4h"       sort={sort} onSort={handleSort} style={{ width: 52 }} />
                 <SortTh label="נפח"     col="volume"       sort={sort} onSort={handleSort} style={{ width: 56 }} />
                 <SortTh label="RVol"    col="rel_volume"   sort={sort} onSort={handleSort} style={{ width: 48 }} />
-                <SortTh label="שווי"    col="market_cap"   sort={sort} onSort={handleSort} style={{ width: 62 }} />
+                <SortTh label="שווי"    col="market_cap"   sort={sort} onSort={handleSort} style={{ width: 72 }} />
                 <SortTh label="בריאות"  col="health_score" sort={sort} onSort={handleSort} style={{ width: 76 }} />
+                <SortTh label="EPS%"    col="eps_qq"       sort={sort} onSort={handleSort} style={{ width: 56 }} />
                 <SortTh label="RSI"      col="rsi"          sort={sort} onSort={handleSort} style={{ width: 72 }} />
                 <SortTh label="שורט%"   col="short_float"  sort={sort} onSort={handleSort} style={{ width: 52 }} />
                 <SortTh label="SMA20"   col="sma20"        sort={sort} onSort={handleSort} style={{ width: 58 }} />
@@ -2628,6 +2658,11 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                       )}
                     </td>
 
+                    {/* Gap% */}
+                    <td style={{ ...TD_BASE, textAlign: 'center' }}>
+                      <GapCell val={s.gap_pct} />
+                    </td>
+
                     {/* 30min change */}
                     <td style={TD_BASE}>
                       {s.chg_30m != null ? <PctCell val={s.chg_30m} /> : <span style={{ color: '#475569', fontSize: 10 }}>—</span>}
@@ -2648,12 +2683,22 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                       {s.rel_volume ? parseFloat(s.rel_volume).toFixed(2) : '—'}
                     </td>
 
-                    {/* Market Cap */}
-                    <td style={TD_BASE}><MoneyCell val={s.market_cap} str={livePrices[s.ticker]?.market_cap_str || s.market_cap_str} /></td>
+                    {/* Market Cap + EV/MC */}
+                    <td style={{ ...TD_BASE, padding: '3px 4px' }}>
+                      <MoneyCell val={s.market_cap} str={livePrices[s.ticker]?.market_cap_str || s.market_cap_str} />
+                      {s.ev_mc_ratio != null && (
+                        <div style={{ marginTop: 1 }}><EvMcCell ratio={s.ev_mc_ratio} /></div>
+                      )}
+                    </td>
 
                     {/* Health — badge only */}
                     <td style={{ ...TD_BASE, padding: '4px 6px' }}>
                       <HealthBadge score={s.health_score} detail={s.health_detail} />
+                    </td>
+
+                    {/* EPS QoQ — earnings acceleration */}
+                    <td style={{ ...TD_BASE, textAlign: 'center' }}>
+                      <EpsQqCell val={s.eps_qq} />
                     </td>
 
                     {/* RSI (daily + 1h + 5m) */}
