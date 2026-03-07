@@ -370,5 +370,43 @@ class SmartPortfolio:
         self._save()
         _save_json(TRADE_HISTORY_FILE, [])
 
+    def export_state(self) -> dict:
+        """Export full state for backup or sync to another instance (e.g. Render)."""
+        return {
+            'portfolio': {
+                'cash': self.cash,
+                'positions': self.positions,
+                'equity_history': self.equity_history[-500:],
+                'daily_pnl': self.daily_pnl,
+                'last_reset_date': self.last_reset_date,
+                'total_trades': self.total_trades,
+                'winning_trades': self.winning_trades,
+                'total_pnl': self.total_pnl,
+                'peak_equity': self.peak_equity,
+            },
+            'trade_history': self.get_trade_history(),
+        }
+
+    def import_state(self, payload: dict) -> None:
+        """Restore state from an export (e.g. from localhost to Render)."""
+        portfolio = payload.get('portfolio') or payload
+        if isinstance(portfolio, dict):
+            self.cash = portfolio.get('cash', INITIAL_CAPITAL)
+            self.positions = portfolio.get('positions', {})
+            self.equity_history = portfolio.get('equity_history', []) or [{'date': datetime.now().isoformat(), 'equity': INITIAL_CAPITAL}]
+            self.daily_pnl = portfolio.get('daily_pnl', 0)
+            self.last_reset_date = portfolio.get('last_reset_date', '')
+            self.total_trades = portfolio.get('total_trades', 0)
+            self.winning_trades = portfolio.get('winning_trades', 0)
+            self.total_pnl = portfolio.get('total_pnl', 0)
+            self.peak_equity = portfolio.get('peak_equity', INITIAL_CAPITAL)
+        history = payload.get('trade_history', [])
+        if history is not None:
+            try:
+                _save_json(TRADE_HISTORY_FILE, history)
+            except OSError:
+                pass
+        self._save()
+
 
 smart_portfolio = SmartPortfolio()
