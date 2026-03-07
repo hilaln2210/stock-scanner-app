@@ -318,16 +318,21 @@ function SmaCell({ val }) {
   );
 }
 
-function GapCell({ val }) {
+function GapCell({ val, isProxy = false }) {
   if (!val) return <span style={{ color: '#475569' }}>—</span>;
   const n = parseFloat(val);
   if (isNaN(n)) return <span style={{ color: '#475569' }}>—</span>;
   const color = n > 2 ? '#4ade80' : n > 0 ? '#a3e635' : n < -2 ? '#f87171' : '#fde047';
+  const title = isProxy
+    ? `שינוי טרום/אחרי שוק: ${n > 0 ? '+' : ''}${n.toFixed(1)}% (Gap% לא זמין עדיין)`
+    : n > 0 ? `גאפ פתיחה +${n.toFixed(1)}% — מומנטום חיובי` : `גאפ פתיחה ${n.toFixed(1)}% — חולשה`;
   return (
-    <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color }}
-      title={n > 0 ? `גאפ פתיחה +${n.toFixed(1)}% — מומנטום חיובי` : `גאפ פתיחה ${n.toFixed(1)}% — חולשה`}>
-      {n > 0 ? '+' : ''}{n.toFixed(1)}%
-    </span>
+    <div style={{ textAlign: 'center' }}>
+      <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color }} title={title}>
+        {n > 0 ? '+' : ''}{n.toFixed(1)}%
+      </span>
+      {isProxy && <div style={{ fontSize: 7, color: '#475569', lineHeight: 1 }}>ext</div>}
+    </div>
   );
 }
 
@@ -2658,9 +2663,11 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                       )}
                     </td>
 
-                    {/* Gap% */}
+                    {/* Gap% — in pre/post market show extended_chg_pct as proxy when gap_pct is 0/empty */}
                     <td style={{ ...TD_BASE, textAlign: 'center' }}>
-                      <GapCell val={s.gap_pct} />
+                      {isExtended && (!s.gap_pct || parseFloat(s.gap_pct) === 0)
+                        ? <GapCell val={s.extended_chg_pct} isProxy />
+                        : <GapCell val={s.gap_pct} />}
                     </td>
 
                     {/* 30min change */}
