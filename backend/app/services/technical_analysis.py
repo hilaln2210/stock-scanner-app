@@ -127,6 +127,11 @@ def _compute(ticker: str) -> Optional[dict]:
             'bb_squeeze': ind_5m.get('bb_squeeze', False),
             'atr_pct_5m': round(ind_5m.get('atr_pct', 0), 2),
             'atr_pct_1h': round(ind_1h.get('atr_pct', 0), 2),
+            'obv_trend': ind_5m.get('obv_trend', 'neutral'),
+            'cci_5m': round(ind_5m.get('cci', 0), 1),
+            'above_ema50_1h': ind_1h.get('above_ema50'),
+            'above_ema200_1h': ind_1h.get('above_ema200'),
+            'golden_cross_1h': ind_1h.get('golden_cross'),
         },
     }
 
@@ -279,6 +284,47 @@ def _calc_indicators(df: pd.DataFrame) -> dict:
         result['atr'] = 0.0
         result['atr_pct'] = 0.0
 
+    # --- EMA 50 / 200 (long-term trend context) ---
+    try:
+        price = float(close.iloc[-1])
+        ema50 = ta.ema(close, length=50)
+        ema200 = ta.ema(close, length=200)
+        e50 = float(ema50.iloc[-1]) if ema50 is not None and len(ema50) > 0 and not pd.isna(ema50.iloc[-1]) else None
+        e200 = float(ema200.iloc[-1]) if ema200 is not None and len(ema200) > 0 and not pd.isna(ema200.iloc[-1]) else None
+        result['ema50'] = e50
+        result['ema200'] = e200
+        result['above_ema50'] = (price > e50) if e50 else None
+        result['above_ema200'] = (price > e200) if e200 else None
+        result['golden_cross'] = (e50 > e200) if (e50 and e200) else None
+    except Exception:
+        result['ema50'] = None
+        result['ema200'] = None
+        result['above_ema50'] = None
+        result['above_ema200'] = None
+        result['golden_cross'] = None
+
+    # --- OBV trend (accumulation vs distribution) ---
+    try:
+        obv = ta.obv(close, volume)
+        if obv is not None and len(obv) >= 20:
+            obv_sma = float(obv.iloc[-20:].mean())
+            obv_cur = float(obv.iloc[-1])
+            result['obv_trend'] = 'rising' if obv_cur > obv_sma else 'falling'
+        else:
+            result['obv_trend'] = 'neutral'
+    except Exception:
+        result['obv_trend'] = 'neutral'
+
+    # --- CCI 20 (extremes detector) ---
+    try:
+        cci = ta.cci(high, low, close, length=20)
+        if cci is not None and len(cci) > 0 and not pd.isna(cci.iloc[-1]):
+            result['cci'] = float(cci.iloc[-1])
+        else:
+            result['cci'] = 0.0
+    except Exception:
+        result['cci'] = 0.0
+
     return result
 
 
@@ -374,6 +420,26 @@ def _confluence_signal(ind_5m: dict, ind_1h: dict, patterns: list) -> tuple:
         trend_score *= 0.5
         details.append(f"ADX {adx_1h:.0f} (אין מגמה)")
 
+    # EMA 50/200 long-term context — bonus/penalty on top of EMA9/21
+    above_ema50 = ind_1h.get('above_ema50')
+    above_ema200 = ind_1h.get('above_ema200')
+    golden_cross = ind_1h.get('golden_cross')
+    if above_ema50 is True and above_ema200 is True:
+        trend_score += 20
+        details.append("מעל EMA50/200 ✓")
+    elif above_ema50 is False and above_ema200 is False:
+        trend_score -= 20
+        details.append("מתחת EMA50/200 ✗")
+    elif above_ema50 is True:
+        trend_score += 10
+        details.append("מעל EMA50")
+    if golden_cross is True:
+        trend_score += 8
+        details.append("Golden Cross 🟡")
+    elif golden_cross is False:
+        trend_score -= 8
+        details.append("Death Cross 💀")
+
     score += trend_score * 0.25
 
     # ── Momentum (30%) — 5m for timing, 1h for confirmation ──
@@ -428,6 +494,21 @@ def _confluence_signal(ind_5m: dict, ind_1h: dict, patterns: list) -> tuple:
         momentum_score += 10
     elif stoch_k < stoch_d and stoch_k > 50:
         momentum_score -= 10
+
+    # CCI — catches extremes RSI can miss (>150 overbought, <-150 oversold)
+    cci = ind_5m.get('cci', 0)
+    if cci > 200:
+        momentum_score -= 25
+        details.append(f"CCI {cci:.0f} (קיצוני-קניית יתר)")
+    elif cci > 100:
+        momentum_score -= 12
+        details.append(f"CCI {cci:.0f} (קניית יתר)")
+    elif cci < -200:
+        momentum_score += 25
+        details.append(f"CCI {cci:.0f} (קיצוני-מכירת יתר)")
+    elif cci < -100:
+        momentum_score += 12
+        details.append(f"CCI {cci:.0f} (מכירת יתר)")
 
     score += momentum_score * 0.30
 
@@ -492,6 +573,21 @@ def _confluence_signal(ind_5m: dict, ind_1h: dict, patterns: list) -> tuple:
         volume_score += 10
     elif vol_ratio < 0.5:
         volume_score -= 10
+
+    # OBV trend — confirms or contradicts price direction
+    obv_trend = ind_5m.get('obv_trend', 'neutral')
+    if obv_trend == 'rising' and vwap_bias == 'bullish':
+        volume_score += 15
+        details.append("OBV↑ + VWAP שורי (אקומולציה)")
+    elif obv_trend == 'rising':
+        volume_score += 8
+        details.append("OBV↑ (אקומולציה)")
+    elif obv_trend == 'falling' and vwap_bias == 'bearish':
+        volume_score -= 15
+        details.append("OBV↓ + VWAP דובי (דיסטריביושן)")
+    elif obv_trend == 'falling':
+        volume_score -= 8
+        details.append("OBV↓ (דיסטריביושן)")
 
     score += volume_score * 0.15
 

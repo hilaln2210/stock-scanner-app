@@ -305,6 +305,19 @@ function BetaCell({ beta }) {
   return <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 600, color }}>{val.toFixed(1)}</span>;
 }
 
+function SmaCell({ val }) {
+  if (!val) return <span style={{ color: '#475569' }}>—</span>;
+  const n = parseFloat(val);
+  if (isNaN(n)) return <span style={{ color: '#475569' }}>—</span>;
+  // >5% above = extended (orange); 0-5% above = healthy (green); -5–0% = pullback (yellow); <-5% = breakdown (red)
+  const color = n > 5 ? '#fb923c' : n > 0 ? '#4ade80' : n > -5 ? '#fde047' : '#f87171';
+  return (
+    <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 600, color }}>
+      {n > 0 ? '+' : ''}{n.toFixed(1)}%
+    </span>
+  );
+}
+
 // ── Technical Analysis signal badge ─────────────────────────────────────────────
 const TA_SIGNAL_META = {
   'Strong Buy':  { label: 'קנייה חזקה', short: '🟢🟢', bg: '#052e16', border: '#166534', text: '#4ade80' },
@@ -2482,7 +2495,7 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
 
       {sorted.length > 0 && (
         <div className="finviz-scroll" style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
-          <table className="fv-table" style={{ width: '100%', minWidth: 1300, borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
+          <table className="fv-table" style={{ width: '100%', minWidth: 1360, borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
             <thead>
               <tr>
                 <th style={{ ...TH_BASE, width: 28, padding: '6px 2px', background: TH_BASE.background }} />
@@ -2498,6 +2511,7 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                 <SortTh label="בריאות"  col="health_score" sort={sort} onSort={handleSort} style={{ width: 76 }} />
                 <SortTh label="RSI"      col="rsi"          sort={sort} onSort={handleSort} style={{ width: 72 }} />
                 <SortTh label="שורט%"   col="short_float"  sort={sort} onSort={handleSort} style={{ width: 52 }} />
+                <SortTh label="SMA20"   col="sma20"        sort={sort} onSort={handleSort} style={{ width: 58 }} />
                 <SortTh label="ATR"     col="atr"          sort={sort} onSort={handleSort} style={{ width: 56 }} />
                 <SortTh label="β"       col="beta"         sort={sort} onSort={handleSort} style={{ width: 44 }} />
                 <SortTh label="📊 TA"   col="tech_score"   sort={sort} onSort={handleSort} style={{ width: 114 }} />
@@ -2649,6 +2663,11 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
 
                     {/* Short% */}
                     <td style={TD_BASE}><ShortCell val={s.short_float} /></td>
+
+                    {/* SMA20% — distance from 20-day MA */}
+                    <td style={{ ...TD_BASE, textAlign: 'center' }}>
+                      <SmaCell val={s.sma20} />
+                    </td>
 
                     {/* ATR */}
                     <td style={{ ...TD_BASE, padding: '3px 4px' }}>
