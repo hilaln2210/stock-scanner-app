@@ -2717,6 +2717,19 @@ async def smart_portfolio_reset():
     return {'success': True, 'message': 'Portfolio reset to $3,000'}
 
 
+@router.get("/smart-portfolio/export")
+async def smart_portfolio_export():
+    """Export portfolio state (for backup or sync to Render)."""
+    return smart_portfolio.export_state()
+
+
+@router.post("/smart-portfolio/import")
+async def smart_portfolio_import(payload: dict):
+    """Import portfolio state (e.g. from localhost to sync to Render)."""
+    smart_portfolio.import_state(payload)
+    return {'success': True, 'message': 'Portfolio imported'}
+
+
 @router.get("/smart-portfolio/regime")
 async def get_market_regime():
     """Get current market regime analysis."""
