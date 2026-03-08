@@ -25,23 +25,34 @@ const MCAP_OPTS = [
   { label: 'Mid ($2-10bln)',         value: 'cap_mid' },
   { label: 'Small ($300mln-2bln)',   value: 'cap_small' },
   { label: 'Micro ($50-300mln)',     value: 'cap_micro' },
+  { label: 'Nano (under $50mln)',    value: 'cap_nano' },
+  { label: '─────────',             value: '', disabled: true },
+  { label: '+Micro (over $50mln)',   value: 'cap_microover' },
   { label: '+Small (over $300mln)',  value: 'cap_smallover' },
   { label: '+Mid (over $2bln)',      value: 'cap_midover' },
   { label: '+Large (over $10bln)',   value: 'cap_largeover' },
+  { label: '─────────',             value: '', disabled: true },
+  { label: '-Small (under $2bln)',   value: 'cap_smallunder' },
+  { label: '-Mid (under $10bln)',    value: 'cap_midunder' },
+  { label: '-Large (under $200bln)', value: 'cap_largeunder' },
 ];
 
 const AVGVOL_OPTS = [
   ANY,
-  { label: 'Over 50K',  value: 'sh_avgvol_o50' },
-  { label: 'Over 100K', value: 'sh_avgvol_o100' },
-  { label: 'Over 200K', value: 'sh_avgvol_o200' },
-  { label: 'Over 300K', value: 'sh_avgvol_o300' },
-  { label: 'Over 500K', value: 'sh_avgvol_o500' },
-  { label: 'Over 750K', value: 'sh_avgvol_o750' },
-  { label: 'Over 1M',   value: 'sh_avgvol_o1000' },
-  { label: 'Over 2M',   value: 'sh_avgvol_o2000' },
-  { label: 'Over 5M',   value: 'sh_avgvol_o5000' },
-  { label: 'Over 10M',  value: 'sh_avgvol_o10000' },
+  { label: 'Over 50K',    value: 'sh_avgvol_o50' },
+  { label: 'Over 100K',   value: 'sh_avgvol_o100' },
+  { label: 'Over 200K',   value: 'sh_avgvol_o200' },
+  { label: 'Over 300K',   value: 'sh_avgvol_o300' },
+  { label: 'Over 500K',   value: 'sh_avgvol_o500' },
+  { label: 'Over 750K',   value: 'sh_avgvol_o750' },
+  { label: 'Over 1M',     value: 'sh_avgvol_o1000' },
+  { label: 'Over 2M',     value: 'sh_avgvol_o2000' },
+  { label: 'Over 5M',     value: 'sh_avgvol_o5000' },
+  { label: 'Over 10M',    value: 'sh_avgvol_o10000' },
+  { label: 'Under 100K',  value: 'sh_avgvol_u100' },
+  { label: 'Under 500K',  value: 'sh_avgvol_u500' },
+  { label: 'Under 1M',    value: 'sh_avgvol_u1000' },
+  { label: 'Under 2M',    value: 'sh_avgvol_u2000' },
 ];
 
 const RELVOL_OPTS = [
@@ -124,33 +135,47 @@ const SALESQQ_OPTS = [
 
 const SHORT_OPTS = [
   ANY,
-  { label: 'Over 5%',  value: 'sh_short_o5' },
-  { label: 'Over 10%', value: 'sh_short_o10' },
-  { label: 'Over 15%', value: 'sh_short_o15' },
-  { label: 'Over 20%', value: 'sh_short_o20' },
-  { label: 'Over 25%', value: 'sh_short_o25' },
-  { label: 'Over 30%', value: 'sh_short_o30' },
+  { label: 'Over 5%',   value: 'sh_short_o5' },
+  { label: 'Over 10%',  value: 'sh_short_o10' },
+  { label: 'Over 15%',  value: 'sh_short_o15' },
+  { label: 'Over 20%',  value: 'sh_short_o20' },
+  { label: 'Over 25%',  value: 'sh_short_o25' },
+  { label: 'Over 30%',  value: 'sh_short_o30' },
+  { label: 'Under 5%',  value: 'sh_short_u5' },
+  { label: 'Under 10%', value: 'sh_short_u10' },
+  { label: 'Under 15%', value: 'sh_short_u15' },
+  { label: 'Under 20%', value: 'sh_short_u20' },
 ];
 
 const RSI_OPTS = [
   ANY,
-  { label: 'מכור יתר (<20)',  value: 'ta_rsi_os20' },
-  { label: 'מכור יתר (<30)',  value: 'ta_rsi_os30' },
-  { label: '<40',             value: 'ta_rsi_nos40' },
-  { label: '>50',             value: 'ta_rsi_nos50' },
-  { label: '>60',             value: 'ta_rsi_nos60' },
-  { label: 'קנוי יתר (>70)', value: 'ta_rsi_ob70' },
-  { label: 'קנוי יתר (>80)', value: 'ta_rsi_ob80' },
+  { label: 'מכור יתר (<20)',      value: 'ta_rsi_os20' },
+  { label: 'מכור יתר (<30)',      value: 'ta_rsi_os30' },
+  { label: 'לא מכור יתר (>30)',   value: 'ta_rsi_nos30' },
+  { label: 'לא מכור יתר (>40)',   value: 'ta_rsi_nos40' },
+  { label: '>50',                  value: 'ta_rsi_nos50' },
+  { label: '>60',                  value: 'ta_rsi_nos60' },
+  { label: 'קנוי יתר (>70)',      value: 'ta_rsi_ob70' },
+  { label: 'קנוי יתר (>80)',      value: 'ta_rsi_ob80' },
+  { label: 'לא קנוי יתר (<50)',   value: 'ta_rsi_nob50' },
+  { label: 'לא קנוי יתר (<60)',   value: 'ta_rsi_nob60' },
 ];
 
 const INST_OPTS = [
   ANY,
-  { label: 'Over 10%', value: 'sh_instown_o10' },
-  { label: 'Over 20%', value: 'sh_instown_o20' },
-  { label: 'Over 30%', value: 'sh_instown_o30' },
-  { label: 'Over 50%', value: 'sh_instown_o50' },
-  { label: 'Over 70%', value: 'sh_instown_o70' },
-  { label: 'Over 90%', value: 'sh_instown_o90' },
+  { label: 'Over 10%',  value: 'sh_instown_o10' },
+  { label: 'Over 20%',  value: 'sh_instown_o20' },
+  { label: 'Over 30%',  value: 'sh_instown_o30' },
+  { label: 'Over 40%',  value: 'sh_instown_o40' },
+  { label: 'Over 50%',  value: 'sh_instown_o50' },
+  { label: 'Over 60%',  value: 'sh_instown_o60' },
+  { label: 'Over 70%',  value: 'sh_instown_o70' },
+  { label: 'Over 80%',  value: 'sh_instown_o80' },
+  { label: 'Over 90%',  value: 'sh_instown_o90' },
+  { label: 'Under 10%', value: 'sh_instown_u10' },
+  { label: 'Under 20%', value: 'sh_instown_u20' },
+  { label: 'Under 30%', value: 'sh_instown_u30' },
+  { label: 'Under 50%', value: 'sh_instown_u50' },
 ];
 
 const GAP_OPTS = [
@@ -652,8 +677,8 @@ function FilterItem({ label, options, value, onChange }) {
         onChange={e => onChange(e.target.value)}
         style={fvSelectStyle(isActive)}
       >
-        {options.map(o => (
-          <option key={o.value ?? 'any'} value={o.value}>{o.label}</option>
+        {options.map((o, i) => (
+          <option key={o.value ? o.value + i : 'sep' + i} value={o.value} disabled={o.disabled}>{o.label}</option>
         ))}
       </select>
     </div>
