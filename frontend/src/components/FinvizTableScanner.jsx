@@ -617,13 +617,13 @@ const fvNumInput = {
 };
 
 function ColTooltip({ text }) {
-  const [visible, setVisible] = React.useState(false);
-  const [pos, setPos] = React.useState({ top: 0, left: 0 });
-  const ref = React.useRef(null);
+  const [visible, setVisible] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const ref = useRef(null);
   const handleEnter = () => {
     if (ref.current) {
       const r = ref.current.getBoundingClientRect();
-      setPos({ top: r.bottom + window.scrollY + 4, left: r.left + window.scrollX });
+      setPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 280) });
     }
     setVisible(true);
   };
@@ -635,11 +635,11 @@ function ColTooltip({ text }) {
       style={{ display: 'inline-block', marginRight: 3, cursor: 'help', color: '#475569', fontSize: 10, lineHeight: 1 }}
     >
       ?
-      {visible && (
+      {visible && ReactDOM.createPortal(
         <div style={{
           position: 'fixed',
           top: pos.top,
-          left: Math.min(pos.left, window.innerWidth - 280),
+          left: pos.left,
           zIndex: 9999,
           background: '#0f172a',
           border: '1px solid #334155',
@@ -652,9 +652,10 @@ function ColTooltip({ text }) {
           textAlign: 'right',
         }}>
           {text.split('\n').map((line, i) => (
-            <div key={i} style={{ fontSize: 12, color: line.startsWith('•') ? '#94a3b8' : '#e2e8f0', fontWeight: line.startsWith('•') ? 400 : (i === 0 ? 700 : 400), marginBottom: 3, whiteSpace: 'pre-wrap' }}>{line}</div>
+            <div key={i} style={{ fontSize: 12, color: line.startsWith('•') ? '#94a3b8' : '#e2e8f0', fontWeight: line.startsWith('•') ? 400 : (i === 0 ? 700 : 400), marginBottom: 3 }}>{line}</div>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </span>
   );
