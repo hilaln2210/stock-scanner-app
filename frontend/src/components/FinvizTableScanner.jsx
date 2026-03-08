@@ -616,10 +616,10 @@ const fvNumInput = {
   fontFamily: 'inherit',
 };
 
-function SortTh({ label, col, sort, onSort, sub, style: extraStyle }) {
+function SortTh({ label, col, sort, onSort, sub, title, style: extraStyle }) {
   const active = sort.col === col;
   return (
-    <th onClick={() => onSort(col)} style={{
+    <th onClick={() => onSort(col)} title={title} style={{
       ...TH_BASE,
       textAlign: 'right',
       cursor: 'pointer',
@@ -2543,26 +2543,46 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
             <thead>
               <tr>
                 <th style={{ ...TH_BASE, width: 28, padding: '6px 2px', background: TH_BASE.background }} />
-                <SortTh label="מניה"     col="ticker"       sort={sort} onSort={handleSort} style={{ width: 66 }} />
-                <SortTh label="סקטור"   col="sector"       sort={sort} onSort={handleSort} style={{ width: 66 }} />
-                <SortTh label="מחיר"     col="price"        sort={sort} onSort={handleSort} style={{ width: 78 }} />
-                <SortTh label="שינוי%"   col="change_pct"   sort={sort} onSort={handleSort} style={{ width: 68 }} sub={isExtended ? 'טרום' : null} />
-                <SortTh label="Gap%"    col="gap_pct"      sort={sort} onSort={handleSort} style={{ width: 52 }} />
-                <SortTh label="30דק"    col="chg_30m"      sort={sort} onSort={handleSort} style={{ width: 52 }} />
-                <SortTh label="4שע"     col="chg_4h"       sort={sort} onSort={handleSort} style={{ width: 52 }} />
-                <SortTh label="נפח"     col="volume"       sort={sort} onSort={handleSort} style={{ width: 56 }} />
-                <SortTh label="RVol"    col="rel_volume"   sort={sort} onSort={handleSort} style={{ width: 48 }} />
-                <SortTh label="שווי"    col="market_cap"   sort={sort} onSort={handleSort} style={{ width: 72 }} />
-                <SortTh label="בריאות"  col="health_score" sort={sort} onSort={handleSort} style={{ width: 76 }} />
-                <SortTh label="EPS%"    col="eps_qq"       sort={sort} onSort={handleSort} style={{ width: 56 }} />
-                <SortTh label="RSI"      col="rsi"          sort={sort} onSort={handleSort} style={{ width: 72 }} />
-                <SortTh label="שורט%"   col="short_float"  sort={sort} onSort={handleSort} style={{ width: 52 }} />
-                <SortTh label="SMA20"   col="sma20"        sort={sort} onSort={handleSort} style={{ width: 58 }} />
-                <SortTh label="ATR"     col="atr"          sort={sort} onSort={handleSort} style={{ width: 56 }} />
-                <SortTh label="β"       col="beta"         sort={sort} onSort={handleSort} style={{ width: 44 }} />
-                <SortTh label="📊 TA"   col="tech_score"   sort={sort} onSort={handleSort} style={{ width: 114 }} />
-                <th style={{ ...TH_BASE, width: 84, textAlign: 'right', background: TH_BASE.background }}>תגיות</th>
-                <th style={{ ...TH_BASE, width: 38, textAlign: 'center', background: TH_BASE.background }}>דירוג</th>
+                <SortTh label="מניה"    col="ticker"       sort={sort} onSort={handleSort} style={{ width: 66 }}
+                  title="סמל המניה ושם החברה. לחץ לפתיחת פרטים מלאים." />
+                <SortTh label="סקטור"  col="sector"       sort={sort} onSort={handleSort} style={{ width: 66 }}
+                  title="סקטור ותעשייה לפי Finviz. עוזר להשוואה בין מניות באותו ענף." />
+                <SortTh label="מחיר"   col="price"        sort={sort} onSort={handleSort} style={{ width: 78 }}
+                  title="מחיר אחרון בדולרים. בשעות מסחר — מחיר real-time; בטרום/אחרי שוק — מחיר הארכה." />
+                <SortTh label="שינוי%" col="change_pct"   sort={sort} onSort={handleSort} style={{ width: 68 }} sub={isExtended ? 'טרום' : null}
+                  title="שינוי אחוזי מסגירת אתמול. בשעות ארכה — שינוי ממחיר הסגירה במסחר המורחב." />
+                <SortTh label="Gap%"   col="gap_pct"      sort={sort} onSort={handleSort} style={{ width: 52 }}
+                  title={"Gap (פער פתיחה): הפרש בין מחיר הפתיחה לסגירה של אתמול, כאחוז.\nחיובי = פתיחה גבוהה (gap up) | שלילי = פתיחה נמוכה (gap down).\nטרום/אחרי שוק: מוצג שינוי ממחיר מסחר מורחב כגישה (ext)."} />
+                <SortTh label="30דק"   col="chg_30m"      sort={sort} onSort={handleSort} style={{ width: 52 }}
+                  title="שינוי אחוזי ב-30 הדקות האחרונות. מעיד על מומנטום קצר-טווח." />
+                <SortTh label="4שע"    col="chg_4h"       sort={sort} onSort={handleSort} style={{ width: 52 }}
+                  title="שינוי אחוזי ב-4 השעות האחרונות. מסנן מניות עם מגמה תוך-יומית ברורה." />
+                <SortTh label="נפח"    col="volume"       sort={sort} onSort={handleSort} style={{ width: 56 }}
+                  title="כמות המניות שנסחרו היום. נפח גבוה = עניין גדול של שוק ונזילות גבוהה." />
+                <SortTh label="RVol"   col="rel_volume"   sort={sort} onSort={handleSort} style={{ width: 48 }}
+                  title={"Relative Volume — נפח יחסי לממוצע של 10 ימים בשעה זו.\n>2.0 = נפח חריג (סיגנל חזק) | 1.0 = רגיל | <0.5 = שקט."} />
+                <SortTh label="שווי"   col="market_cap"   sort={sort} onSort={handleSort} style={{ width: 72 }}
+                  title={"שווי שוק = מחיר × מספר מניות. מציג גם EV/MC:\nEV (Enterprise Value) = שווי שוק + חוב נטו.\nEV/MC < 1 = מזומנים עודפים (חיובי) | >1.3 = חוב גבוה."} />
+                <SortTh label="בריאות" col="health_score" sort={sort} onSort={handleSort} style={{ width: 76 }}
+                  title={"ציון בריאות פונדמנטלית (0-100) מחושב מ-Finviz:\n• רווחיות (EPS+, P/E)\n• צמיחה (EPS QoQ, הכנסות)\n• מאזן (חוב, נזילות)\n• מומנטום (ביצועים vs מדד)\nציון ≥70 = מניה בריאה | ≥85 = מצוינת."} />
+                <SortTh label="EPS%"   col="eps_qq"       sort={sort} onSort={handleSort} style={{ width: 56 }}
+                  title={"EPS Quarter-over-Quarter: שיעור הצמיחה ברווח למניה בהשוואה לרבעון הקודם.\n🚀 >50% = צמיחה פורצת | >0% = חיובי | שלילי = ירידה.\nמקור: Finviz (רבעון אחרון מול רבעון לפניו)."} />
+                <SortTh label="RSI"    col="rsi"          sort={sort} onSort={handleSort} style={{ width: 72 }}
+                  title={"RSI (Relative Strength Index, 14 נרות) — מודד מהירות ועוצמת שינויי מחיר.\n>70 = קנוי יתר (אזהרת תיקון) | <30 = מכור יתר (הזדמנות)\nמוצג: יומי (גדול) + שעתי + 5 דקות (קטן)."} />
+                <SortTh label="שורט%"  col="short_float"  sort={sort} onSort={handleSort} style={{ width: 52 }}
+                  title={"Short Float: אחוז המניות המושאלות למכירה בחסר מסך הצף.\n>20% = לחץ שורט גבוה — פוטנציאל Short Squeeze\n>10% = שורט משמעותי | <5% = נמוך."} />
+                <SortTh label="SMA20"  col="sma20"        sort={sort} onSort={handleSort} style={{ width: 58 }}
+                  title={"מרחק מממוצע נע פשוט של 20 ימים (SMA20), כאחוז.\n+5% = מחיר 5% מעל SMA20 (מגמה עולה חזקה)\n-5% = מתחת — חולשה. מחיר ≈ SMA20 = תמיכה/התנגדות מרכזית."} />
+                <SortTh label="ATR"    col="atr"          sort={sort} onSort={handleSort} style={{ width: 56 }}
+                  title={"ATR (Average True Range, 14 ימים): טווח תנועה ממוצע יומי בדולרים.\nמודד תנודתיות — כמה המניה זזה ביום בממוצע.\nATR גבוה = הזדמנויות גדולות אך גם סיכון גדול יותר.\nשורה שנייה: ATR% תוך-יומי (1h bars) ביחס למחיר."} />
+                <SortTh label="β"      col="beta"         sort={sort} onSort={handleSort} style={{ width: 44 }}
+                  title={"Beta: רגישות המניה לתנועות ה-S&P500.\nβ=1.0 = זהה למדד | β=2.0 = פי 2 מהמדד | β=0.5 = חצי\nβ>1.5 = תנודתי מאוד (⚡) | β<0.8 = יציב (🛡️)\nשלילי = נע הפוך למדד (הגנה בירידות)."} />
+                <SortTh label="📊 TA"  col="tech_score"   sort={sort} onSort={handleSort} style={{ width: 114 }}
+                  title={"ציון אנליזה טכנית מרוכב (-100 עד +100) מחושב מ-yfinance (5m + 1h bars):\n• מגמה: EMA50/200, Golden/Death Cross\n• מומנטום: MACD, CCI, RSI תוך-יומי\n• נפח: OBV (On-Balance Volume)\n• תנודתיות: ATR regime\nחיובי = סיגנלים לונג | שלילי = סיגנלי שורט."} />
+                <th style={{ ...TH_BASE, width: 84, textAlign: 'right', background: TH_BASE.background }}
+                  title="תגיות אוטומטיות: Gap Up/Down, High RVol, Short Squeeze, Oversold/Overbought ועוד. מבוססות על סף ערכים מוגדר.">תגיות</th>
+                <th style={{ ...TH_BASE, width: 38, textAlign: 'center', background: TH_BASE.background }}
+                  title={"דירוג אנליסטים של Finviz:\n1 = Buy חזק | 2 = Buy | 3 = Hold | 4 = Sell | 5 = Sell חזק"}>דירוג</th>
               </tr>
             </thead>
 
