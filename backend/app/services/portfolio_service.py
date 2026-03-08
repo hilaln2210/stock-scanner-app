@@ -17,7 +17,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import yfinance as yf
 
-PORTFOLIO_FILE = "/home/hila/Desktop/Stocks/backend/data/demo_portfolio.json"
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+PORTFOLIO_FILE = os.environ.get(
+    "PORTFOLIO_FILE",
+    os.path.join(_BASE_DIR, "data", "demo_portfolio.json")
+)
 DEFAULT_INITIAL_CASH = 3000.0
 DEFAULT_MAX_PER_POSITION = 700.0
 _MAX_PRICE_WORKERS = 4

@@ -1,0 +1,31 @@
+{
+  "cash": 2300.0,
+  "initial_cash": 3000.0,
+  "max_per_position": 700.0,
+  "positions": [
+    {
+      "ticker": "AAPL",
+      "company": "AAPL",
+      "shares": 2.683535,
+      "buy_price": 260.85,
+      "buy_date": "2026-03-02 12:57",
+      "cost_basis": 700.0,
+      "earnings_beat": null,
+      "rsi_at_buy": null,
+      "watch_level": null,
+      "support": null,
+      "resistance": null
+    }
+  ],
+  "trades": [
+    {
+      "date": "2026-03-02 12:57",
+      "action": "BUY",
+      "ticker": "AAPL",
+      "shares": 2.683535,
+      "price": 260.85,
+      "value": 700.0
+    }
+  ],
+  "created_at": "2026-03-02T12:57:30.471769"
+}

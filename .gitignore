@@ -52,5 +52,6 @@ Thumbs.db
 backend/server.log
 frontend/frontend.log
 
-# Runtime data
-backend/data/
+# Runtime data (exclude cache/logs but keep portfolio JSONs)
+backend/data/*.log
+backend/data/market_regime.json
