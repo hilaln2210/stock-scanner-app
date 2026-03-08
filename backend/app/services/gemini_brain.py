@@ -535,6 +535,121 @@ def score_days_to_cover(stock: dict) -> tuple:
     return score, reasons
 
 
+# ─── Full Short Squeeze Scoring ──────────────────────────────────
+
+def score_short_squeeze_full(stock: dict) -> dict:
+    """
+    Combined short squeeze analysis using Finviz fundamentals + intraday TA.
+
+    Squeeze potential levels:
+      0-20:  Low — not a squeeze candidate
+      21-40: Watch — elevated short interest, monitor
+      41-60: Alert — squeeze conditions building
+      61-80: High — active squeeze, high probability
+      81+:   Extreme — squeeze firing, urgent signal
+
+    Squeeze stages (from intraday TA if available):
+      accumulation → compression → firing → exhaustion
+
+    Returns dict with total_score, stage, signals, label, emoji.
+    """
+    total_score = 0
+    all_signals = []
+
+    # ── 1. Short Float (% of float sold short) ───────────────────
+    short_fl = _safe_float(stock.get('short_float'))
+    if short_fl >= 30:
+        total_score += 25
+        all_signals.append(f'🩸 Short Float {short_fl:.0f}% — מלכודת שורטים קיצונית')
+    elif short_fl >= 20:
+        total_score += 18
+        all_signals.append(f'⚠️ Short Float {short_fl:.0f}% — לחץ שורט גבוה')
+    elif short_fl >= 15:
+        total_score += 12
+        all_signals.append(f'Short Float {short_fl:.0f}% — שורט משמעותי')
+    elif short_fl >= 10:
+        total_score += 6
+        all_signals.append(f'Short Float {short_fl:.0f}%')
+
+    # ── 2. Days to Cover (DTC) ───────────────────────────────────
+    dtc_score, dtc_signals = score_days_to_cover(stock)
+    total_score += dtc_score
+    all_signals.extend(dtc_signals)
+
+    # ── 3. Intraday squeeze stage from TA engine ──────────────────
+    squeeze_stage = stock.get('squeeze_stage', 'none')
+    squeeze_intra = stock.get('squeeze_score', 0)
+    squeeze_sigs  = stock.get('squeeze_signals', [])
+
+    stage_bonus = {
+        'firing':       30,
+        'compression':  15,
+        'accumulation': 8,
+        'exhaustion':   -10,
+        'none':         0,
+    }
+    total_score += stage_bonus.get(squeeze_stage, 0)
+    if squeeze_intra > 0:
+        total_score += min(20, squeeze_intra // 2)
+    all_signals.extend(squeeze_sigs)
+
+    # ── 4. Price momentum confirms squeeze ───────────────────────
+    chg = _safe_float(stock.get('change_pct'))
+    rel_vol = _safe_float(stock.get('rel_volume'))
+    if short_fl >= 10 and chg >= 5 and rel_vol >= 1.5:
+        total_score += 15
+        all_signals.append(f'💥 מחיר +{chg:.1f}% עם RVol {rel_vol:.1f}× בזמן שורט גבוה')
+    elif short_fl >= 10 and chg >= 3:
+        total_score += 8
+        all_signals.append(f'📈 מחיר +{chg:.1f}% לוחץ על שורטים')
+
+    # ── 5. Small float = easier to squeeze ───────────────────────
+    market_cap = _safe_float(stock.get('market_cap'))
+    if 0 < market_cap < 500:  # under $500M
+        total_score += 8
+        all_signals.append(f'שווי שוק קטן (${market_cap:.0f}M) — קל יותר לסחוט')
+    elif 0 < market_cap < 2000:
+        total_score += 4
+
+    # ── 6. TTM squeeze confirmation ───────────────────────────────
+    ttm_score, ttm_signals, ttm_state = detect_ttm_squeeze(stock)
+    if ttm_state in ('firing', 'on'):
+        total_score += ttm_score
+        all_signals.extend(ttm_signals)
+
+    # ── Determine stage (intraday TA wins if available) ───────────
+    if squeeze_stage != 'none':
+        final_stage = squeeze_stage
+    elif ttm_state == 'firing':
+        final_stage = 'firing'
+    elif ttm_state == 'on':
+        final_stage = 'compression'
+    elif total_score >= 30:
+        final_stage = 'accumulation'
+    else:
+        final_stage = 'none'
+
+    # ── Label + emoji ─────────────────────────────────────────────
+    stage_meta = {
+        'none':        {'label': 'ללא סקוויז',    'emoji': '—'},
+        'accumulation':{'label': 'בנייה',          'emoji': '👀'},
+        'compression': {'label': 'דחיסה — כוונו',  'emoji': '⏳'},
+        'firing':      {'label': 'סקוויז פעיל!',   'emoji': '🚀'},
+        'exhaustion':  {'label': 'עייפות — זהירות','emoji': '⚠️'},
+    }
+    meta = stage_meta.get(final_stage, stage_meta['none'])
+
+    return {
+        'squeeze_total_score': round(total_score),
+        'squeeze_stage':       final_stage,
+        'squeeze_label':       meta['label'],
+        'squeeze_emoji':       meta['emoji'],
+        'squeeze_signals':     all_signals,
+        'short_float':         short_fl,
+        'dtc':                 _safe_float(stock.get('short_ratio')),
+    }
+
+
 # ─── Momentum Acceleration ───────────────────────────────────────
 
 def score_momentum_acceleration(stock: dict) -> tuple:

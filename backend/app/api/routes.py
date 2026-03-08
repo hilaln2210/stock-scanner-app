@@ -2511,9 +2511,27 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
             'tech_timing_down_conf': ta_data.get('tech_timing_down_conf', ''),
             'tech_support':   ta_data.get('tech_support', None),
             'tech_resistance': ta_data.get('tech_resistance', None),
-            'tech_patterns':  ta_data.get('tech_patterns', ''),
-            'tech_indicators': ta_data.get('tech_indicators', {}),
+            'tech_patterns':        ta_data.get('tech_patterns', ''),
+            'tech_patterns_detail': ta_data.get('tech_patterns_detail', []),
+            'tech_indicators':      ta_data.get('tech_indicators', {}),
+            # Short Squeeze
+            'squeeze_stage':   ta_data.get('squeeze_stage', 'none'),
+            'squeeze_score':   ta_data.get('squeeze_score', 0),
+            'squeeze_signals': ta_data.get('squeeze_signals', []),
         })
+
+    # Enrich with full squeeze analysis (Short Float + DTC + intraday stage)
+    try:
+        from app.services.gemini_brain import score_short_squeeze_full as _score_squeeze
+        for s in stocks:
+            sq = _score_squeeze(s)
+            s['squeeze_total_score'] = sq.get('squeeze_total_score', 0)
+            s['squeeze_stage']       = sq.get('squeeze_stage', s.get('squeeze_stage', 'none'))
+            s['squeeze_label']       = sq.get('squeeze_label', '')
+            s['squeeze_emoji']       = sq.get('squeeze_emoji', '')
+            s['squeeze_signals']     = sq.get('squeeze_signals', s.get('squeeze_signals', []))
+    except Exception:
+        pass
 
     out = {
         'stocks':       stocks,

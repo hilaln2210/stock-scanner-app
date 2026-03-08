@@ -559,6 +559,62 @@ function extractTime(str) {
   return m ? m[1] : '';
 }
 
+const SQUEEZE_META = {
+  firing:      { emoji: '🚀', label: 'Firing',      color: '#4ade80', bg: 'rgba(74,222,128,0.15)', border: '#4ade80' },
+  compression: { emoji: '⏳', label: 'Compression', color: '#fde047', bg: 'rgba(253,224,71,0.12)',  border: '#fde047' },
+  accumulation:{ emoji: '👀', label: 'Accum.',      color: '#38bdf8', bg: 'rgba(56,189,248,0.12)', border: '#38bdf8' },
+  exhaustion:  { emoji: '⚠️', label: 'Exhaust.',    color: '#f87171', bg: 'rgba(248,113,113,0.12)', border: '#f87171' },
+  none:        { emoji: '',   label: '',             color: '#475569', bg: 'transparent',           border: 'transparent' },
+};
+
+function SqueezeCell({ s }) {
+  const stage = s.squeeze_stage || 'none';
+  const score = s.squeeze_total_score || s.squeeze_score || 0;
+  const meta = SQUEEZE_META[stage] || SQUEEZE_META['none'];
+  if (stage === 'none' || !meta.emoji) {
+    return <span style={{ color: '#334155', fontSize: 10 }}>—</span>;
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+      <span style={{
+        display: 'inline-block', padding: '2px 7px', borderRadius: 10, fontSize: 10,
+        fontWeight: 700, color: meta.color, background: meta.bg, border: `1px solid ${meta.border}`,
+        letterSpacing: '0.03em', whiteSpace: 'nowrap',
+      }}>
+        {meta.emoji} {meta.label}
+      </span>
+      {score > 0 && (
+        <div style={{ width: 48, height: 4, background: '#1e293b', borderRadius: 2, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${Math.min(100, score)}%`, background: meta.color, borderRadius: 2 }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PatternBadges({ patterns }) {
+  if (!patterns || patterns.length === 0) return null;
+  const PATTERN_DIR_COLOR = { bullish: '#4ade80', bearish: '#f87171', neutral: '#fde047' };
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2, marginTop: 4 }}>
+      {patterns.map((p, i) => {
+        const col = PATTERN_DIR_COLOR[p.direction] || '#94a3b8';
+        return (
+          <span key={i} title={`${p.name} | חוזק: ${p.strength} | ${p.vol_confirmed ? '✓ אושר בנפח' : 'ללא אישור נפח'}`}
+            style={{
+              fontSize: 9, padding: '1px 5px', borderRadius: 6, fontWeight: 600,
+              color: col, background: `${col}18`, border: `1px solid ${col}44`,
+              cursor: 'help', whiteSpace: 'nowrap',
+            }}>
+            {p.direction === 'bullish' ? '▲' : p.direction === 'bearish' ? '▼' : '◆'} {p.name.replace(/_/g,' ')}
+            {p.vol_confirmed && <span style={{ marginLeft: 2, opacity: 0.7 }}>✓</span>}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function TechCell({ s }) {
   const signal = s.tech_signal;
   const score = s.tech_score;
@@ -1288,10 +1344,29 @@ function ExpandRow({ s, colSpan }) {
                 </div>
               )}
 
+              {/* Squeeze Stage */}
+              {s.squeeze_stage && s.squeeze_stage !== 'none' && (
+                <div style={{ marginBottom: 6 }}>
+                  <div style={{ fontSize: 9, color: '#64748b', fontWeight: 700, marginBottom: 3 }}>SHORT SQUEEZE</div>
+                  <SqueezeCell s={s} />
+                  {(s.squeeze_signals || []).length > 0 && (
+                    <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                      {s.squeeze_signals.slice(0, 4).map((sig, i) => (
+                        <span key={i} style={{ fontSize: 8, color: '#94a3b8', background: '#0a1628', borderRadius: 4, padding: '1px 4px', border: '1px solid #1e293b' }}>{sig}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Candlestick patterns */}
-              {s.tech_patterns && (
-                <div style={{ fontSize: 10, color: '#fde047', marginBottom: 4 }}>
-                  🕯 {s.tech_patterns}
+              {(s.tech_patterns_detail?.length > 0 || s.tech_patterns) && (
+                <div style={{ marginBottom: 4 }}>
+                  <div style={{ fontSize: 9, color: '#64748b', fontWeight: 700, marginBottom: 3 }}>🕯 פטרני נרות</div>
+                  <PatternBadges patterns={s.tech_patterns_detail} />
+                  {(!s.tech_patterns_detail?.length && s.tech_patterns) && (
+                    <div style={{ fontSize: 10, color: '#fde047' }}>{s.tech_patterns}</div>
+                  )}
                 </div>
               )}
 
@@ -2822,6 +2897,8 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                   title={"רגישות המניה לתנועות מדד S&P 500\nמקור: Finviz\n1.0 = זהה למדד\n2.0 = פי שניים מהמדד\n0.5 = חצי מהמדד\nמעל 1.5 = תנודתי מאוד\nמתחת ל-0.8 = יציב\nשלילי = נע הפוך למדד"} />
                 <SortTh label="📊 ניתוח" col="tech_score" sort={sort} onSort={handleSort} style={{ width: 114 }}
                   title={"ציון ניתוח טכני מרוכב (מינוס 100 עד פלוס 100)\nמקור: yfinance (נרות 5 דקות ושעתיים)\n• מגמה: ממוצעים נעים 50/200, חציית ממוצעים\n• מומנטום: מאקד, מדד תעלה, כוח יחסי\n• נפח: נפח מאוזן\n• תנודתיות: משטר טווח\nחיובי = סיגנלי קנייה | שלילי = סיגנלי מכירה"} />
+                <SortTh label="🚀 סקוויז" col="squeeze_total_score" sort={sort} onSort={handleSort} style={{ width: 80 }}
+                  title={"זיהוי Short Squeeze — לחץ שורטיסטים\nשלבים:\n👀 Accum. — נפח מצטבר בשקט\n⏳ Compress. — טווחים מתכווצים\n🚀 Firing — פריצה עם נפח\n⚠️ Exhaust. — קצפת\nמשלב: Short Float + DTC + ניתוח תוך-יומי"} />
                 <th style={{ ...TH_BASE, width: 84, textAlign: 'right', background: TH_BASE.background }}>תגיות</th>
                 <th style={{ ...TH_BASE, width: 38, textAlign: 'center', background: TH_BASE.background }}>דירוג</th>
               </tr>
@@ -3006,6 +3083,11 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                     {/* TA Signal — hero column */}
                     <td style={{ ...TD_BASE, padding: '3px 4px' }}>
                       <TechCell s={s} />
+                    </td>
+
+                    {/* Short Squeeze stage */}
+                    <td style={{ ...TD_BASE, padding: '3px 4px', textAlign: 'center' }}>
+                      <SqueezeCell s={s} />
                     </td>
 
                     {/* Tags */}

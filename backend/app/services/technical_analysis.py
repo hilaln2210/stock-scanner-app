@@ -86,13 +86,26 @@ def _compute(ticker: str) -> Optional[dict]:
 
     ind_5m = _calc_indicators(df_5m)
     ind_1h = _calc_indicators(df_1h)
-    patterns = _detect_patterns(df_5m)
+
+    # Detect patterns on both timeframes — 1h patterns carry more weight
+    patterns_5m = _detect_patterns(df_5m, timeframe='5m')
+    patterns_1h = _detect_patterns(df_1h, timeframe='1h')
+    patterns = patterns_5m + patterns_1h
+
+    # Intraday short squeeze detection
+    squeeze_info = _detect_squeeze_intraday(df_5m, df_1h)
 
     score, detail_parts = _confluence_signal(ind_5m, ind_1h, patterns)
     signal = _score_to_signal(score)
     timing_dual = _predict_timing_dual(ind_5m, ind_1h, patterns, score)
 
-    pattern_names = [p['name'] for p in patterns]
+    # Build pattern summary — mark volume-confirmed patterns
+    pattern_names = []
+    for p in patterns:
+        name = p['name']
+        if p.get('vol_confirmed'):
+            name = name + ' ✓'
+        pattern_names.append(name)
 
     # Support / Resistance from recent price action
     sr = _calc_support_resistance(df_5m)
@@ -111,6 +124,14 @@ def _compute(ticker: str) -> Optional[dict]:
         'tech_timing_up_signals': timing_dual.get('up_signals', 0),
         'tech_timing_down_signals': timing_dual.get('down_signals', 0),
         'tech_patterns': ", ".join(pattern_names) if pattern_names else "",
+        'tech_patterns_detail': [
+            {'name': p['name'], 'direction': p['direction'],
+             'strength': p['strength'], 'vol_confirmed': p.get('vol_confirmed', False)}
+            for p in patterns
+        ],
+        'squeeze_stage': squeeze_info['squeeze_stage'],
+        'squeeze_score': squeeze_info['squeeze_score'],
+        'squeeze_signals': squeeze_info['squeeze_signals'],
         'tech_support': sr.get('support'),
         'tech_resistance': sr.get('resistance'),
         'tech_indicators': {
@@ -333,62 +354,271 @@ def _calc_indicators(df: pd.DataFrame) -> dict:
 
 # ─── Candlestick Pattern Detection ──────────────────────────────────────────
 
-def _detect_patterns(df: pd.DataFrame) -> list:
-    """Detect major candlestick patterns on the last few bars."""
+def _detect_patterns(df: pd.DataFrame, timeframe: str = '5m') -> list:
+    """
+    Detect candlestick patterns on the last bars.
+    Includes volume confirmation: elevated volume amplifies pattern strength.
+    Detects 15 patterns across bullish/bearish/neutral categories.
+    """
     patterns_found = []
-    if len(df) < 3:
+    if len(df) < 4:
         return patterns_found
 
     o = df['Open'].values
     h = df['High'].values
     l = df['Low'].values
     c = df['Close'].values
+    v = df['Volume'].values if 'Volume' in df.columns else None
 
-    c1_open, c1_high, c1_low, c1_close = o[-2], h[-2], l[-2], c[-2]
-    c2_open, c2_high, c2_low, c2_close = o[-1], h[-1], l[-1], c[-1]
+    suffix = f' ({timeframe})' if timeframe != '5m' else ''
 
-    body1 = c1_close - c1_open
-    body2 = c2_close - c2_open
-    range2 = c2_high - c2_low if c2_high != c2_low else 0.01
+    # Volume confirmation multiplier — elevated volume = stronger pattern
+    vol_mult = 1.0
+    if v is not None and len(v) >= 10:
+        avg_vol = v[-10:].mean()
+        if avg_vol > 0:
+            cur_vol_ratio = v[-1] / avg_vol
+            if cur_vol_ratio >= 2.0:
+                vol_mult = 1.3  # strong confirmation
+            elif cur_vol_ratio >= 1.3:
+                vol_mult = 1.15
+            elif cur_vol_ratio < 0.6:
+                vol_mult = 0.8  # weak, low conviction
+
+    def add(name, direction, strength):
+        patterns_found.append({
+            'name': name + suffix,
+            'direction': direction,
+            'strength': round(min(1.0, strength * vol_mult), 2),
+            'vol_confirmed': vol_mult >= 1.1,
+        })
+
+    # ── Last 2 candles ───────────────────────────────────────────
+    c1_o, c1_h, c1_l, c1_c = o[-2], h[-2], l[-2], c[-2]
+    c2_o, c2_h, c2_l, c2_c = o[-1], h[-1], l[-1], c[-1]
+
+    body1 = c1_c - c1_o
+    body2 = c2_c - c2_o
+    body1_size = abs(body1)
+    body2_size = abs(body2)
+    range2 = c2_h - c2_l if c2_h != c2_l else 0.001
+    lower_wick2 = min(c2_o, c2_c) - c2_l
+    upper_wick2 = c2_h - max(c2_o, c2_c)
 
     # Bullish Engulfing
-    if body1 < 0 and body2 > 0 and c2_open <= c1_close and c2_close >= c1_open:
-        patterns_found.append({'name': 'Bullish Engulfing', 'direction': 1, 'strength': 0.8})
+    if body1 < 0 and body2 > 0 and c2_o <= c1_c and c2_c >= c1_o:
+        add('Bullish Engulfing', 1, 0.8)
 
     # Bearish Engulfing
-    if body1 > 0 and body2 < 0 and c2_open >= c1_close and c2_close <= c1_open:
-        patterns_found.append({'name': 'Bearish Engulfing', 'direction': -1, 'strength': 0.8})
+    if body1 > 0 and body2 < 0 and c2_o >= c1_c and c2_c <= c1_o:
+        add('Bearish Engulfing', -1, 0.8)
 
-    # Hammer (bullish reversal)
-    lower_shadow = min(c2_open, c2_close) - c2_low
-    upper_shadow = c2_high - max(c2_open, c2_close)
-    body_size = abs(body2)
-    if body_size > 0 and lower_shadow >= body_size * 2 and upper_shadow <= body_size * 0.5:
-        patterns_found.append({'name': 'Hammer', 'direction': 1, 'strength': 0.6})
+    # Hammer — long lower wick, small body at top (bullish reversal)
+    if body2_size > 0 and lower_wick2 >= body2_size * 2 and upper_wick2 <= body2_size * 0.5:
+        add('Hammer', 1, 0.65)
 
-    # Shooting Star (bearish reversal)
-    if body_size > 0 and upper_shadow >= body_size * 2 and lower_shadow <= body_size * 0.5:
-        patterns_found.append({'name': 'Shooting Star', 'direction': -1, 'strength': 0.6})
+    # Inverted Hammer — long upper wick, small body at bottom (bullish reversal after downtrend)
+    if body2_size > 0 and upper_wick2 >= body2_size * 2 and lower_wick2 <= body2_size * 0.5 and body2 > 0:
+        add('Inverted Hammer', 1, 0.55)
 
-    # Doji (indecision)
-    if range2 > 0 and body_size / range2 < 0.1:
-        patterns_found.append({'name': 'Doji', 'direction': 0, 'strength': 0.4})
+    # Shooting Star — long upper wick, small body at top (bearish reversal)
+    if body2_size > 0 and upper_wick2 >= body2_size * 2 and lower_wick2 <= body2_size * 0.5 and body2 < 0:
+        add('Shooting Star', -1, 0.65)
 
-    # Morning Star (3-candle bullish)
-    if len(df) >= 4:
-        c0_open, c0_close = o[-3], c[-3]
-        body0 = c0_close - c0_open
-        if body0 < 0 and abs(body1) < abs(body0) * 0.3 and body2 > 0 and c2_close > (c0_open + c0_close) / 2:
-            patterns_found.append({'name': 'Morning Star', 'direction': 1, 'strength': 0.9})
+    # Hanging Man — same shape as hammer but after uptrend (bearish reversal)
+    if body2_size > 0 and lower_wick2 >= body2_size * 2 and upper_wick2 <= body2_size * 0.3 and body2 < 0:
+        add('Hanging Man', -1, 0.55)
 
-    # Evening Star (3-candle bearish)
-    if len(df) >= 4:
-        c0_open, c0_close = o[-3], c[-3]
-        body0 = c0_close - c0_open
-        if body0 > 0 and abs(body1) < abs(body0) * 0.3 and body2 < 0 and c2_close < (c0_open + c0_close) / 2:
-            patterns_found.append({'name': 'Evening Star', 'direction': -1, 'strength': 0.9})
+    # Pin Bar — extreme wick (>70% of range) = strong rejection
+    if lower_wick2 / range2 >= 0.7:
+        add('Pin Bar Bullish', 1, 0.7)
+    elif upper_wick2 / range2 >= 0.7:
+        add('Pin Bar Bearish', -1, 0.7)
+
+    # Doji — body < 10% of range = indecision
+    if body2_size / range2 < 0.1:
+        add('Doji', 0, 0.35)
+
+    # Bullish Harami — small candle inside large bearish candle (potential reversal)
+    if body1 < 0 and body2 > 0 and c2_o > c1_c and c2_c < c1_o and body2_size < body1_size * 0.5:
+        add('Bullish Harami', 1, 0.55)
+
+    # Bearish Harami — small candle inside large bullish candle
+    if body1 > 0 and body2 < 0 and c2_o < c1_c and c2_c > c1_o and body2_size < body1_size * 0.5:
+        add('Bearish Harami', -1, 0.55)
+
+    # Inside Bar — current bar completely inside previous bar (compression → breakout)
+    if c2_h < c1_h and c2_l > c1_l:
+        add('Inside Bar', 0, 0.45)  # direction determined by breakout
+
+    # Tweezer Bottom — two candles with same low = support rejection (bullish)
+    if abs(c1_l - c2_l) / max(abs(c1_l), 0.01) < 0.002 and body1 < 0 and body2 > 0:
+        add('Tweezer Bottom', 1, 0.65)
+
+    # Tweezer Top — two candles with same high = resistance rejection (bearish)
+    if abs(c1_h - c2_h) / max(abs(c1_h), 0.01) < 0.002 and body1 > 0 and body2 < 0:
+        add('Tweezer Top', -1, 0.65)
+
+    # Piercing Line — bearish candle, then bullish that opens below and closes above midpoint (bullish reversal)
+    if body1 < 0 and body2 > 0 and c2_o < c1_l and c2_c > (c1_o + c1_c) / 2:
+        add('Piercing Line', 1, 0.75)
+
+    # Dark Cloud Cover — bullish candle, then bearish that opens above and closes below midpoint (bearish)
+    if body1 > 0 and body2 < 0 and c2_o > c1_h and c2_c < (c1_o + c1_c) / 2:
+        add('Dark Cloud Cover', -1, 0.75)
+
+    # ── Last 3 candles ───────────────────────────────────────────
+    if len(df) >= 5:
+        c0_o, c0_h, c0_l, c0_c = o[-3], h[-3], l[-3], c[-3]
+        body0 = c0_c - c0_o
+
+        # Morning Star (3-candle bullish reversal)
+        if body0 < 0 and abs(body1) < abs(body0) * 0.3 and body2 > 0 and c2_c > (c0_o + c0_c) / 2:
+            add('Morning Star', 1, 0.9)
+
+        # Evening Star (3-candle bearish reversal)
+        if body0 > 0 and abs(body1) < abs(body0) * 0.3 and body2 < 0 and c2_c < (c0_o + c0_c) / 2:
+            add('Evening Star', -1, 0.9)
+
+    # ── Last 5 candles — trend continuation ──────────────────────
+    if len(df) >= 6:
+        last5_bodies = [c[-i] - o[-i] for i in range(1, 6)]
+        last5_sizes  = [abs(b) for b in last5_bodies]
+        avg_body = sum(last5_sizes) / 5 if last5_sizes else 0
+
+        # Three White Soldiers — 3 consecutive bullish candles, each closing higher
+        if (all(b > 0 for b in last5_bodies[:3]) and
+                c[-1] > c[-2] > c[-3] and
+                all(s > avg_body * 0.5 for s in last5_sizes[:3])):
+            add('Three White Soldiers', 1, 0.85)
+
+        # Three Black Crows — 3 consecutive bearish candles, each closing lower
+        if (all(b < 0 for b in last5_bodies[:3]) and
+                c[-1] < c[-2] < c[-3] and
+                all(s > avg_body * 0.5 for s in last5_sizes[:3])):
+            add('Three Black Crows', -1, 0.85)
 
     return patterns_found
+
+
+def _detect_squeeze_intraday(df_5m: pd.DataFrame, df_1h: pd.DataFrame) -> dict:
+    """
+    Detect short squeeze progression from intraday bars.
+    Returns squeeze_stage and supporting evidence.
+
+    Stages:
+      'none'         — no squeeze detected
+      'accumulation' — high short float but no breakout yet (smart money buying)
+      'compression'  — price range tightening, volume drying up (coil tightening)
+      'firing'       — sharp price acceleration + volume spike (shorts covering NOW)
+      'exhaustion'   — parabolic move losing steam (potential reversal)
+    """
+    result = {'squeeze_stage': 'none', 'squeeze_score': 0, 'squeeze_signals': []}
+
+    if df_5m is None or len(df_5m) < 20:
+        return result
+
+    c5 = df_5m['Close'].values
+    v5 = df_5m['Volume'].values if 'Volume' in df_5m.columns else None
+    h5 = df_5m['High'].values
+    l5 = df_5m['Low'].values
+
+    score = 0
+    signals = []
+
+    # ── 1. Price acceleration — each bar closing higher ──────────
+    last6 = c5[-6:]
+    up_bars = sum(1 for i in range(1, len(last6)) if last6[i] > last6[i-1])
+    if up_bars >= 5:
+        score += 15
+        signals.append(f'📈 {up_bars}/5 נרות עולים ברצף')
+    elif up_bars >= 4:
+        score += 8
+        signals.append(f'📈 {up_bars}/5 נרות עולים')
+
+    # ── 2. Volume spike — accelerating volume ────────────────────
+    if v5 is not None and len(v5) >= 15:
+        avg_vol = v5[-15:-5].mean()
+        recent_vol = v5[-5:].mean()
+        if avg_vol > 0:
+            vol_ratio = recent_vol / avg_vol
+            if vol_ratio >= 3.0:
+                score += 20
+                signals.append(f'💥 נפח ×{vol_ratio:.1f} מהממוצע (כיסוי שורטים!)')
+            elif vol_ratio >= 2.0:
+                score += 12
+                signals.append(f'🔥 נפח ×{vol_ratio:.1f} מהממוצע')
+            elif vol_ratio >= 1.4:
+                score += 6
+                signals.append(f'נפח ×{vol_ratio:.1f}')
+
+    # ── 3. Range compression then expansion ──────────────────────
+    if len(df_5m) >= 20:
+        ranges_early = [h5[-20+i] - l5[-20+i] for i in range(10)]
+        ranges_late  = [h5[-10+i] - l5[-10+i] for i in range(5)]
+        ranges_now   = [h5[-5+i] - l5[-5+i] for i in range(5)]
+        avg_early = sum(ranges_early) / len(ranges_early) if ranges_early else 0
+        avg_late  = sum(ranges_late)  / len(ranges_late)  if ranges_late  else 0
+        avg_now   = sum(ranges_now)   / len(ranges_now)   if ranges_now   else 0
+
+        if avg_early > 0 and avg_late > 0 and avg_now > 0:
+            if avg_late < avg_early * 0.6 and avg_now > avg_late * 1.5:
+                score += 18
+                signals.append('🌀 דחיסה → פריצה (טווח התרחב פי {:.1f})'.format(avg_now / avg_late))
+            elif avg_late < avg_early * 0.7:
+                score += 8
+                signals.append('⏳ דחיסת טווח — קפיץ נמתח')
+
+    # ── 4. V-shape recovery — sharp drop then sharp recovery ─────
+    if len(c5) >= 12:
+        window = c5[-12:]
+        min_idx = int(window.argmin())
+        if 2 <= min_idx <= 9:  # dip in middle
+            drop_pct  = (window[0] - window[min_idx]) / window[0] * 100
+            recov_pct = (window[-1] - window[min_idx]) / window[min_idx] * 100
+            if drop_pct > 1.5 and recov_pct > drop_pct * 0.8:
+                score += 14
+                signals.append(f'⚡ V-Recovery: ירד {drop_pct:.1f}% → התאושש {recov_pct:.1f}%')
+
+    # ── 5. 1h momentum confirmation ──────────────────────────────
+    if df_1h is not None and len(df_1h) >= 5:
+        c1 = df_1h['Close'].values
+        if c1[-1] > c1[-2] > c1[-3]:
+            score += 8
+            signals.append('1h מאשר מגמה עולה')
+
+    # ── 6. Parabolic exhaustion detection ────────────────────────
+    if len(c5) >= 8:
+        gains = [(c5[-i] - c5[-i-1]) / c5[-i-1] * 100 for i in range(1, 7)]
+        if len(gains) >= 3:
+            # Decelerating gains = exhaustion
+            if gains[0] < gains[1] * 0.4 and gains[1] > 1.0:
+                score -= 10
+                signals.append('⚠️ האצה מואטת — עייפות אפשרית')
+            # Last bar gave back most gains = exhaustion
+            if gains[0] < 0 and max(gains[1:4]) > 2.0:
+                score -= 8
+                signals.append('⚠️ ירידה אחרי ריצה — שים לב')
+
+    # ── Classify stage ────────────────────────────────────────────
+    if score <= 0:
+        stage = 'none'
+    elif score < 12:
+        stage = 'accumulation'
+    elif score < 25:
+        stage = 'compression'
+    elif score < 45:
+        stage = 'firing'
+    else:
+        stage = 'firing'  # could be exhaustion if deceleration detected
+        if any('עייפות' in s or 'האצה מואטת' in s for s in signals):
+            stage = 'exhaustion'
+
+    return {
+        'squeeze_stage': stage,
+        'squeeze_score': round(score),
+        'squeeze_signals': signals,
+    }
 
 
 # ─── Confluence Signal ────────────────────────────────────────────────────────
