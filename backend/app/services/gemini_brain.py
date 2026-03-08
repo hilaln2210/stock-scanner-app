@@ -577,9 +577,9 @@ def score_short_squeeze_full(stock: dict) -> dict:
     all_signals.extend(dtc_signals)
 
     # ── 3. Intraday squeeze stage from TA engine ──────────────────
-    squeeze_stage = stock.get('squeeze_stage', 'none')
-    squeeze_intra = stock.get('squeeze_score', 0)
-    squeeze_sigs  = stock.get('squeeze_signals', [])
+    squeeze_stage = stock.get('squeeze_stage') or 'none'
+    squeeze_intra = stock.get('squeeze_score') or 0
+    squeeze_sigs  = stock.get('squeeze_signals') or []
 
     stage_bonus = {
         'firing':       30,

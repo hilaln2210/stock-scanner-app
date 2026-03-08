@@ -2511,13 +2511,13 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
             'tech_timing_down_conf': ta_data.get('tech_timing_down_conf', ''),
             'tech_support':   ta_data.get('tech_support', None),
             'tech_resistance': ta_data.get('tech_resistance', None),
-            'tech_patterns':        ta_data.get('tech_patterns', ''),
-            'tech_patterns_detail': ta_data.get('tech_patterns_detail', []),
-            'tech_indicators':      ta_data.get('tech_indicators', {}),
+            'tech_patterns':        ta_data.get('tech_patterns') or '',
+            'tech_patterns_detail': ta_data.get('tech_patterns_detail') or [],
+            'tech_indicators':      ta_data.get('tech_indicators') or {},
             # Short Squeeze
-            'squeeze_stage':   ta_data.get('squeeze_stage', 'none'),
-            'squeeze_score':   ta_data.get('squeeze_score', 0),
-            'squeeze_signals': ta_data.get('squeeze_signals', []),
+            'squeeze_stage':   ta_data.get('squeeze_stage') or 'none',
+            'squeeze_score':   ta_data.get('squeeze_score') or 0,
+            'squeeze_signals': ta_data.get('squeeze_signals') or [],
         })
 
     # Enrich with full squeeze analysis (Short Float + DTC + intraday stage)
