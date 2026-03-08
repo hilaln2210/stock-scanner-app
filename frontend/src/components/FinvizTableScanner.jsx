@@ -616,10 +616,54 @@ const fvNumInput = {
   fontFamily: 'inherit',
 };
 
+function ColTooltip({ text }) {
+  const [visible, setVisible] = React.useState(false);
+  const [pos, setPos] = React.useState({ top: 0, left: 0 });
+  const ref = React.useRef(null);
+  const handleEnter = () => {
+    if (ref.current) {
+      const r = ref.current.getBoundingClientRect();
+      setPos({ top: r.bottom + window.scrollY + 4, left: r.left + window.scrollX });
+    }
+    setVisible(true);
+  };
+  return (
+    <span
+      ref={ref}
+      onMouseEnter={handleEnter}
+      onMouseLeave={() => setVisible(false)}
+      style={{ display: 'inline-block', marginRight: 3, cursor: 'help', color: '#475569', fontSize: 10, lineHeight: 1 }}
+    >
+      ?
+      {visible && (
+        <div style={{
+          position: 'fixed',
+          top: pos.top,
+          left: Math.min(pos.left, window.innerWidth - 280),
+          zIndex: 9999,
+          background: '#0f172a',
+          border: '1px solid #334155',
+          borderRadius: 8,
+          padding: '10px 13px',
+          maxWidth: 270,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+          pointerEvents: 'none',
+          direction: 'rtl',
+          textAlign: 'right',
+        }}>
+          {text.split('\n').map((line, i) => (
+            <div key={i} style={{ fontSize: 12, color: line.startsWith('•') ? '#94a3b8' : '#e2e8f0', fontWeight: line.startsWith('•') ? 400 : (i === 0 ? 700 : 400), marginBottom: 3, whiteSpace: 'pre-wrap' }}>{line}</div>
+          ))}
+        </div>
+      )}
+    </span>
+  );
+}
+
 function SortTh({ label, col, sort, onSort, sub, title, style: extraStyle }) {
   const active = sort.col === col;
   return (
-    <th onClick={() => onSort(col)} title={title} style={{
+    <th onClick={() => onSort(col)} style={{
       ...TH_BASE,
       textAlign: 'right',
       cursor: 'pointer',
@@ -628,9 +672,12 @@ function SortTh({ label, col, sort, onSort, sub, title, style: extraStyle }) {
       borderBottom: active ? '2px solid #3b82f6' : '2px solid #1e293b',
       ...extraStyle,
     }}>
-      <span>{label}</span>
-      {active && <span style={{ fontSize: 10, marginRight: 2, color: '#3b82f6' }}>{sort.dir === 'desc' ? ' ↓' : ' ↑'}</span>}
-      {sub && <span style={{ fontSize: 9, color: '#475569', fontWeight: 400, marginRight: 3 }}> {sub}</span>}
+      <span style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'flex-end' }}>
+        {title && <ColTooltip text={title} />}
+        <span>{label}</span>
+        {active && <span style={{ fontSize: 10, color: '#3b82f6' }}>{sort.dir === 'desc' ? '↓' : '↑'}</span>}
+        {sub && <span style={{ fontSize: 9, color: '#475569', fontWeight: 400 }}>{sub}</span>}
+      </span>
     </th>
   );
 }
@@ -2544,45 +2591,43 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
               <tr>
                 <th style={{ ...TH_BASE, width: 28, padding: '6px 2px', background: TH_BASE.background }} />
                 <SortTh label="מניה"    col="ticker"       sort={sort} onSort={handleSort} style={{ width: 66 }}
-                  title="סמל המניה ושם החברה. לחץ לפתיחת פרטים מלאים." />
+                  title={"סמל המניה ושם החברה\nמקור: Finviz\nלחץ לפתיחת פרטים מלאים + חדשות"} />
                 <SortTh label="סקטור"  col="sector"       sort={sort} onSort={handleSort} style={{ width: 66 }}
-                  title="סקטור ותעשייה לפי Finviz. עוזר להשוואה בין מניות באותו ענף." />
+                  title={"סקטור ותעשייה לפי Finviz\nעוזר להשוואה בין מניות באותו ענף\nלדוגמה: טכנולוגיה → מוליכים למחצה"} />
                 <SortTh label="מחיר"   col="price"        sort={sort} onSort={handleSort} style={{ width: 78 }}
-                  title="מחיר אחרון בדולרים. בשעות מסחר — מחיר real-time; בטרום/אחרי שוק — מחיר הארכה." />
+                  title={"מחיר אחרון בדולרים\nשעות מסחר: מחיר עדכני\nטרום/אחרי שוק: מחיר מסחר מורחב"} />
                 <SortTh label="שינוי%" col="change_pct"   sort={sort} onSort={handleSort} style={{ width: 68 }} sub={isExtended ? 'טרום' : null}
-                  title="שינוי אחוזי מסגירת אתמול. בשעות ארכה — שינוי ממחיר הסגירה במסחר המורחב." />
-                <SortTh label="Gap%"   col="gap_pct"      sort={sort} onSort={handleSort} style={{ width: 52 }}
-                  title={"Gap (פער פתיחה): הפרש בין מחיר הפתיחה לסגירה של אתמול, כאחוז.\nחיובי = פתיחה גבוהה (gap up) | שלילי = פתיחה נמוכה (gap down).\nטרום/אחרי שוק: מוצג שינוי ממחיר מסחר מורחב כגישה (ext)."} />
+                  title={"שינוי אחוזי מסגירת אתמול\nחישוב: (מחיר עכשיו ÷ סגירה אתמול - 1) × 100\nבשעות ארכה: שינוי ממחיר הסגירה"} />
+                <SortTh label="פער%"   col="gap_pct"      sort={sort} onSort={handleSort} style={{ width: 52 }}
+                  title={"פער פתיחה: הפרש בין מחיר הפתיחה לסגירה של אתמול\nחישוב: (פתיחה ÷ סגירה אתמול - 1) × 100\nחיובי = פתחה גבוה | שלילי = פתחה נמוך\nבשעות ארכה: מוצג שינוי ממחיר ההארכה"} />
                 <SortTh label="30דק"   col="chg_30m"      sort={sort} onSort={handleSort} style={{ width: 52 }}
-                  title="שינוי אחוזי ב-30 הדקות האחרונות. מעיד על מומנטום קצר-טווח." />
+                  title={"שינוי אחוזי ב-30 הדקות האחרונות\nמקור: yfinance (נרות 5 דקות)\nמעיד על מומנטום קצר-טווח פעיל"} />
                 <SortTh label="4שע"    col="chg_4h"       sort={sort} onSort={handleSort} style={{ width: 52 }}
-                  title="שינוי אחוזי ב-4 השעות האחרונות. מסנן מניות עם מגמה תוך-יומית ברורה." />
+                  title={"שינוי אחוזי ב-4 השעות האחרונות\nמקור: yfinance (נרות שעתיים)\nמסייע לזהות מגמה תוך-יומית ברורה"} />
                 <SortTh label="נפח"    col="volume"       sort={sort} onSort={handleSort} style={{ width: 56 }}
-                  title="כמות המניות שנסחרו היום. נפח גבוה = עניין גדול של שוק ונזילות גבוהה." />
-                <SortTh label="RVol"   col="rel_volume"   sort={sort} onSort={handleSort} style={{ width: 48 }}
-                  title={"Relative Volume — נפח יחסי לממוצע של 10 ימים בשעה זו.\n>2.0 = נפח חריג (סיגנל חזק) | 1.0 = רגיל | <0.5 = שקט."} />
+                  title={"כמות מניות שנסחרו היום\nנפח גבוה = עניין שוק גדול ונזילות\nנפח נמוך = קשה לכניסה/יציאה"} />
+                <SortTh label="נפח יחסי" col="rel_volume" sort={sort} onSort={handleSort} style={{ width: 48 }}
+                  title={"נפח יחסי: נפח היום חלקי ממוצע 10 ימים באותה שעה\nחישוב: נפח עכשיו ÷ ממוצע היסטורי\n>2.0 = נפח חריג, סיגנל חזק\n1.0 = רגיל | פחות מ-0.5 = שקט"} />
                 <SortTh label="שווי"   col="market_cap"   sort={sort} onSort={handleSort} style={{ width: 72 }}
-                  title={"שווי שוק = מחיר × מספר מניות. מציג גם EV/MC:\nEV (Enterprise Value) = שווי שוק + חוב נטו.\nEV/MC < 1 = מזומנים עודפים (חיובי) | >1.3 = חוב גבוה."} />
+                  title={"שווי שוק = מחיר × מספר מניות\nשורה שנייה — ערך ארגוני לעומת שווי שוק:\nפחות מ-1 = מזומנים עודפים, חיובי\nיותר מ-1.3 = חוב גבוה, סיכון"} />
                 <SortTh label="בריאות" col="health_score" sort={sort} onSort={handleSort} style={{ width: 76 }}
-                  title={"ציון בריאות פונדמנטלית (0-100) מחושב מ-Finviz:\n• רווחיות (EPS+, P/E)\n• צמיחה (EPS QoQ, הכנסות)\n• מאזן (חוב, נזילות)\n• מומנטום (ביצועים vs מדד)\nציון ≥70 = מניה בריאה | ≥85 = מצוינת."} />
-                <SortTh label="EPS%"   col="eps_qq"       sort={sort} onSort={handleSort} style={{ width: 56 }}
-                  title={"EPS Quarter-over-Quarter: שיעור הצמיחה ברווח למניה בהשוואה לרבעון הקודם.\n🚀 >50% = צמיחה פורצת | >0% = חיובי | שלילי = ירידה.\nמקור: Finviz (רבעון אחרון מול רבעון לפניו)."} />
+                  title={"ציון בריאות פונדמנטלית (0-100)\nמקור: Finviz\n• רווחיות: רווח למניה, מכפיל רווח\n• צמיחה: רווח רבעוני, הכנסות\n• מאזן: חוב, נזילות\n• ביצועים: ביחס למדד\nמעל 70 = בריא | מעל 85 = מצוין"} />
+                <SortTh label="רווח%"  col="eps_qq"       sort={sort} onSort={handleSort} style={{ width: 56 }}
+                  title={"צמיחת רווח למניה: רבעון מול רבעון קודם\nחישוב: (רווח רבעון אחרון ÷ רבעון לפניו - 1) × 100\nמקור: Finviz\n🚀 מעל 50% = צמיחה פורצת\nחיובי = גדל | שלילי = ירד"} />
                 <SortTh label="RSI"    col="rsi"          sort={sort} onSort={handleSort} style={{ width: 72 }}
-                  title={"RSI (Relative Strength Index, 14 נרות) — מודד מהירות ועוצמת שינויי מחיר.\n>70 = קנוי יתר (אזהרת תיקון) | <30 = מכור יתר (הזדמנות)\nמוצג: יומי (גדול) + שעתי + 5 דקות (קטן)."} />
+                  title={"מדד כוח יחסי (14 נרות) — עוצמת מגמה\nחישוב: ממוצע עליות ÷ ממוצע ירידות\nמעל 70 = קנוי יתר, אזהרת תיקון\nמתחת ל-30 = מכור יתר, הזדמנות\nמוצג: יומי (גדול) + שעתי + 5 דקות"} />
                 <SortTh label="שורט%"  col="short_float"  sort={sort} onSort={handleSort} style={{ width: 52 }}
-                  title={"Short Float: אחוז המניות המושאלות למכירה בחסר מסך הצף.\n>20% = לחץ שורט גבוה — פוטנציאל Short Squeeze\n>10% = שורט משמעותי | <5% = נמוך."} />
+                  title={"אחוז מניות מושאלות למכירה בחסר מסך הצף\nמקור: Finviz\nמעל 20% = לחץ שורט גבוה, פוטנציאל לסחיטת שורטים\nמעל 10% = משמעותי | מתחת ל-5% = נמוך"} />
                 <SortTh label="SMA20"  col="sma20"        sort={sort} onSort={handleSort} style={{ width: 58 }}
-                  title={"מרחק מממוצע נע פשוט של 20 ימים (SMA20), כאחוז.\n+5% = מחיר 5% מעל SMA20 (מגמה עולה חזקה)\n-5% = מתחת — חולשה. מחיר ≈ SMA20 = תמיכה/התנגדות מרכזית."} />
-                <SortTh label="ATR"    col="atr"          sort={sort} onSort={handleSort} style={{ width: 56 }}
-                  title={"ATR (Average True Range, 14 ימים): טווח תנועה ממוצע יומי בדולרים.\nמודד תנודתיות — כמה המניה זזה ביום בממוצע.\nATR גבוה = הזדמנויות גדולות אך גם סיכון גדול יותר.\nשורה שנייה: ATR% תוך-יומי (1h bars) ביחס למחיר."} />
-                <SortTh label="β"      col="beta"         sort={sort} onSort={handleSort} style={{ width: 44 }}
-                  title={"Beta: רגישות המניה לתנועות ה-S&P500.\nβ=1.0 = זהה למדד | β=2.0 = פי 2 מהמדד | β=0.5 = חצי\nβ>1.5 = תנודתי מאוד (⚡) | β<0.8 = יציב (🛡️)\nשלילי = נע הפוך למדד (הגנה בירידות)."} />
-                <SortTh label="📊 TA"  col="tech_score"   sort={sort} onSort={handleSort} style={{ width: 114 }}
-                  title={"ציון אנליזה טכנית מרוכב (-100 עד +100) מחושב מ-yfinance (5m + 1h bars):\n• מגמה: EMA50/200, Golden/Death Cross\n• מומנטום: MACD, CCI, RSI תוך-יומי\n• נפח: OBV (On-Balance Volume)\n• תנודתיות: ATR regime\nחיובי = סיגנלים לונג | שלילי = סיגנלי שורט."} />
-                <th style={{ ...TH_BASE, width: 84, textAlign: 'right', background: TH_BASE.background }}
-                  title="תגיות אוטומטיות: Gap Up/Down, High RVol, Short Squeeze, Oversold/Overbought ועוד. מבוססות על סף ערכים מוגדר.">תגיות</th>
-                <th style={{ ...TH_BASE, width: 38, textAlign: 'center', background: TH_BASE.background }}
-                  title={"דירוג אנליסטים של Finviz:\n1 = Buy חזק | 2 = Buy | 3 = Hold | 4 = Sell | 5 = Sell חזק"}>דירוג</th>
+                  title={"מרחק מממוצע נע של 20 ימים, כאחוז\nחישוב: (מחיר ÷ ממוצע 20 ימים - 1) × 100\nחיובי = מחיר מעל הממוצע, מגמה עולה\nשלילי = מתחת לממוצע, חולשה\nקרוב לאפס = אזור תמיכה/התנגדות"} />
+                <SortTh label="טווח"   col="atr"          sort={sort} onSort={handleSort} style={{ width: 56 }}
+                  title={"טווח תנועה ממוצע יומי בדולרים (14 ימים)\nמקור: Finviz + yfinance\nמודד תנודתיות — כמה המניה זזה ביום\nגבוה = הזדמנויות גדולות, אך סיכון גדול\nשורה שנייה: טווח תוך-יומי אחוזי (נרות שעתיים)"} />
+                <SortTh label="בטא"    col="beta"         sort={sort} onSort={handleSort} style={{ width: 44 }}
+                  title={"רגישות המניה לתנועות מדד S&P 500\nמקור: Finviz\n1.0 = זהה למדד\n2.0 = פי שניים מהמדד\n0.5 = חצי מהמדד\nמעל 1.5 = תנודתי מאוד\nמתחת ל-0.8 = יציב\nשלילי = נע הפוך למדד"} />
+                <SortTh label="📊 ניתוח" col="tech_score" sort={sort} onSort={handleSort} style={{ width: 114 }}
+                  title={"ציון ניתוח טכני מרוכב (מינוס 100 עד פלוס 100)\nמקור: yfinance (נרות 5 דקות ושעתיים)\n• מגמה: ממוצעים נעים 50/200, חציית ממוצעים\n• מומנטום: מאקד, מדד תעלה, כוח יחסי\n• נפח: נפח מאוזן\n• תנודתיות: משטר טווח\nחיובי = סיגנלי קנייה | שלילי = סיגנלי מכירה"} />
+                <th style={{ ...TH_BASE, width: 84, textAlign: 'right', background: TH_BASE.background }}>תגיות</th>
+                <th style={{ ...TH_BASE, width: 38, textAlign: 'center', background: TH_BASE.background }}>דירוג</th>
               </tr>
             </thead>
 
