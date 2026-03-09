@@ -9,7 +9,10 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     plan: free
+    healthCheckPath: /health
     envVars:
       - key: PORT
         value: "8000"
+      - key: RENDER_EXTERNAL_URL
+        value: "https://stock-scanner-app-1.onrender.com"
       # הוסף ב-Dashboard → Environment את כל משתני backend/.env (GROQ_API_KEY, GEMINI_API_KEY, FINVIZ_*, TELEGRAM_*, וכו')

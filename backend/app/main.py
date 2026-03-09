@@ -119,6 +119,22 @@ async def lifespan(app: FastAPI):
             print(f"Briefing pre-warm failed: {e}")
     asyncio.create_task(_prewarm_briefing())
 
+    # Keep-alive self-ping — prevents Render free tier from sleeping (pings every 14 min)
+    async def _keep_alive():
+        import httpx
+        render_url = os.environ.get("RENDER_EXTERNAL_URL")
+        if not render_url:
+            return  # only run on Render
+        await asyncio.sleep(30)  # wait for full startup
+        while True:
+            try:
+                async with httpx.AsyncClient() as client:
+                    await client.get(f"{render_url}/health", timeout=10)
+            except Exception:
+                pass
+            await asyncio.sleep(14 * 60)  # every 14 minutes
+    asyncio.create_task(_keep_alive())
+
     # Interactive Telegram Bot — listen for user messages (non-blocking; failures don't kill server)
     async def _run_bot_safe():
         try:
@@ -167,6 +183,11 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"detail": "Internal server error", "error": str(exc)[:200]},
     )
+
+# Lightweight health check — responds before heavy init, keeps Render awake
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 # Include API routes
 app.include_router(router, prefix="/api")
