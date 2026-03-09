@@ -1508,6 +1508,39 @@ _FV_SUMMARY_CACHE: dict = {}        # {ticker: summary_str}
 _FV_SUMMARY_CACHE_TIME: dict = {}   # {ticker: timestamp}
 _FV_SUMMARY_CACHE_TTL: int = 3600   # business description: 1 hour
 
+# ── Catalyst memory — זיכרון קטליסט ────────────────────────────────────────
+# Once a strong catalyst is detected, remember it for 5 days.
+# After 2-3 days, the triggering news article drops off the yfinance/Finviz feed,
+# but the catalyst effect (short covering, momentum) is still active.
+_CATALYST_MEMORY: dict = {}         # {ticker: {label, type, source, detected_at}}
+_CATALYST_MEMORY_TTL = 5 * 24 * 3600  # 5 days
+
+def _update_catalyst_memory(ticker: str, reasons: list) -> None:
+    """Store strong catalyst in memory so it persists beyond news feed window."""
+    strong_types = {'earnings', 'fda', 'ma', 'upgrade', 'contract'}
+    for r in reasons:
+        if r.get('type') in strong_types and r.get('confidence') in ('high', 'medium'):
+            existing = _CATALYST_MEMORY.get(ticker)
+            if not existing:
+                _CATALYST_MEMORY[ticker] = {
+                    'label':       r['label'],
+                    'type':        r['type'],
+                    'source':      r.get('source', ''),
+                    'detected_at': _time.time(),
+                }
+            break  # one catalyst per stock is enough
+
+def _get_catalyst_from_memory(ticker: str) -> dict | None:
+    """Return remembered catalyst if still within TTL (5 days)."""
+    entry = _CATALYST_MEMORY.get(ticker)
+    if not entry:
+        return None
+    age = _time.time() - entry.get('detected_at', 0)
+    if age > _CATALYST_MEMORY_TTL:
+        del _CATALYST_MEMORY[ticker]
+        return None
+    return entry
+
 _FV_TA_CACHE: dict = {}             # {ticker: tech analysis result}
 _FV_TA_CACHE_TIME: dict = {}        # {ticker: timestamp}
 _FV_TA_CACHE_TTL: int = 90          # technical analysis: 90s (background task takes ~40s for 50 stocks)
@@ -2526,6 +2559,21 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
 
         change_pct = raw.get('change_pct')
         reasons = _classify_move_reason(fund, news, change_pct)
+
+        # ── Catalyst memory: store new detections, inject remembered ones ──────
+        _update_catalyst_memory(t, reasons)
+        mem_cat = _get_catalyst_from_memory(t)
+        if mem_cat and not any(r.get('type') == mem_cat['type'] for r in reasons):
+            days_ago = int((_time.time() - mem_cat['detected_at']) / 86400)
+            age_label = f' (לפני {days_ago}י)' if days_ago >= 1 else ''
+            reasons.insert(0, {
+                'type':        mem_cat['type'],
+                'label':       mem_cat['label'] + age_label,
+                'confidence':  'high',
+                'source':      mem_cat['source'],
+                'from_memory': True,
+            })
+
         tags    = _stock_tags(fund, price)
         ev      = _compute_ev(fund)
         ev_mc_ratio = round(ev / mc, 3) if ev and mc and mc > 0 else None

@@ -668,6 +668,10 @@ function SqueezeCell({ s }) {
   const rot    = s.float_rotation != null ? parseFloat(s.float_rotation) : null;
   const hasCat = s.squeeze_has_catalyst;
   const catLbl = s.squeeze_catalyst || '';
+  // Detect if catalyst came from memory (backend adds "לפני Xי" suffix)
+  const catAgeMatch = catLbl.match(/לפני (\d+)י/);
+  const catDaysAgo  = catAgeMatch ? parseInt(catAgeMatch[1]) : 0;
+  const catIsMemory = catDaysAgo >= 1;
   const isCatalystSqueeze = hasCat && (stage === 'firing' || stage === 'compression');
 
   const chip = (val, color, title) => val != null && (
@@ -707,7 +711,9 @@ function SqueezeCell({ s }) {
             cursor: 'help', boxShadow: '0 0 6px rgba(251,191,36,0.3)',
           }}>
           <span style={{ fontSize: 13 }}>🔥</span>
-          <span style={{ fontSize: 10, fontWeight: 800, color: '#fbbf24', letterSpacing: '0.04em' }}>NEWS + SQUEEZE</span>
+          <span style={{ fontSize: 10, fontWeight: 800, color: '#fbbf24', letterSpacing: '0.04em' }}>
+            NEWS + SQUEEZE{catIsMemory ? ` · לפני ${catDaysAgo}י` : ''}
+          </span>
         </div>
       )}
 
@@ -723,13 +729,31 @@ function SqueezeCell({ s }) {
           {meta.emoji} {meta.label}
         </span>
         <span style={{ fontSize: 10, color: '#475569', fontWeight: 600 }}>{score}pt</span>
-        <span title={catLbl || (hasCat ? 'יש קטליסט' : 'אין קטליסט')} style={{
-          fontSize: 10, fontWeight: 700,
-          color: hasCat ? '#4ade80' : '#475569',
-          cursor: 'help',
-        }}>
-          {hasCat ? '🎯' : '·'}
-        </span>
+        {hasCat ? (
+          <span title={catLbl || 'קטליסט פעיל'} style={{
+            display: 'flex', alignItems: 'center', gap: 3,
+            fontSize: 10, fontWeight: 700, cursor: 'help',
+            padding: '1px 5px', borderRadius: 4,
+            color: catIsMemory ? '#fb923c' : '#4ade80',
+            background: catIsMemory ? 'rgba(251,146,60,0.12)' : 'rgba(74,222,128,0.1)',
+            border: `1px solid ${catIsMemory ? 'rgba(251,146,60,0.4)' : 'rgba(74,222,128,0.3)'}`,
+            whiteSpace: 'nowrap', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            {catIsMemory ? `🕐 ${catDaysAgo}י` : '🎯'}
+            {catLbl && !catIsMemory && (
+              <span style={{ fontWeight: 500, color: '#86efac', fontSize: 9 }}>
+                {catLbl.replace(/\(.*\)/, '').trim().slice(0, 14)}
+              </span>
+            )}
+            {catIsMemory && (
+              <span style={{ fontWeight: 500, fontSize: 9 }}>
+                {catLbl.replace(/\(לפני.*\)/, '').trim().slice(0, 12)}
+              </span>
+            )}
+          </span>
+        ) : (
+          <span style={{ fontSize: 10, color: '#334155' }}>·</span>
+        )}
       </div>
 
       {/* Row 2: Short pressure chips */}
