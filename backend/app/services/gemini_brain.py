@@ -591,6 +591,10 @@ def score_catalyst_for_squeeze(stock: dict) -> tuple:
         pts = int(w * mult)
         score += pts
         if lbl and pts > 0:
+            # Preserve memory age suffix (e.g. "(לפני 2י)") from original label
+            if r.get('from_memory') and '(לפני' in (r.get('label') or ''):
+                age_suffix = r['label'].split('(לפני')[1]
+                lbl = lbl + ' (לפני' + age_suffix
             labels.append(lbl)
             types.add(rtype)
 
