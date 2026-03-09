@@ -1500,7 +1500,7 @@ _FV_FUND_CACHE_TIME: float = 0.0
 _FV_FUND_CACHE_TTL: int = 1800      # fundamentals: 30 min
 _FV_NEWS_CACHE: dict = {}           # {ticker: [news_items]}
 _FV_NEWS_CACHE_TIME: dict = {}      # {ticker: timestamp}
-_FV_NEWS_CACHE_TTL: int = 600       # news: 10 min per ticker
+_FV_NEWS_CACHE_TTL: int = 300       # news: 5 min per ticker (breaking news sensitivity)
 _FV_INTRA_CACHE: dict = {}          # {ticker: {chg_5m, chg_30m, chg_4h}}
 _FV_INTRA_CACHE_TIME: dict = {}     # {ticker: timestamp}
 _FV_INTRA_CACHE_TTL: int = 60       # intraday: 60s to allow background task to complete for all stocks
@@ -1875,8 +1875,8 @@ def _fetch_ticker_news_sync(ticker: str) -> list:
 
     try:
         with _TPE2(max_workers=1) as pool:
-            raw = pool.submit(_inner).result(timeout=3)
-        items = [_normalize(n) for n in raw[:5]]
+            raw = pool.submit(_inner).result(timeout=6)
+        items = [_normalize(n) for n in raw[:8]]
         # Keep original English title for keyword matching, translate display title
         for item in items:
             if item.get('title'):
@@ -2281,9 +2281,42 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
     # ── 3. News from Finviz fundamentals (already scraped) ──────────────────
     for t in tickers:
         fund = _FV_FUND_CACHE.get(t)
-        if fund and fund.get('news') and t not in _FV_NEWS_CACHE:
-            _FV_NEWS_CACHE[t] = fund['news']
+        age = now - _FV_NEWS_CACHE_TIME.get(t, 0)
+        if fund and fund.get('news') and (t not in _FV_NEWS_CACHE or age > _FV_NEWS_CACHE_TTL):
+            # Add title_en for keyword matching (Finviz news has no title_en)
+            items_with_en = []
+            for item in fund['news']:
+                n = dict(item)
+                if n.get('title') and 'title_en' not in n:
+                    n['title_en'] = n['title']
+                items_with_en.append(n)
+            _FV_NEWS_CACHE[t] = items_with_en
             _FV_NEWS_CACHE_TIME[t] = now
+
+    # ── 3a. For tickers still missing news — fetch from yfinance in background ──
+    news_missing = [
+        t for t in tickers
+        if not _FV_NEWS_CACHE.get(t)
+        or (now - _FV_NEWS_CACHE_TIME.get(t, 0)) > _FV_NEWS_CACHE_TTL
+    ]
+
+    def _fetch_news_batch(ticker_list):
+        for t in ticker_list:
+            try:
+                items = _fetch_ticker_news_sync(t)
+                if items:
+                    _FV_NEWS_CACHE[t]      = items
+                    _FV_NEWS_CACHE_TIME[t] = _time.time()
+            except Exception:
+                pass
+
+    if news_missing:
+        import threading as _threading
+        _threading.Thread(
+            target=_fetch_news_batch,
+            args=(news_missing[:15],),   # cap at 15 tickers per scan
+            daemon=True,
+        ).start()
 
     # ── 3b. Translate news titles to Hebrew in background ─────────────────
     news_to_translate = [
