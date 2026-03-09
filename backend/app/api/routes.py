@@ -1900,17 +1900,21 @@ _CATALYST_RULES = [
       'target cut', 'target lowered', 'reduces', 'bear'],
      'downgrade', '⬇️ הורדת דירוג', 'high'),
     (['fda', 'approval', 'approved', 'clearance', 'phase 3', 'phase iii',
-      'nda', 'bla', 'pdufa', 'phase 2', 'clinical trial', 'efficacy'],
+      'nda', 'bla', 'pdufa', 'phase 2', 'clinical trial', 'efficacy',
+      'glp-1', 'glp1', 'wegovy', 'ozempic', 'semaglutide', 'tirzepatide',
+      'mounjaro', 'obesity drug', 'weight loss drug'],
      'fda', '💊 FDA / רגולציה', 'high'),
     (['acqui', 'merger', 'buyout', 'takeover', 'deal',
-      'agreement', 'transaction', 'purchase', 'tender offer'],
+      'agreement', 'transaction', 'purchase', 'tender offer',
+      'team up', 'join forces', 'end feud', 'resolv', 'truce', 'reconcil'],
      'ma', '🤝 מיזוג / רכישה', 'high'),
     (['guidance', 'outlook', 'forecast', 'raises guidance',
       'lowers guidance', 'reiterates', 'sees fy', 'sees q'],
      'guidance', '🔮 תחזית החברה', 'medium'),
     (['contract', 'award', 'wins', 'partnership', 'collaboration',
-      'selected', 'chosen', 'signed', 'expands'],
-     'contract', '📝 חוזה / שותפות', 'medium'),
+      'selected', 'chosen', 'signed', 'expands', 'pact', 'supply deal',
+      'licensing', 'distribution', 'commerciali'],
+     'contract', '📝 חוזה / שותפות', 'high'),
     (['short', 'fraud', 'investigation', 'lawsuit', 'sec filing',
       'subpoena', 'recall', 'warning letter', 'class action'],
      'risk', '⚠️ חקירה / סיכון', 'medium'),
@@ -1965,7 +1969,7 @@ def _classify_move_reason(fund: dict, news: list, change_pct) -> list:
         })
         seen_types.add('volume_spike')
 
-    for article in (news or [])[:5]:
+    for article in (news or [])[:8]:
         if len(reasons) >= 4:
             break
         # Use original English title for keyword matching (translated title breaks English rules)

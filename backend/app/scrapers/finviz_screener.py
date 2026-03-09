@@ -532,8 +532,8 @@ class FinvizScreener:
                 from concurrent.futures import ThreadPoolExecutor as _TP2
                 with _TP2(max_workers=1) as _ex2:
                     future2 = _ex2.submit(lambda: stock.news or [])
-                    raw_news = future2.result(timeout=3)
-                for item in raw_news[:5]:
+                    raw_news = future2.result(timeout=6)  # 6s — more time for popular/volatile stocks
+                for item in raw_news[:8]:  # up to 8 articles (was 5)
                     content = item.get('content', {}) or {}
                     title = str(content.get('title') or '')
                     if not title:
