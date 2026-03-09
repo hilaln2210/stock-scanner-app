@@ -218,6 +218,73 @@ _MID_LARGE_CAP_TICKERS = frozenset({
 })
 
 
+# ── News ticker change cache (lightweight yfinance batch) ──────────────────
+_NEWS_CHG_CACHE: dict = {}        # {ticker: {change_pct, price}}
+_NEWS_CHG_CACHE_TIME: float = 0
+_NEWS_CHG_CACHE_TTL: int = 120    # 2 min
+
+
+def _get_news_ticker_changes(tickers: set) -> dict:
+    """
+    Return {ticker: {change_pct, price}} for a set of tickers.
+    Uses _FV_FUND_CACHE first, falls back to yfinance batch download.
+    Results cached for 2 minutes.
+    """
+    global _NEWS_CHG_CACHE, _NEWS_CHG_CACHE_TIME
+    import time as _t
+
+    now = _t.time()
+
+    # Return from cache if fresh
+    if (now - _NEWS_CHG_CACHE_TIME) < _NEWS_CHG_CACHE_TTL and _NEWS_CHG_CACHE:
+        return _NEWS_CHG_CACHE
+
+    result = {}
+
+    # 1. Try _FV_FUND_CACHE first (free, instant)
+    remaining = set()
+    for t in tickers:
+        fund = _FV_FUND_CACHE.get(t)
+        if fund:
+            chg = _parse_fv_num(fund.get('change', ''))
+            price = _parse_fv_num(fund.get('price', ''))
+            if chg is not None:
+                result[t] = {'change_pct': round(chg, 2), 'price': round(price, 2) if price else None}
+                continue
+        remaining.add(t)
+
+    # 2. Batch fetch remaining via yfinance (single HTTP call)
+    if remaining:
+        try:
+            import yfinance as _yf
+            tickers_str = ' '.join(remaining)
+            df = _yf.download(tickers_str, period='2d', interval='1d', progress=False, timeout=6)
+            if df is not None and not df.empty:
+                close = df.get('Close')
+                if close is not None:
+                    for t in remaining:
+                        try:
+                            col = close[t] if len(remaining) > 1 else close
+                            vals = col.dropna().values
+                            if len(vals) >= 2:
+                                prev, curr = float(vals[-2]), float(vals[-1])
+                                if prev > 0:
+                                    result[t] = {
+                                        'change_pct': round((curr - prev) / prev * 100, 2),
+                                        'price': round(curr, 2),
+                                    }
+                            elif len(vals) == 1:
+                                result[t] = {'change_pct': 0, 'price': round(float(vals[0]), 2)}
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+    _NEWS_CHG_CACHE = result
+    _NEWS_CHG_CACHE_TIME = now
+    return result
+
+
 @router.get("/news")
 async def get_news(
     source: Optional[str] = Query(None),
@@ -268,6 +335,24 @@ async def get_news(
             tickers = [t.strip() for t in tickers_str.split(',') if t.strip()]
             return any(t in _MID_LARGE_CAP_TICKERS for t in tickers)
         news_list = [n for n in news_list if has_midcap_ticker(n)][:limit]
+
+    # ── Enrich with ticker price changes ──────────────────────────────────
+    all_tickers = set()
+    for item in news_list:
+        for t in (item.get('tickers') or '').split(','):
+            t = t.strip()
+            if t:
+                all_tickers.add(t)
+    if all_tickers:
+        chg_map = _get_news_ticker_changes(all_tickers)
+        for item in news_list:
+            changes = {}
+            for t in (item.get('tickers') or '').split(','):
+                t = t.strip()
+                if t and t in chg_map:
+                    changes[t] = chg_map[t]
+            if changes:
+                item['ticker_changes'] = changes
 
     # Translate to Hebrew if requested
     if lang == 'he':

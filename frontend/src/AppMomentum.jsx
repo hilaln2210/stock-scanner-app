@@ -427,11 +427,24 @@ function MomentumDashboard() {
                           style={{ background: 'rgba(96,165,250,0.12)', color: '#60a5fa', fontSize: 9 }}>
                           {item.source?.replace(/_/g, ' ').substring(0, 20)}
                         </span>
-                        {tickers.length > 0 && (
-                          <span className="font-mono text-xs font-bold" style={{ color: '#fbbf24' }}>
-                            {tickers[0]}
-                          </span>
-                        )}
+                        {tickers.length > 0 && (() => {
+                          const tc = (item.ticker_changes || {})[tickers[0]];
+                          const chg = tc?.change_pct;
+                          return (
+                            <span className="font-mono text-xs font-bold flex items-center gap-1.5" style={{ color: '#fbbf24' }}>
+                              {tickers[0]}
+                              {chg != null && (
+                                <span style={{
+                                  fontSize: 9, fontWeight: 800, padding: '0 4px', borderRadius: 3,
+                                  color: chg >= 0 ? '#4ade80' : '#f87171',
+                                  background: chg >= 0 ? 'rgba(74,222,128,0.12)' : 'rgba(248,113,113,0.12)',
+                                }}>
+                                  {chg >= 0 ? '+' : ''}{chg.toFixed(1)}%
+                                </span>
+                              )}
+                            </span>
+                          );
+                        })()}
                         <span className="text-xs ml-auto" style={{ color: '#475569' }}>{timeAgo}</span>
                       </div>
                       <div className="text-xs font-medium leading-snug line-clamp-2" style={{ color: '#e2e8f0' }} dir="rtl">
