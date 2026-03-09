@@ -392,27 +392,30 @@ function fmtNum(v, dec = 1) {
 
 // ── Table style constants (module-level to avoid re-creation every render) ────
 const TH_BASE = {
-  background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
-  borderBottom: '2px solid #334155',
-  color: '#94a3b8',
-  padding: '8px 8px',
-  fontSize: 11,
-  fontWeight: 600,
-  whiteSpace: 'nowrap',
+  padding: '9px 10px',
+  textAlign: 'right',
+  fontWeight: 700,
+  fontSize: 10,
+  color: '#64748b',
+  letterSpacing: '0.06em',
   textTransform: 'uppercase',
-  letterSpacing: '0.04em',
+  background: '#080f1e',
+  borderBottom: '2px solid #1e293b',
+  whiteSpace: 'nowrap',
+  cursor: 'default',
+  userSelect: 'none',
   position: 'sticky',
   top: 0,
   zIndex: 2,
 };
+
 const TD_BASE = {
-  padding: '6px 8px',
-  borderBottom: '1px solid rgba(30,41,59,0.6)',
+  padding: '8px 10px',
   textAlign: 'right',
-  fontSize: 11,
+  verticalAlign: 'middle',
+  fontSize: 12,
   color: '#e2e8f0',
   whiteSpace: 'nowrap',
-  transition: 'background 0.15s ease',
 };
 
 // ── Cell helpers ───────────────────────────────────────────────────────────────
@@ -2802,7 +2805,7 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
     return map;
   }, [sorted, livePrices]);
 
-  const COL_COUNT = 18;
+  const COL_COUNT = 16;
   const stockMap = useMemo(() => {
     const m = {};
     stocks.forEach(s => { if (s.price) m[s.ticker] = s.price; });
@@ -3006,7 +3009,7 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
         .fv-table td { border-left: 1px solid rgba(30,41,59,0.4); }
         .fv-table td:first-child { border-left: none; }
         .fv-table tbody tr { transition: background 0.12s ease; }
-        .fv-table tbody tr:hover td { background: rgba(30,41,59,0.7) !important; }
+        .fv-table tbody tr:hover td { background: rgba(30,58,95,0.6) !important; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
         .fv-table tbody tr { animation: fadeIn 0.2s ease-out; }
       `}</style>
@@ -3031,7 +3034,7 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
 
       {sorted.length > 0 && (
         <div className="finviz-scroll" style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
-          <table className="fv-table" style={{ width: '100%', minWidth: 1500, borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
+          <table className="fv-table" style={{ width: '100%', minWidth: 1380, borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
             <thead>
               <tr>
                 {/* ── RIGHT SIDE — most important ── */}
@@ -3057,10 +3060,8 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                 <th style={{ ...TH_BASE, width: 84, textAlign: 'right', background: TH_BASE.background }}>תגיות</th>
                 <th style={{ ...TH_BASE, width: 3, padding: 0, background: '#1e3a5f', borderLeft: '2px solid #1e3a5f' }} />
                 {/* ── LEFT SIDE — secondary ── */}
-                <SortTh label="30דק"   col="chg_30m"      sort={sort} onSort={handleSort} style={{ width: 52 }}
-                  title={"שינוי אחוזי ב-30 הדקות האחרונות\nמקור: yfinance (נרות 5 דקות)\nמעיד על מומנטום קצר-טווח פעיל"} />
-                <SortTh label="4שע"    col="chg_4h"       sort={sort} onSort={handleSort} style={{ width: 52 }}
-                  title={"שינוי אחוזי ב-4 השעות האחרונות\nמקור: yfinance (נרות שעתיים)\nמסייע לזהות מגמה תוך-יומית ברורה"} />
+                <SortTh label="מומנטום" col="chg_30m" sort={sort} onSort={handleSort} style={{ width: 72 }}
+                  title={"שינוי תוך-יומי\nשורה 1: 30 דקות אחרונות\nשורה 2: 4 שעות אחרונות"} />
                 <SortTh label="שווי"   col="market_cap"   sort={sort} onSort={handleSort} style={{ width: 72 }}
                   title={"שווי שוק = מחיר × מספר מניות\nשורה שנייה — ערך ארגוני לעומת שווי שוק:\nפחות מ-1 = מזומנים עודפים, חיובי\nיותר מ-1.3 = חוב גבוה, סיכון"} />
                 <SortTh label="בריאות" col="health_score" sort={sort} onSort={handleSort} style={{ width: 82 }}
@@ -3124,15 +3125,20 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                       <SqueezeCell s={s} />
                     </td>
 
-                    {/* Ticker + Sector */}
-                    <td style={{ ...TD_BASE, padding: '4px 8px' }} title={s.company || s.ticker || ''}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                        <span style={{ fontWeight: 800, color: '#fff', fontSize: 12 }}>{s.ticker?.trim() || '—'}</span>
-                        {isStar && <span style={{ fontSize: 10, flexShrink: 0 }} title="Health ≥80 + עליה ≥8%">⭐</span>}
+                    {/* Ticker + Company + Sector */}
+                    <td style={{ ...TD_BASE, padding: '6px 10px' }} title={s.company || s.ticker || ''}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ fontWeight: 800, color: '#f1f5f9', fontSize: 13, letterSpacing: '-0.01em' }}>{s.ticker?.trim() || '—'}</span>
+                        {isStar && <span style={{ fontSize: 10 }} title="Health ≥80 + עליה ≥8%">⭐</span>}
                       </div>
+                      {s.company && (
+                        <div style={{ fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 105, marginTop: 1, direction: 'ltr', textAlign: 'right' }}>
+                          {s.company}
+                        </div>
+                      )}
                       {s.sector && (
                         <div title={(SECTOR_HE[s.sector] || s.sector) + (s.industry ? ' · ' + (INDUSTRY_HE[s.industry] || s.industry) : '')}
-                          style={{ fontSize: 9, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 1, cursor: 'help' }}>
+                          style={{ fontSize: 9, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 100, marginTop: 1, cursor: 'help' }}>
                           {SECTOR_HE[s.sector] || s.sector}
                         </div>
                       )}
@@ -3237,14 +3243,18 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
 
                     {/* ── LEFT SIDE — secondary ── */}
 
-                    {/* 30min change */}
-                    <td style={TD_BASE}>
-                      {s.chg_30m != null ? <PctCell val={s.chg_30m} /> : <span style={{ color: '#475569', fontSize: 10 }}>—</span>}
-                    </td>
-
-                    {/* 4h change */}
-                    <td style={TD_BASE}>
-                      {s.chg_4h != null ? <PctCell val={s.chg_4h} /> : <span style={{ color: '#475569', fontSize: 10 }}>—</span>}
+                    {/* Momentum: 30m + 4h */}
+                    <td style={{ ...TD_BASE, padding: '6px 10px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ fontSize: 9, color: '#334155', fontWeight: 600, minWidth: 20 }}>30m</span>
+                          {s.chg_30m != null ? <PctCell val={s.chg_30m} /> : <span style={{ color: '#334155', fontSize: 11 }}>—</span>}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ fontSize: 9, color: '#334155', fontWeight: 600, minWidth: 20 }}>4h</span>
+                          {s.chg_4h != null ? <PctCell val={s.chg_4h} /> : <span style={{ color: '#334155', fontSize: 11 }}>—</span>}
+                        </div>
+                      </div>
                     </td>
 
                     {/* Market Cap + EV/MC */}
@@ -3268,10 +3278,6 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                       <AtrCell atr={s.atr} price={s.price} atrPct1h={s.tech_indicators?.atr_pct_1h} />
                     </td>
 
-                    {/* Beta */}
-                    <td style={{ ...TD_BASE, textAlign: 'center' }}>
-                      <BetaCell beta={s.beta} />
-                    </td>
                   </tr>,
 
                   /* ── Rich expand row ── */
