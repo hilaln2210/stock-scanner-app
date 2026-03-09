@@ -1,5 +1,6 @@
 # דיפלוי אוטומטי ל-Render בכל push ל-master
 # משתמש ב-Deploy Hook (מומלץ על ידי Render) — secret אחד בלבד.
+# ה-CI לא ייכשל אם ה-secret חסר או אם Render מושעה (continue-on-error).
 
 name: Deploy to Render
 
@@ -11,20 +12,25 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    continue-on-error: true   # לא לחסום commits אם Render מושעה / secret חסר
     steps:
       - name: Check deploy hook secret
         run: |
           if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
-            echo "::error::Missing RENDER_DEPLOY_HOOK_URL."
-            echo "1. Render Dashboard → your service (stock-scanner) → Settings"
-            echo "2. Copy the 'Deploy Hook' URL (https://api.render.com/deploy/srv-...?key=...)"
-            echo "3. GitHub repo → Settings → Secrets and variables → Actions"
-            echo "4. New repository secret: name = RENDER_DEPLOY_HOOK_URL, value = the URL"
-            exit 1
+            echo "::warning::RENDER_DEPLOY_HOOK_URL secret not set — skipping deploy."
+            echo "כדי לפעיל deploy אוטומטי:"
+            echo "1. Render Dashboard → שירות stock-scanner → Settings → Deploy Hook"
+            echo "2. העתיקי את ה-URL"
+            echo "3. GitHub repo → Settings → Secrets → Actions → New secret"
+            echo "   name=RENDER_DEPLOY_HOOK_URL  value=<ה-URL>"
+            exit 0
           fi
           echo "Deploy hook URL is set."
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
 
       - name: Trigger Render Deploy
+        if: ${{ env.RENDER_DEPLOY_HOOK_URL != '' }}
         env:
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
@@ -33,7 +39,8 @@ jobs:
           echo "Response HTTP code: $HTTP_CODE"
           cat /tmp/render_response.txt | head -5
           if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
-            echo "::error::Deploy hook returned HTTP $HTTP_CODE. Check RENDER_DEPLOY_HOOK_URL in GitHub Secrets (Settings → Secrets → Actions)."
-            exit 1
+            echo "::warning::Deploy hook returned HTTP $HTTP_CODE (service may be suspended)."
+            echo "Check Render dashboard at https://dashboard.render.com"
+          else
+            echo "Deploy triggered successfully. Check Render dashboard for build status."
           fi
-          echo "Deploy triggered. Check Render dashboard for build status."

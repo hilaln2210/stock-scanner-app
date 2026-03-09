@@ -3316,7 +3316,7 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                   }
                   {effectiveRefreshSec > 0 ? ` · כל ${effectiveRefreshSec}s` : ' · ידני'}
                 </span>
-                {Object.values(colFilter).some(Boolean) && (
+                {Object.values(colFilter).some(v => Array.isArray(v) ? v.length > 0 : Boolean(v)) && (
                   <button
                     onClick={() => setColFilter({})}
                     title="נקה את כל פילטרי העמודות"
