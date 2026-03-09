@@ -369,13 +369,13 @@ function MomentumDashboard() {
                     const tc = (item.ticker_changes || {})[tk];
                     const chg = tc?.change_pct;
                     return (
-                      <span key={i} className="font-mono text-xs font-bold px-1.5 py-0.5 rounded flex items-center gap-1"
-                        style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24', fontSize: 10 }}>
+                      <span key={i} className="font-mono font-bold px-1.5 py-0.5 rounded flex items-center gap-1.5"
+                        style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24', fontSize: 11 }}>
                         {tk}
                         {chg != null && (
                           <span style={{
                             color: chg >= 0 ? '#4ade80' : '#f87171',
-                            fontSize: 9, fontWeight: 800,
+                            fontSize: 11, fontWeight: 900,
                           }}>
                             {chg >= 0 ? '+' : ''}{chg.toFixed(1)}%
                           </span>
@@ -438,35 +438,45 @@ function MomentumDashboard() {
                           style={{ background: 'rgba(96,165,250,0.12)', color: '#60a5fa', fontSize: 9 }}>
                           {item.source?.replace(/_/g, ' ').substring(0, 20)}
                         </span>
-                        {tickers.length > 0 && (() => {
-                          const tc = (item.ticker_changes || {})[tickers[0]];
-                          const chg = tc?.change_pct;
-                          return (
-                            <span className="font-mono text-xs font-bold flex items-center gap-1.5" style={{ color: '#fbbf24' }}>
-                              {tickers[0]}
-                              {chg != null && (
-                                <span style={{
-                                  fontSize: 9, fontWeight: 800, padding: '0 4px', borderRadius: 3,
-                                  color: chg >= 0 ? '#4ade80' : '#f87171',
-                                  background: chg >= 0 ? 'rgba(74,222,128,0.12)' : 'rgba(248,113,113,0.12)',
-                                }}>
-                                  {chg >= 0 ? '+' : ''}{chg.toFixed(1)}%
-                                </span>
-                              )}
-                            </span>
-                          );
-                        })()}
+                        {tickers.length > 0 && (
+                          <span className="font-mono text-xs font-bold" style={{ color: '#fbbf24' }}>
+                            {tickers[0]}
+                          </span>
+                        )}
                         <span className="text-xs ml-auto" style={{ color: '#475569' }}>{timeAgo}</span>
                       </div>
                       <div className="text-xs font-medium leading-snug line-clamp-2" style={{ color: '#e2e8f0' }} dir="rtl">
                         {item.title}
                       </div>
-                      {item.sentiment_score !== 0 && (
-                        <div className="mt-1.5 text-xs font-medium"
-                          style={{ color: item.sentiment_score > 0 ? '#4ade80' : '#f87171' }}>
-                          {item.sentiment_score > 0 ? '↑' : '↓'} {Math.abs(item.sentiment_score).toFixed(2)}
-                        </div>
-                      )}
+                      {/* Price change since news — prominent bar */}
+                      {tickers.length > 0 && (() => {
+                        const tc = (item.ticker_changes || {})[tickers[0]];
+                        const chg = tc?.change_pct;
+                        const price = tc?.price;
+                        if (chg == null) return null;
+                        const isUp = chg >= 0;
+                        const big = Math.abs(chg) >= 5;
+                        return (
+                          <div style={{
+                            marginTop: 6, padding: '4px 8px', borderRadius: 6,
+                            background: isUp ? 'rgba(74,222,128,0.13)' : 'rgba(248,113,113,0.13)',
+                            border: `1px solid ${isUp ? 'rgba(74,222,128,0.35)' : 'rgba(248,113,113,0.35)'}`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          }}>
+                            <span style={{
+                              fontSize: big ? 14 : 12, fontWeight: 900, fontFamily: 'monospace',
+                              color: isUp ? '#4ade80' : '#f87171',
+                            }}>
+                              {isUp ? '▲' : '▼'} {isUp ? '+' : ''}{chg.toFixed(1)}%
+                            </span>
+                            {price != null && (
+                              <span style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'monospace' }}>
+                                ${price.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </a>
                   );
                 })}
