@@ -1,5 +1,5 @@
 # דיפלוי אוטומטי ל-Render בכל push ל-master
-# משתמש ב-Render API ישירות (RENDER_API_KEY + RENDER_SERVICE_ID ב-GitHub Secrets)
+# משתמש ב-Deploy Hook (מומלץ על ידי Render) — secret אחד בלבד.
 
 name: Deploy to Render
 
@@ -12,33 +12,28 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Check secrets
+      - name: Check deploy hook secret
         run: |
-          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
-            echo "::error::Missing secrets. In repo: Settings → Secrets and variables → Actions, add RENDER_API_KEY and RENDER_SERVICE_ID."
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::error::Missing RENDER_DEPLOY_HOOK_URL."
+            echo "1. Render Dashboard → your service (stock-scanner) → Settings"
+            echo "2. Copy the 'Deploy Hook' URL (https://api.render.com/deploy/srv-...?key=...)"
+            echo "3. GitHub repo → Settings → Secrets and variables → Actions"
+            echo "4. New repository secret: name = RENDER_DEPLOY_HOOK_URL, value = the URL"
             exit 1
           fi
-          echo "Secrets present."
-        env:
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          echo "Deploy hook URL is set."
 
       - name: Trigger Render Deploy
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
-          echo "Triggering Render deploy via API..."
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-            -H "Authorization: Bearer $RENDER_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d '{"clearCache":"do_not_clear"}' \
-            "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys")
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | head -1)
-          echo "Response ($HTTP_CODE): $BODY"
+          echo "Triggering Render deploy via deploy hook..."
+          HTTP_CODE=$(curl -s -o /tmp/render_response.txt -w "%{http_code}" "$RENDER_DEPLOY_HOOK_URL")
+          echo "Response HTTP code: $HTTP_CODE"
+          cat /tmp/render_response.txt | head -5
           if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
-            echo "::error::Render API returned HTTP $HTTP_CODE. Check RENDER_API_KEY and RENDER_SERVICE_ID in GitHub Secrets."
+            echo "::error::Deploy hook returned HTTP $HTTP_CODE. Check RENDER_DEPLOY_HOOK_URL in GitHub Secrets (Settings → Secrets → Actions)."
             exit 1
           fi
-          echo "Deploy triggered successfully. Check Render dashboard for build logs."
-        env:
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          echo "Deploy triggered. Check Render dashboard for build status."
