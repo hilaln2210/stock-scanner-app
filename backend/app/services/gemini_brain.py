@@ -493,7 +493,10 @@ def score_days_to_cover(stock: dict) -> tuple:
     """
     Days to Cover = Short Interest / Avg Daily Volume.
     Higher = harder for shorts to exit = more squeeze pressure.
-    Finviz gives us 'short_ratio' which IS days to cover.
+
+    Source priority:
+      1. Finviz 'short_ratio' — real DTC, updated bi-monthly by FINRA
+      2. Computed: short_interest / avg_volume — fallback when short_ratio missing
 
     Thresholds from research:
       > 7 days: extreme squeeze pressure
@@ -501,6 +504,16 @@ def score_days_to_cover(stock: dict) -> tuple:
       > 2 days: moderate
     """
     dtc = _safe_float(stock.get('short_ratio'))
+    dtc_source = 'finviz'
+
+    # Fallback: compute DTC from short_interest / avg_volume
+    if dtc <= 0:
+        si  = _safe_float(stock.get('short_interest'))   # shares (already parsed to number)
+        avg = _safe_float(stock.get('avg_volume'))
+        if si > 0 and avg > 0:
+            dtc = si / avg
+            dtc_source = 'computed'
+
     short_fl = _safe_float(stock.get('short_float'))
     chg = _safe_float(stock.get('change_pct'))
 
@@ -510,16 +523,17 @@ def score_days_to_cover(stock: dict) -> tuple:
     if dtc <= 0:
         return 0, []
 
+    _dtc_tag = '' if dtc_source == 'finviz' else ' (מחושב)'
     # DTC alone
     if dtc >= 7:
         score += 15
-        reasons.append(f'⚠️ Days to Cover: {dtc:.1f} — לחץ סקוויז קיצוני!')
+        reasons.append(f'⚠️ DTC {dtc:.1f}d{_dtc_tag} — לחץ סקוויז קיצוני!')
     elif dtc >= 4:
         score += 10
-        reasons.append(f'Days to Cover: {dtc:.1f} — לחץ גבוה')
+        reasons.append(f'DTC {dtc:.1f}d{_dtc_tag} — לחץ גבוה')
     elif dtc >= 2:
         score += 4
-        reasons.append(f'DTC: {dtc:.1f}')
+        reasons.append(f'DTC {dtc:.1f}d{_dtc_tag}')
 
     # DTC + High Short Float = deadly combo
     if dtc >= 4 and short_fl >= 15:
@@ -533,6 +547,133 @@ def score_days_to_cover(stock: dict) -> tuple:
         reasons.append(f'🩸 שורטים מדממים (DTC {dtc:.1f} + עלייה +{chg:.1f}%)')
 
     return score, reasons
+
+
+# ─── Catalyst Scoring for Squeeze ────────────────────────────────
+
+def score_catalyst_for_squeeze(stock: dict) -> tuple:
+    """
+    Evaluate catalyst quality to confirm a squeeze is real.
+    Without a catalyst, even a high-score squeeze may not hold.
+
+    Uses the 'reasons' list already computed by _classify_move_reason.
+    Returns (score, catalyst_label, catalyst_type, has_strong_catalyst).
+    """
+    reasons = stock.get('reasons') or []
+    score = 0
+    labels = []
+    types = set()
+
+    # Catalyst weights by type
+    _weights = {
+        'earnings':   (25, '📊 דוח רבעוני'),
+        'fda':        (25, '💊 FDA'),
+        'ma':         (22, '🤝 מיזוג/רכישה'),
+        'upgrade':    (18, '⬆️ שדרוג אנליסט'),
+        'contract':   (16, '📝 חוזה'),
+        'guidance':   (14, '🔮 תחזית'),
+        'insider':    (12, '🏷️ קניית פנים'),
+        'gap':        (10, '📈 גאפ'),
+        'volume_spike': (6, '📊 נפח חריג'),
+        'ai_sector':  (8,  '🤖 AI/סמיקונדקטור'),
+        'dilution':   (-10, '📉 הנפקת מניות'),
+        'risk':       (-8,  '⚠️ חקירה/סיכון'),
+    }
+
+    for r in reasons[:4]:
+        rtype = r.get('type', '')
+        conf  = r.get('confidence', 'low')
+        w, lbl = _weights.get(rtype, (0, ''))
+        if w == 0:
+            continue
+        # Confidence multiplier
+        mult = 1.0 if conf == 'high' else (0.6 if conf == 'medium' else 0.3)
+        pts = int(w * mult)
+        score += pts
+        if lbl and pts > 0:
+            labels.append(lbl)
+            types.add(rtype)
+
+    has_strong = any(t in types for t in ('earnings', 'fda', 'ma', 'upgrade', 'contract'))
+    catalyst_label = ' + '.join(labels[:3]) if labels else '⚠️ אין קטליסט ברור'
+
+    return score, catalyst_label, list(types), has_strong
+
+
+# ─── Breakout Confirmation ────────────────────────────────────────
+
+def score_breakout_confirmation(stock: dict) -> tuple:
+    """
+    Check breakout quality: Above VWAP / HOD / Resistance.
+    A squeeze without a good price structure often fails.
+
+    Returns (score, checks_dict) where checks_dict has:
+      above_vwap, near_hod, above_resistance, breakout_label
+    """
+    score = 0
+    checks = {
+        'above_vwap':      False,
+        'near_hod':        False,
+        'above_resistance': False,
+    }
+    signals = []
+
+    price        = _safe_float(stock.get('price'))
+    indicators   = stock.get('tech_indicators') or {}
+    vwap_bias    = indicators.get('vwap_bias') or stock.get('vwap_bias', 'neutral')
+    resistance   = _safe_float(stock.get('tech_resistance'))
+    day_high     = _safe_float(stock.get('day_high'))
+
+    # 1. Above VWAP — confirms intraday buyers in control
+    if vwap_bias == 'bullish':
+        score += 15
+        checks['above_vwap'] = True
+        signals.append('✅ מעל VWAP')
+    elif vwap_bias == 'bearish':
+        score -= 8
+        signals.append('❌ מתחת VWAP')
+
+    # 2. Near or at High of Day — price making new highs = shorts running
+    if price > 0 and day_high > 0:
+        dist_to_hod = (day_high - price) / day_high * 100  # % below HOD
+        if dist_to_hod <= 0.5:   # within 0.5% = essentially at HOD
+            score += 18
+            checks['near_hod'] = True
+            signals.append('✅ שיא יומי — HOD!')
+        elif dist_to_hod <= 2.0:
+            score += 10
+            checks['near_hod'] = True
+            signals.append(f'↗️ קרוב ל-HOD ({dist_to_hod:.1f}% מתחת)')
+        else:
+            signals.append(f'📉 {dist_to_hod:.1f}% מתחת לשיא היום')
+
+    # 3. Above resistance — breakout confirmed
+    if price > 0 and resistance > 0:
+        if price > resistance * 1.005:   # price > resistance + 0.5% buffer
+            score += 15
+            checks['above_resistance'] = True
+            signals.append(f'✅ פריצת התנגדות ${resistance:.2f}')
+        elif price > resistance * 0.995:  # touching resistance
+            score += 6
+            signals.append(f'⚡ נוגע בהתנגדות ${resistance:.2f}')
+        elif price < resistance:
+            pct_below = (resistance - price) / price * 100
+            signals.append(f'🔴 התנגדות ${resistance:.2f} (+{pct_below:.1f}%)')
+
+    confirmed_count = sum(checks.values())
+    if confirmed_count == 3:
+        breakout_label = '✅✅✅ פריצה מושלמת'
+    elif confirmed_count == 2:
+        breakout_label = '✅✅ פריצה חזקה'
+    elif confirmed_count == 1:
+        breakout_label = '✅ פריצה חלקית'
+    else:
+        breakout_label = '⚠️ ללא אישור פריצה'
+
+    checks['breakout_label'] = breakout_label
+    checks['breakout_signals'] = signals
+
+    return score, checks
 
 
 # ─── Full Short Squeeze Scoring ──────────────────────────────────
@@ -611,31 +752,121 @@ def score_short_squeeze_full(stock: dict) -> dict:
     elif 0 < market_cap < 2000:
         total_score += 4
 
-    # ── 6. TTM squeeze confirmation ───────────────────────────────
+    # ── 6. Float Rotation (volume / float shares) ─────────────────
+    # מדד כמה פעמים כל הפלואט נסחר היום — >1x = כל המניות החליפו ידיים → קונים חדשים מציפים את השורטים
+    shs_float_raw = stock.get('shs_float', '')
+    shs_float_m = _safe_float(shs_float_raw)   # Finviz נותן ב-Millions (e.g. "45.32M" → 45.32 after parse)
+    volume_raw   = _safe_float(stock.get('volume'))
+    if shs_float_m > 0 and volume_raw > 0:
+        # Finviz shs_float is already parsed by _parse_fv_num → number in millions
+        float_shares = shs_float_m * 1_000_000
+        float_rotation = volume_raw / float_shares
+        if float_rotation >= 1.5:
+            total_score += 22
+            all_signals.append(f'🔄 Float Rotation ×{float_rotation:.1f} — הפלואט נסחר {float_rotation:.1f}× היום! (קונים שוטפים שורטים)')
+        elif float_rotation >= 1.0:
+            total_score += 16
+            all_signals.append(f'🔄 Float Rotation ×{float_rotation:.1f} — כל הפלואט החליף ידיים (לחץ עצום)')
+        elif float_rotation >= 0.5:
+            total_score += 8
+            all_signals.append(f'🔄 Float Rotation ×{float_rotation:.1f} — חצי הפלואט נסחר')
+        elif float_rotation >= 0.25:
+            total_score += 3
+            all_signals.append(f'Float Rotation ×{float_rotation:.1f}')
+
+    # ── 7. Borrow Fee estimation (from Short Float as proxy) ──────
+    # כשהרבה אנשים בשורט → מניה קשה להשאלה (HTB) → ריבית שאלה יומית גבוהה
+    # → שורטים משלמים ריבית כל יום → לחץ כלכלי לסגור פוזיציה → forced buying
+    if short_fl >= 40:
+        total_score += 12
+        all_signals.append(f'💸 HTB קיצוני (Short {short_fl:.0f}%) — ריבית השאלה >100% שנתי, שורטים מדממים כסף!')
+    elif short_fl >= 30:
+        total_score += 8
+        all_signals.append(f'💸 HTB גבוה (Short {short_fl:.0f}%) — ריבית השאלה גבוהה, לחץ כלכלי לסגור')
+    elif short_fl >= 20:
+        total_score += 4
+        all_signals.append(f'💸 ריבית השאלה מוגברת (Short {short_fl:.0f}%)')
+
+    # ── 8. TTM squeeze confirmation ───────────────────────────────
     ttm_score, ttm_signals, ttm_state = detect_ttm_squeeze(stock)
     if ttm_state in ('firing', 'on'):
         total_score += ttm_score
         all_signals.extend(ttm_signals)
 
-    # ── Determine stage (intraday TA wins if available) ───────────
-    if squeeze_stage != 'none':
+    # ── 9. Catalyst quality ────────────────────────────────────────
+    # Without a real catalyst, even a beautiful squeeze can fade
+    cat_score, cat_label, cat_types, has_strong_cat = score_catalyst_for_squeeze(stock)
+    total_score += cat_score
+    if has_strong_cat:
+        all_signals.append(f'🎯 קטליסט: {cat_label}')
+    elif cat_score > 0:
+        all_signals.append(f'קטליסט: {cat_label}')
+    else:
+        all_signals.append('⚠️ אין קטליסט ברור — סקוויז טכני בלבד')
+
+    # ── 10. Breakout confirmation ──────────────────────────────────
+    # Above VWAP + HOD + Resistance = full confirmation
+    brk_score, brk_checks = score_breakout_confirmation(stock)
+    total_score += brk_score
+    for sig in brk_checks.get('breakout_signals', []):
+        all_signals.append(sig)
+
+    # ── Determine stage ────────────────────────────────────────────
+    # Priority: intraday TA (most granular) → TTM → fundamentals score
+    if squeeze_stage not in ('none', '', None):
         final_stage = squeeze_stage
     elif ttm_state == 'firing':
         final_stage = 'firing'
     elif ttm_state == 'on':
+        # If strong fundamentals + TTM compressed → promote to compression
         final_stage = 'compression'
-    elif total_score >= 30:
-        final_stage = 'accumulation'
+    elif ttm_state in ('off', 'unknown'):
+        # Fundamentals-only path: classify by score
+        # Lowered threshold so short_float=20%+DTC=5d (≈28pts) still surfaces
+        if total_score >= 50:
+            # High enough that a squeeze is building even without intraday confirmation
+            final_stage = 'accumulation'
+        elif total_score >= 20:
+            final_stage = 'accumulation'
+        else:
+            final_stage = 'none'
     else:
         final_stage = 'none'
 
-    # ── Label + emoji ─────────────────────────────────────────────
+    # ── M&A Override: Acquisition/merger → NOT a short squeeze ─────
+    # When a stock is being acquired, the price moves to the acquisition price.
+    # This is event-driven, not short-squeeze-driven. Misclassifying it as
+    # "compression" or "firing" would mislead traders into thinking it will
+    # squeeze further when it won't — it'll just trade near the deal price.
+    if final_stage != 'none' and 'ma' in cat_types:
+        # Check if any reason has M&A with high confidence
+        ma_reasons = [r for r in (stock.get('reasons') or [])
+                      if r.get('type') == 'ma' and r.get('confidence') == 'high']
+        if ma_reasons:
+            final_stage = 'none'
+
+    # ── Label + emoji + entry action ──────────────────────────────
     stage_meta = {
-        'none':        {'label': 'ללא סקוויז',    'emoji': '—'},
-        'accumulation':{'label': 'בנייה',          'emoji': '👀'},
-        'compression': {'label': 'דחיסה — כוונו',  'emoji': '⏳'},
-        'firing':      {'label': 'סקוויז פעיל!',   'emoji': '🚀'},
-        'exhaustion':  {'label': 'עייפות — זהירות','emoji': '⚠️'},
+        'none':        {
+            'label': 'ללא סקוויז',    'emoji': '—',
+            'entry': '',
+        },
+        'accumulation': {
+            'label': 'בנייה',          'emoji': '👀',
+            'entry': '⏳ המתיני לדחיסה — עדיין מוקדם מדי',
+        },
+        'compression':  {
+            'label': 'דחיסה — כוונו',  'emoji': '⏳',
+            'entry': '🎯 כניסה אידיאלית — לפני הפיצוץ',
+        },
+        'firing':       {
+            'label': 'סקוויז פעיל!',   'emoji': '🚀',
+            'entry': '⚡ כניסה אגרסיבית עם STOP TIGHT',
+        },
+        'exhaustion':   {
+            'label': 'עייפות — זהירות','emoji': '⚠️',
+            'entry': '🚪 אל תיכנסי — שקלי יציאה',
+        },
     }
     meta = stage_meta.get(final_stage, stage_meta['none'])
 
@@ -644,9 +875,20 @@ def score_short_squeeze_full(stock: dict) -> dict:
         'squeeze_stage':       final_stage,
         'squeeze_label':       meta['label'],
         'squeeze_emoji':       meta['emoji'],
+        'squeeze_entry':       meta['entry'],
         'squeeze_signals':     all_signals,
         'short_float':         short_fl,
         'dtc':                 _safe_float(stock.get('short_ratio')),
+        'float_rotation':      round(volume_raw / (shs_float_m * 1_000_000), 2) if shs_float_m > 0 and volume_raw > 0 else None,
+        # Catalyst
+        'squeeze_catalyst':        cat_label,
+        'squeeze_catalyst_types':  cat_types,
+        'squeeze_has_catalyst':    has_strong_cat,
+        # Breakout confirmation
+        'squeeze_above_vwap':      brk_checks.get('above_vwap', False),
+        'squeeze_near_hod':        brk_checks.get('near_hod', False),
+        'squeeze_above_resistance': brk_checks.get('above_resistance', False),
+        'squeeze_breakout_label':  brk_checks.get('breakout_label', ''),
     }
 
 

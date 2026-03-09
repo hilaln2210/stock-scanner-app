@@ -77,6 +77,8 @@ class FinvizFundamentals:
         'Short Float / Ratio': 'short_float',
         'Short Ratio': 'short_ratio',
         'Short Interest': 'short_interest',
+        'Shs Float': 'shs_float',
+        'Shares Float': 'shs_float',
         'Target Price': 'target_price',
         'SMA20': 'sma20_dist',
         'SMA50': 'sma50_dist',

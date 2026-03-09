@@ -355,6 +355,17 @@ const TAG_META = {
   cash_rich:   { label: '💰 מזומן גבוה', bg: '#0c1a2e', border: '#1e40af', text: '#60a5fa' },
   high_growth: { label: '🔥 צמיחה',     bg: '#1a0a2e', border: '#6b21a8', text: '#c084fc' },
   high_short:  { label: '📉 שורט >15%', bg: '#1c1200', border: '#854d0e', text: '#facc15' },
+  earnings:  { label: '📊 דוח',    bg: '#052e16', border: '#166534', text: '#4ade80' },
+  fda:       { label: '💊 FDA',     bg: '#1a0a2e', border: '#6b21a8', text: '#c084fc' },
+  upgrade:   { label: '⬆️ שדרוג', bg: '#0c1a2e', border: '#1e40af', text: '#60a5fa' },
+  contract:  { label: '📝 חוזה',   bg: '#1c1000', border: '#78350f', text: '#fbbf24' },
+  ma:        { label: '🤝 עסקה',   bg: '#1a0e00', border: '#92400e', text: '#fb923c' },
+  guidance:  { label: '🔮 תחזית',  bg: '#051818', border: '#0e4444', text: '#22d3ee' },
+  gap:       { label: '📈 גאפ',    bg: '#052e16', border: '#16653450', text: '#86efac' },
+  dilution:  { label: '📉 הנפקה', bg: '#2d0a0a', border: '#7f1d1d', text: '#fb7185' },
+  risk:      { label: '⚠️ סיכון',  bg: '#1c1200', border: '#854d0e', text: '#f97316' },
+  insider:   { label: '🏷️ פנים',   bg: '#130a2e', border: '#4c1d95', text: '#a78bfa' },
+  ai_sector: { label: '🤖 AI',     bg: '#0a1628', border: '#1e40af', text: '#818cf8' },
 };
 
 // ── Formatters ─────────────────────────────────────────────────────────────────
@@ -560,34 +571,89 @@ function extractTime(str) {
 }
 
 const SQUEEZE_META = {
-  firing:      { emoji: '🚀', label: 'Firing',      color: '#4ade80', bg: 'rgba(74,222,128,0.15)', border: '#4ade80' },
-  compression: { emoji: '⏳', label: 'Compression', color: '#fde047', bg: 'rgba(253,224,71,0.12)',  border: '#fde047' },
-  accumulation:{ emoji: '👀', label: 'Accum.',      color: '#38bdf8', bg: 'rgba(56,189,248,0.12)', border: '#38bdf8' },
-  exhaustion:  { emoji: '⚠️', label: 'Exhaust.',    color: '#f87171', bg: 'rgba(248,113,113,0.12)', border: '#f87171' },
-  none:        { emoji: '',   label: '',             color: '#475569', bg: 'transparent',           border: 'transparent' },
+  firing:      { emoji: '🚀', label: 'יורה',     color: '#4ade80', bg: 'rgba(74,222,128,0.15)', border: '#4ade80',  entry: '⚡ כניסה אגרסיבית עם STOP TIGHT', entryColor: '#4ade80' },
+  compression: { emoji: '⏳', label: 'דחיסה',    color: '#fde047', bg: 'rgba(253,224,71,0.12)',  border: '#fde047', entry: '🎯 כניסה אידיאלית — לפני הפיצוץ',  entryColor: '#fde047' },
+  accumulation:{ emoji: '👀', label: 'צבירה',    color: '#38bdf8', bg: 'rgba(56,189,248,0.12)', border: '#38bdf8',  entry: '⏳ המתיני לדחיסה — עוד מוקדם',     entryColor: '#94a3b8' },
+  exhaustion:  { emoji: '⚠️', label: 'עייפות',   color: '#f87171', bg: 'rgba(248,113,113,0.12)', border: '#f87171', entry: '🚪 אל תיכנסי — שקלי יציאה',        entryColor: '#f87171' },
+  none:        { emoji: '',   label: '',          color: '#475569', bg: 'transparent',           border: 'transparent', entry: '', entryColor: '#475569' },
 };
 
 function SqueezeCell({ s }) {
   const stage = s.squeeze_stage || 'none';
   const score = s.squeeze_total_score || s.squeeze_score || 0;
-  const meta = SQUEEZE_META[stage] || SQUEEZE_META['none'];
+  const meta  = SQUEEZE_META[stage] || SQUEEZE_META['none'];
+  const entry = s.squeeze_entry || meta.entry || '';
+
   if (stage === 'none' || !meta.emoji) {
     return <span style={{ color: '#334155', fontSize: 10 }}>—</span>;
   }
+
+  const dtc    = s.short_ratio   ? parseFloat(s.short_ratio)   : null;
+  const sf     = s.short_float   ? parseFloat(s.short_float)   : null;
+  const rvol   = s.rel_volume    ? parseFloat(s.rel_volume)     : null;
+  const rot    = s.float_rotation != null ? parseFloat(s.float_rotation) : null;
+  const hasCat = s.squeeze_has_catalyst;
+  const catLbl = s.squeeze_catalyst || '';
+
+  const chip = (val, color, title) => val != null && (
+    <span title={title} style={{
+      fontSize: 10, padding: '1px 6px', borderRadius: 4, whiteSpace: 'nowrap',
+      color, background: `${color}18`, border: `1px solid ${color}55`, fontWeight: 700,
+    }}>
+      {val}
+    </span>
+  );
+
+  const check = (ok, label) => (
+    <span title={ok ? `${label} ✓` : `${label} ✗`} style={{
+      fontSize: 10, padding: '1px 6px', borderRadius: 4, whiteSpace: 'nowrap',
+      color: ok ? '#4ade80' : '#334155',
+      background: ok ? 'rgba(74,222,128,0.12)' : 'transparent',
+      border: `1px solid ${ok ? '#22c55e44' : '#1e293b'}`,
+      fontWeight: 700,
+    }}>
+      {ok ? '✓' : '○'} {label}
+    </span>
+  );
+
+  const tooltipText = entry ? `${meta.label}\n${entry}\n\n${catLbl || (hasCat ? 'יש קטליסט' : 'אין קטליסט')}` : meta.label;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-      <span style={{
-        display: 'inline-block', padding: '2px 7px', borderRadius: 10, fontSize: 10,
-        fontWeight: 700, color: meta.color, background: meta.bg, border: `1px solid ${meta.border}`,
-        letterSpacing: '0.03em', whiteSpace: 'nowrap',
-      }}>
-        {meta.emoji} {meta.label}
-      </span>
-      {score > 0 && (
-        <div style={{ width: 48, height: 4, background: '#1e293b', borderRadius: 2, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${Math.min(100, score)}%`, background: meta.color, borderRadius: 2 }} />
-        </div>
-      )}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '3px 0' }}>
+
+      {/* Row 1: Stage badge + score + catalyst indicator */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'nowrap' }}>
+        <span title={tooltipText} style={{
+          padding: '3px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700,
+          color: meta.color, background: meta.bg, border: `1px solid ${meta.border}`,
+          whiteSpace: 'nowrap', cursor: 'help',
+        }}>
+          {meta.emoji} {meta.label}
+        </span>
+        <span style={{ fontSize: 10, color: '#475569', fontWeight: 600 }}>{score}pt</span>
+        <span title={catLbl || (hasCat ? 'יש קטליסט' : 'אין קטליסט')} style={{
+          fontSize: 10, fontWeight: 700,
+          color: hasCat ? '#4ade80' : '#475569',
+          cursor: 'help',
+        }}>
+          {hasCat ? '🎯' : '·'}
+        </span>
+      </div>
+
+      {/* Row 2: Short pressure chips */}
+      <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+        {sf  != null && chip(`${sf.toFixed(0)}%`,          '#f87171', `Short Float: ${sf.toFixed(1)}%`)}
+        {dtc != null && chip(`DTC ${dtc.toFixed(1)}d`,     dtc >= 4 ? '#fb923c' : '#64748b', `Days to Cover: ${dtc.toFixed(1)} ימים`)}
+        {rvol!= null && chip(`×${rvol.toFixed(1)}`,        rvol >= 2 ? '#fde047' : '#64748b', `Relative Volume: ×${rvol.toFixed(1)}`)}
+        {rot != null && chip(`↺${rot.toFixed(1)}x`,        '#a78bfa', `Float Rotation: ×${rot.toFixed(2)}`)}
+      </div>
+
+      {/* Row 3: Breakout checks inline */}
+      <div style={{ display: 'flex', gap: 3 }}>
+        {check(s.squeeze_above_vwap,       'VWAP')}
+        {check(s.squeeze_near_hod,          'HOD')}
+        {check(s.squeeze_above_resistance,  'R')}
+      </div>
     </div>
   );
 }
@@ -617,24 +683,30 @@ function PatternBadges({ patterns }) {
 
 function TechCell({ s }) {
   const signal = s.tech_signal;
-  const score = s.tech_score;
+  const score  = s.tech_score;
   if (!signal) return <span style={{ color: '#475569', fontSize: 10 }}>⏳</span>;
 
   const meta = TA_SIGNAL_META[signal] || TA_SIGNAL_META['Neutral'];
   const scoreColor = score > 30 ? '#4ade80' : score > 0 ? '#a3e635' : score > -30 ? '#fde047' : '#f87171';
 
-  const upTime = extractTime(s.tech_timing_up);
-  const downTime = extractTime(s.tech_timing_down);
-  const hasUp = !!upTime;
-  const hasDown = !!downTime;
+  const ind   = s.tech_indicators || {};
+  const rsi5m = ind.rsi_5m != null   ? Math.round(ind.rsi_5m)   : null;
+  const rsi1h = ind.rsi_1h != null   ? Math.round(ind.rsi_1h)   : null;
+  const vwap  = ind.vwap_bias || 'neutral';
+  const macd  = ind.macd_hist_5m;
+  const adx   = ind.adx_1h != null   ? Math.round(ind.adx_1h)  : null;
+  const bbSq  = ind.bb_squeeze;
+
+  const rsiColor = r => r >= 70 ? '#f87171' : r <= 30 ? '#4ade80' : r >= 60 ? '#fb923c' : r <= 40 ? '#a3e635' : '#94a3b8';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, lineHeight: 1.2 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '1px 0' }}>
+      {/* Signal badge + score */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <span style={{
           fontSize: 10, padding: '2px 7px', borderRadius: 6, fontWeight: 800,
           background: meta.bg, border: `1px solid ${meta.border}`, color: meta.text,
-          whiteSpace: 'nowrap', display: 'inline-block', letterSpacing: '0.02em',
+          whiteSpace: 'nowrap', letterSpacing: '0.02em',
         }}>
           {meta.short} {meta.label}
         </span>
@@ -642,28 +714,52 @@ function TechCell({ s }) {
           {score > 0 ? '+' : ''}{score}
         </span>
       </div>
-      {(hasUp || hasDown) && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'center' }}>
-          {hasUp && (
-            <span style={{
-              fontSize: 8, color: '#4ade80', fontFamily: 'monospace', fontWeight: 700,
-              background: '#052e16', borderRadius: 3, padding: '1px 5px',
-              whiteSpace: 'nowrap',
-            }}>
-              📈 {upTime}
-            </span>
-          )}
-          {hasDown && (
-            <span style={{
-              fontSize: 8, color: '#f87171', fontFamily: 'monospace', fontWeight: 700,
-              background: '#2d0a0a', borderRadius: 3, padding: '1px 5px',
-              whiteSpace: 'nowrap',
-            }}>
-              📉 {downTime}
-            </span>
-          )}
-        </div>
-      )}
+
+      {/* Key indicators row */}
+      <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+        {rsi5m != null && (
+          <span title={`RSI 5m: ${rsi5m}${rsi1h != null ? ' | RSI 1h: ' + rsi1h : ''}`} style={{
+            fontSize: 10, padding: '1px 5px', borderRadius: 3, fontWeight: 700,
+            color: rsiColor(rsi5m), background: '#0a1628', border: '1px solid #1e293b',
+            whiteSpace: 'nowrap', cursor: 'help',
+          }}>
+            RSI {rsi5m}{rsi1h != null ? `·${rsi1h}` : ''}
+          </span>
+        )}
+        <span title={`VWAP: ${vwap}`} style={{
+          fontSize: 10, padding: '1px 5px', borderRadius: 3, fontWeight: 700,
+          color: vwap === 'bullish' ? '#4ade80' : vwap === 'bearish' ? '#f87171' : '#475569',
+          background: '#0a1628', border: '1px solid #1e293b', whiteSpace: 'nowrap',
+        }}>
+          VWAP {vwap === 'bullish' ? '↑' : vwap === 'bearish' ? '↓' : '—'}
+        </span>
+        {macd != null && (
+          <span title={`MACD histogram: ${macd.toFixed(4)}`} style={{
+            fontSize: 10, padding: '1px 5px', borderRadius: 3, fontWeight: 700,
+            color: macd > 0 ? '#4ade80' : '#f87171',
+            background: '#0a1628', border: '1px solid #1e293b', whiteSpace: 'nowrap',
+          }}>
+            MACD {macd > 0 ? '↑' : '↓'}
+          </span>
+        )}
+        {adx != null && adx > 20 && (
+          <span title={`ADX 1h: ${adx} — עוצמת מגמה`} style={{
+            fontSize: 10, padding: '1px 5px', borderRadius: 3, fontWeight: 700,
+            color: adx >= 40 ? '#f59e0b' : adx >= 25 ? '#fde047' : '#94a3b8',
+            background: '#0a1628', border: '1px solid #1e293b', whiteSpace: 'nowrap',
+          }}>
+            ADX {adx}
+          </span>
+        )}
+        {bbSq && (
+          <span title="Bollinger Bands Squeeze — פריצה צפויה" style={{
+            fontSize: 10, padding: '1px 5px', borderRadius: 3, fontWeight: 700,
+            color: '#c084fc', background: '#0a1628', border: '1px solid #4c1d95',
+          }}>
+            💥BB
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -785,7 +881,7 @@ function TagBadge({ tag }) {
   if (!m) return <span style={{ fontSize: 11, color: '#94a3b8' }}>{tag}</span>;
   return (
     <span style={{
-      fontSize: 11, padding: '3px 8px', borderRadius: 4, fontWeight: 600,
+      fontSize: 10, padding: '2px 6px', borderRadius: 4, fontWeight: 600,
       background: m.bg, border: `1px solid ${m.border}`, color: m.text,
       whiteSpace: 'nowrap', display: 'inline-block', lineHeight: 1.3,
     }}>
@@ -1344,20 +1440,98 @@ function ExpandRow({ s, colSpan }) {
                 </div>
               )}
 
-              {/* Squeeze Stage */}
-              {s.squeeze_stage && s.squeeze_stage !== 'none' && (
-                <div style={{ marginBottom: 6 }}>
-                  <div style={{ fontSize: 9, color: '#64748b', fontWeight: 700, marginBottom: 3 }}>SHORT SQUEEZE</div>
-                  <SqueezeCell s={s} />
-                  {(s.squeeze_signals || []).length > 0 && (
-                    <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-                      {s.squeeze_signals.slice(0, 4).map((sig, i) => (
-                        <span key={i} style={{ fontSize: 8, color: '#94a3b8', background: '#0a1628', borderRadius: 4, padding: '1px 4px', border: '1px solid #1e293b' }}>{sig}</span>
+              {/* Squeeze Scorecard */}
+              {s.squeeze_stage && s.squeeze_stage !== 'none' && (() => {
+                const sqMeta = SQUEEZE_META[s.squeeze_stage] || SQUEEZE_META['none'];
+                const totalScore = s.squeeze_total_score || 0;
+                const dtcVal = s.short_ratio ? parseFloat(s.short_ratio) : null;
+                const dtcComputed = !s.short_ratio && s.short_interest;
+
+                // Score bar segments: each criterion contributes a visual block
+                const criteria = [
+                  { label: '🩳 Short Float', value: s.short_float ? `${parseFloat(s.short_float).toFixed(0)}%` : null, color: '#f87171', active: parseFloat(s.short_float||0) >= 10 },
+                  { label: `DTC${dtcComputed ? ' *' : ''}`, value: dtcVal != null ? `${dtcVal.toFixed(1)}d` : null, color: '#fb923c', active: dtcVal != null && dtcVal >= 2 },
+                  { label: 'RVol', value: s.rel_volume ? `×${parseFloat(s.rel_volume).toFixed(1)}` : null, color: '#fde047', active: parseFloat(s.rel_volume||0) >= 1.5 },
+                  { label: '🔄 Rotation', value: s.float_rotation != null ? `×${parseFloat(s.float_rotation).toFixed(2)}` : null, color: '#a78bfa', active: s.float_rotation != null && s.float_rotation >= 0.3 },
+                ];
+
+                return (
+                  <div style={{ marginBottom: 8, background: '#061220', borderRadius: 7, padding: '7px 8px', border: `1px solid ${sqMeta.border}40` }}>
+                    {/* Header row */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                      <span style={{ fontSize: 9, color: '#64748b', fontWeight: 700, letterSpacing: '0.06em' }}>🩳 SHORT SQUEEZE</span>
+                      <span style={{ fontSize: 9, color: sqMeta.color, fontWeight: 700 }}>ציון {totalScore}</span>
+                    </div>
+
+                    {/* Stage + entry */}
+                    <div style={{ marginBottom: 5 }}>
+                      <SqueezeCell s={s} />
+                    </div>
+
+                    {/* ── Criterion 1: Short Pressure ── */}
+                    <div style={{ fontSize: 8, color: '#475569', fontWeight: 700, marginBottom: 3, letterSpacing: '0.05em' }}>
+                      לחץ שורטים (כמה + כמה קשה לצאת)
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+                      {criteria.map((c, i) => c.value && (
+                        <span key={i} style={{
+                          fontSize: 8, padding: '1px 5px', borderRadius: 4, whiteSpace: 'nowrap',
+                          color: c.active ? c.color : '#475569',
+                          background: c.active ? `${c.color}12` : '#0a1628',
+                          border: `1px solid ${c.active ? c.color + '44' : '#1e293b'}`,
+                          fontWeight: c.active ? 700 : 400,
+                        }}>
+                          {c.label} {c.value}
+                        </span>
+                      ))}
+                      {dtcComputed && <span style={{ fontSize: 7, color: '#475569', alignSelf: 'center' }}>* מחושב</span>}
+                    </div>
+
+                    {/* ── Criterion 2: Catalyst ── */}
+                    <div style={{ fontSize: 8, color: '#475569', fontWeight: 700, marginBottom: 3, letterSpacing: '0.05em' }}>
+                      קטליסט (למה עכשיו?)
+                    </div>
+                    <div style={{
+                      marginBottom: 6, padding: '3px 6px', borderRadius: 5,
+                      background: s.squeeze_has_catalyst ? 'rgba(74,222,128,0.07)' : 'rgba(239,68,68,0.07)',
+                      border: `1px solid ${s.squeeze_has_catalyst ? '#16653488' : '#7f1d1d88'}`,
+                      fontSize: 9, color: s.squeeze_has_catalyst ? '#4ade80' : '#f87171', fontWeight: 600,
+                    }}>
+                      {s.squeeze_catalyst || '⚠️ אין קטליסט ברור'}
+                    </div>
+
+                    {/* ── Criterion 3: Breakout Confirmation ── */}
+                    <div style={{ fontSize: 8, color: '#475569', fontWeight: 700, marginBottom: 3, letterSpacing: '0.05em' }}>
+                      אישור פריצה (מבנה מחיר)
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, marginBottom: 5 }}>
+                      {[
+                        { ok: s.squeeze_above_vwap,      label: 'VWAP',    tip: 'מעל VWAP' },
+                        { ok: s.squeeze_near_hod,         label: 'HOD',     tip: 'שיא יומי' },
+                        { ok: s.squeeze_above_resistance, label: 'התנגדות', tip: 'פריצת התנגדות' },
+                      ].map((c, i) => (
+                        <span key={i} title={c.tip} style={{
+                          fontSize: 8, padding: '2px 6px', borderRadius: 4, fontWeight: 700,
+                          color: c.ok ? '#4ade80' : '#64748b',
+                          background: c.ok ? 'rgba(74,222,128,0.1)' : '#0a1628',
+                          border: `1px solid ${c.ok ? '#22c55e55' : '#1e293b'}`,
+                        }}>
+                          {c.ok ? '✅' : '○'} {c.label}
+                        </span>
                       ))}
                     </div>
-                  )}
-                </div>
-              )}
+
+                    {/* Squeeze signals */}
+                    {(s.squeeze_signals || []).length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2, borderTop: '1px solid #1e293b', paddingTop: 4 }}>
+                        {s.squeeze_signals.slice(0, 6).map((sig, i) => (
+                          <span key={i} style={{ fontSize: 7.5, color: '#64748b', background: '#0a1628', borderRadius: 3, padding: '1px 4px' }}>{sig}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Candlestick patterns */}
               {(s.tech_patterns_detail?.length > 0 || s.tech_patterns) && (
@@ -2628,7 +2802,7 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
     return map;
   }, [sorted, livePrices]);
 
-  const COL_COUNT = 17;
+  const COL_COUNT = 18;
   const stockMap = useMemo(() => {
     const m = {};
     stocks.forEach(s => { if (s.price) m[s.ticker] = s.price; });
@@ -2857,50 +3031,42 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
 
       {sorted.length > 0 && (
         <div className="finviz-scroll" style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
-          <table className="fv-table" style={{ width: '100%', minWidth: 1480, borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
+          <table className="fv-table" style={{ width: '100%', minWidth: 1500, borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
             <thead>
               <tr>
+                {/* ── RIGHT SIDE — most important ── */}
                 <th style={{ ...TH_BASE, width: 28, padding: '6px 2px', background: TH_BASE.background }} />
-                <SortTh label="מניה"    col="ticker"       sort={sort} onSort={handleSort} style={{ width: 66 }}
+                <SortTh label="🚀 סקוויז" col="squeeze_total_score" sort={sort} onSort={handleSort} style={{ width: 155 }}
+                  title={"זיהוי Short Squeeze — לחץ שורטיסטים\n\nשלבים + מתי להיכנס:\n👀 צבירה — ⏳ המתיני לדחיסה (מוקדם מדי)\n⏳ דחיסה — 🎯 כניסה אידיאלית לפני הפיצוץ!\n🚀 יורה — ⚡ כניסה אגרסיבית עם STOP TIGHT\n⚠️ עייפות — 🚪 אל תיכנסי, שקלי יציאה\n\nנוסחת ניקוד (קרנות גידור):\n• Short Float — כמה אנשים בשורט\n• DTC — כמה קשה לצאת (ימים לכיסוי)\n• Rel Volume — עוצמת הקונים\n• Float Rotation — כמה פעמים הפלואט נסחר\n• Borrow Fee — לחץ כלכלי על שורטים\n• ניתוח תוך-יומי (5m/1h)"} />
+                <SortTh label="מניה"    col="ticker"       sort={sort} onSort={handleSort} style={{ width: 90 }}
                   title={"סמל המניה ושם החברה\nמקור: Finviz\nלחץ לפתיחת פרטים מלאים + חדשות"} />
-                <SortTh label="סקטור"  col="sector"       sort={sort} onSort={handleSort} style={{ width: 66 }}
-                  title={"סקטור ותעשייה לפי Finviz\nעוזר להשוואה בין מניות באותו ענף\nלדוגמה: טכנולוגיה → מוליכים למחצה"} />
-                <SortTh label="מחיר"   col="price"        sort={sort} onSort={handleSort} style={{ width: 78 }}
-                  title={"מחיר אחרון בדולרים\nשעות מסחר: מחיר עדכני\nטרום/אחרי שוק: מחיר מסחר מורחב"} />
+                <SortTh label="מחיר"   col="price"        sort={sort} onSort={handleSort} style={{ width: 82 }}
+                  title={"מחיר אחרון בדולרים\nשורה שנייה: מרחק מ-SMA20 (ממוצע 20 ימים)\nחיובי = מעל הממוצע | שלילי = מתחת"} />
                 <SortTh label="שינוי%" col="change_pct"   sort={sort} onSort={handleSort} style={{ width: 68 }} sub={isExtended ? 'טרום' : null}
                   title={"שינוי אחוזי מסגירת אתמול\nחישוב: (מחיר עכשיו ÷ סגירה אתמול - 1) × 100\nבשעות ארכה: שינוי ממחיר הסגירה"} />
                 <SortTh label="פער%"   col="gap_pct"      sort={sort} onSort={handleSort} style={{ width: 52 }}
                   title={"פער פתיחה: הפרש בין מחיר הפתיחה לסגירה של אתמול\nחישוב: (פתיחה ÷ סגירה אתמול - 1) × 100\nחיובי = פתחה גבוה | שלילי = פתחה נמוך\nבשעות ארכה: מוצג שינוי ממחיר ההארכה"} />
+                <SortTh label="📊 ניתוח" col="tech_score" sort={sort} onSort={handleSort} style={{ width: 114 }}
+                  title={"ציון ניתוח טכני מרוכב (מינוס 100 עד פלוס 100)\nמקור: yfinance (נרות 5 דקות ושעתיים)\n• מגמה: ממוצעים נעים 50/200, חציית ממוצעים\n• מומנטום: מאקד, מדד תעלה, כוח יחסי\n• נפח: נפח מאוזן\n• תנודתיות: משטר טווח\nחיובי = סיגנלי קנייה | שלילי = סיגנלי מכירה"} />
+                <SortTh label="נפח יחסי" col="rel_volume" sort={sort} onSort={handleSort} style={{ width: 64 }}
+                  title={"נפח יחסי: נפח היום חלקי ממוצע 10 ימים באותה שעה\nחישוב: נפח עכשיו ÷ ממוצע היסטורי\n>2.0 = נפח חריג, סיגנל חזק\n1.0 = רגיל | פחות מ-0.5 = שקט\nשורה שנייה: נפח מוחלט"} />
+                <SortTh label="שורט%"  col="short_float"  sort={sort} onSort={handleSort} style={{ width: 52 }}
+                  title={"אחוז מניות מושאלות למכירה בחסר מסך הצף\nמקור: Finviz\nמעל 20% = לחץ שורט גבוה, פוטנציאל לסחיטת שורטים\nמעל 10% = משמעותי | מתחת ל-5% = נמוך"} />
+                <SortTh label="RSI"    col="rsi"          sort={sort} onSort={handleSort} style={{ width: 72 }}
+                  title={"מדד כוח יחסי (14 נרות) — עוצמת מגמה\nחישוב: ממוצע עליות ÷ ממוצע ירידות\nמעל 70 = קנוי יתר, אזהרת תיקון\nמתחת ל-30 = מכור יתר, הזדמנות\nמוצג: יומי (גדול) + שעתי + 5 דקות"} />
+                <th style={{ ...TH_BASE, width: 84, textAlign: 'right', background: TH_BASE.background }}>תגיות</th>
+                <th style={{ ...TH_BASE, width: 3, padding: 0, background: '#1e3a5f', borderLeft: '2px solid #1e3a5f' }} />
+                {/* ── LEFT SIDE — secondary ── */}
                 <SortTh label="30דק"   col="chg_30m"      sort={sort} onSort={handleSort} style={{ width: 52 }}
                   title={"שינוי אחוזי ב-30 הדקות האחרונות\nמקור: yfinance (נרות 5 דקות)\nמעיד על מומנטום קצר-טווח פעיל"} />
                 <SortTh label="4שע"    col="chg_4h"       sort={sort} onSort={handleSort} style={{ width: 52 }}
                   title={"שינוי אחוזי ב-4 השעות האחרונות\nמקור: yfinance (נרות שעתיים)\nמסייע לזהות מגמה תוך-יומית ברורה"} />
-                <SortTh label="נפח"    col="volume"       sort={sort} onSort={handleSort} style={{ width: 56 }}
-                  title={"כמות מניות שנסחרו היום\nנפח גבוה = עניין שוק גדול ונזילות\nנפח נמוך = קשה לכניסה/יציאה"} />
-                <SortTh label="נפח יחסי" col="rel_volume" sort={sort} onSort={handleSort} style={{ width: 48 }}
-                  title={"נפח יחסי: נפח היום חלקי ממוצע 10 ימים באותה שעה\nחישוב: נפח עכשיו ÷ ממוצע היסטורי\n>2.0 = נפח חריג, סיגנל חזק\n1.0 = רגיל | פחות מ-0.5 = שקט"} />
                 <SortTh label="שווי"   col="market_cap"   sort={sort} onSort={handleSort} style={{ width: 72 }}
                   title={"שווי שוק = מחיר × מספר מניות\nשורה שנייה — ערך ארגוני לעומת שווי שוק:\nפחות מ-1 = מזומנים עודפים, חיובי\nיותר מ-1.3 = חוב גבוה, סיכון"} />
-                <SortTh label="בריאות" col="health_score" sort={sort} onSort={handleSort} style={{ width: 76 }}
-                  title={"ציון בריאות פונדמנטלית (0-100)\nמקור: Finviz\n• רווחיות: רווח למניה, מכפיל רווח\n• צמיחה: רווח רבעוני, הכנסות\n• מאזן: חוב, נזילות\n• ביצועים: ביחס למדד\nמעל 70 = בריא | מעל 85 = מצוין"} />
-                <SortTh label="רווח%"  col="eps_qq"       sort={sort} onSort={handleSort} style={{ width: 56 }}
-                  title={"צמיחת רווח למניה: רבעון מול רבעון קודם\nחישוב: (רווח רבעון אחרון ÷ רבעון לפניו - 1) × 100\nמקור: Finviz\n🚀 מעל 50% = צמיחה פורצת\nחיובי = גדל | שלילי = ירד"} />
-                <SortTh label="RSI"    col="rsi"          sort={sort} onSort={handleSort} style={{ width: 72 }}
-                  title={"מדד כוח יחסי (14 נרות) — עוצמת מגמה\nחישוב: ממוצע עליות ÷ ממוצע ירידות\nמעל 70 = קנוי יתר, אזהרת תיקון\nמתחת ל-30 = מכור יתר, הזדמנות\nמוצג: יומי (גדול) + שעתי + 5 דקות"} />
-                <SortTh label="שורט%"  col="short_float"  sort={sort} onSort={handleSort} style={{ width: 52 }}
-                  title={"אחוז מניות מושאלות למכירה בחסר מסך הצף\nמקור: Finviz\nמעל 20% = לחץ שורט גבוה, פוטנציאל לסחיטת שורטים\nמעל 10% = משמעותי | מתחת ל-5% = נמוך"} />
-                <SortTh label="SMA20"  col="sma20"        sort={sort} onSort={handleSort} style={{ width: 58 }}
-                  title={"מרחק מממוצע נע של 20 ימים, כאחוז\nחישוב: (מחיר ÷ ממוצע 20 ימים - 1) × 100\nחיובי = מחיר מעל הממוצע, מגמה עולה\nשלילי = מתחת לממוצע, חולשה\nקרוב לאפס = אזור תמיכה/התנגדות"} />
+                <SortTh label="בריאות" col="health_score" sort={sort} onSort={handleSort} style={{ width: 82 }}
+                  title={"ציון בריאות פונדמנטלית (0-100)\nמקור: Finviz\n• רווחיות: רווח למניה, מכפיל רווח\n• צמיחה: רווח רבעוני, הכנסות\n• מאזן: חוב, נזילות\n• ביצועים: ביחס למדד\nמעל 70 = בריא | מעל 85 = מצוין\nשורה שנייה: EPS QoQ (צמיחת רווח רבעוני)"} />
                 <SortTh label="טווח"   col="atr"          sort={sort} onSort={handleSort} style={{ width: 56 }}
                   title={"טווח תנועה ממוצע יומי בדולרים (14 ימים)\nמקור: Finviz + yfinance\nמודד תנודתיות — כמה המניה זזה ביום\nגבוה = הזדמנויות גדולות, אך סיכון גדול\nשורה שנייה: טווח תוך-יומי אחוזי (נרות שעתיים)"} />
-                <SortTh label="בטא"    col="beta"         sort={sort} onSort={handleSort} style={{ width: 44 }}
-                  title={"רגישות המניה לתנועות מדד S&P 500\nמקור: Finviz\n1.0 = זהה למדד\n2.0 = פי שניים מהמדד\n0.5 = חצי מהמדד\nמעל 1.5 = תנודתי מאוד\nמתחת ל-0.8 = יציב\nשלילי = נע הפוך למדד"} />
-                <SortTh label="📊 ניתוח" col="tech_score" sort={sort} onSort={handleSort} style={{ width: 114 }}
-                  title={"ציון ניתוח טכני מרוכב (מינוס 100 עד פלוס 100)\nמקור: yfinance (נרות 5 דקות ושעתיים)\n• מגמה: ממוצעים נעים 50/200, חציית ממוצעים\n• מומנטום: מאקד, מדד תעלה, כוח יחסי\n• נפח: נפח מאוזן\n• תנודתיות: משטר טווח\nחיובי = סיגנלי קנייה | שלילי = סיגנלי מכירה"} />
-                <SortTh label="🚀 סקוויז" col="squeeze_total_score" sort={sort} onSort={handleSort} style={{ width: 80 }}
-                  title={"זיהוי Short Squeeze — לחץ שורטיסטים\nשלבים:\n👀 Accum. — נפח מצטבר בשקט\n⏳ Compress. — טווחים מתכווצים\n🚀 Firing — פריצה עם נפח\n⚠️ Exhaust. — קצפת\nמשלב: Short Float + DTC + ניתוח תוך-יומי"} />
-                <th style={{ ...TH_BASE, width: 84, textAlign: 'right', background: TH_BASE.background }}>תגיות</th>
-                <th style={{ ...TH_BASE, width: 38, textAlign: 'center', background: TH_BASE.background }}>דירוג</th>
               </tr>
             </thead>
 
@@ -2934,6 +3100,8 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                     onMouseEnter={e => { e.currentTarget.style.background = '#1e293b'; }}
                     onMouseLeave={e => { e.currentTarget.style.background = rowBg; }}
                   >
+                    {/* ── RIGHT SIDE ── */}
+
                     {/* Expand toggle */}
                     <td style={{ ...TD_BASE, textAlign: 'center', padding: '4px 2px' }}>
                       <button
@@ -2951,27 +3119,26 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                       </button>
                     </td>
 
-                    {/* Ticker */}
+                    {/* Short Squeeze stage */}
+                    <td style={{ ...TD_BASE, padding: '4px 6px', verticalAlign: 'top' }}>
+                      <SqueezeCell s={s} />
+                    </td>
+
+                    {/* Ticker + Sector */}
                     <td style={{ ...TD_BASE, padding: '4px 8px' }} title={s.company || s.ticker || ''}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                         <span style={{ fontWeight: 800, color: '#fff', fontSize: 12 }}>{s.ticker?.trim() || '—'}</span>
                         {isStar && <span style={{ fontSize: 10, flexShrink: 0 }} title="Health ≥80 + עליה ≥8%">⭐</span>}
                       </div>
-                    </td>
-
-                    {/* Sector */}
-                    <td style={TD_BASE}>
-                      {s.sector ? (
-                        <span
-                          title={(SECTOR_HE[s.sector] || s.sector) + (s.industry ? ' · ' + (INDUSTRY_HE[s.industry] || s.industry) : '')}
-                          style={{ fontSize: 10, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}
-                        >
+                      {s.sector && (
+                        <div title={(SECTOR_HE[s.sector] || s.sector) + (s.industry ? ' · ' + (INDUSTRY_HE[s.industry] || s.industry) : '')}
+                          style={{ fontSize: 9, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 1, cursor: 'help' }}>
                           {SECTOR_HE[s.sector] || s.sector}
-                        </span>
-                      ) : <span style={{ color: '#94a3b8' }}>—</span>}
+                        </div>
+                      )}
                     </td>
 
-                    {/* Price */}
+                    {/* Price + SMA20 */}
                     <td style={TD_BASE}>
                       {(() => {
                         const liveP = livePrices[s.ticker]?.price;
@@ -2980,6 +3147,7 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                         const displayPrice = liveP ?? extP ?? regP;
                         const flash = priceFlashes[s.ticker];
                         const isLive = liveP != null;
+                        const sma20v = s.sma20 != null ? parseFloat(s.sma20) : null;
                         return (
                           <>
                             <span
@@ -2991,6 +3159,12 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                             {isLive && (
                               <div className="session-badge" style={{ fontSize: 8, color: sessionMeta.color, lineHeight: 1.2, padding: '1px 4px', borderRadius: 3, background: sessionMeta.bg, border: `1px solid ${sessionMeta.border}`, marginTop: 1 }}>
                                 {session === 'pre' ? '🌅 פרה' : session === 'post' ? '🌆 פוסט' : '● live'}
+                              </div>
+                            )}
+                            {!isLive && sma20v != null && (
+                              <div title={`SMA20: ${sma20v > 0 ? '+' : ''}${sma20v.toFixed(1)}% ${sma20v > 0 ? 'מעל' : 'מתחת'} לממוצע 20 ימים`}
+                                style={{ fontSize: 9, color: sma20v > 5 ? '#4ade80' : sma20v < -5 ? '#f87171' : '#64748b', marginTop: 1, fontFamily: 'monospace', cursor: 'help' }}>
+                                SMA {sma20v > 0 ? '+' : ''}{sma20v.toFixed(0)}%
                               </div>
                             )}
                           </>
@@ -3012,12 +3186,56 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                       )}
                     </td>
 
-                    {/* Gap% — in pre/post market show extended_chg_pct as proxy when gap_pct is 0/empty */}
+                    {/* Gap% */}
                     <td style={{ ...TD_BASE, textAlign: 'center' }}>
                       {isExtended && (!s.gap_pct || parseFloat(s.gap_pct) === 0)
                         ? <GapCell val={s.extended_chg_pct} isProxy />
                         : <GapCell val={s.gap_pct} />}
                     </td>
+
+                    {/* TA Signal */}
+                    <td style={{ ...TD_BASE, padding: '3px 4px' }}>
+                      <TechCell s={s} />
+                    </td>
+
+                    {/* Relative Volume + absolute volume */}
+                    <td style={{ ...TD_BASE, fontFamily: 'monospace', fontSize: 11 }}>
+                      <div style={{ color: parseFloat(s.rel_volume) >= 2 ? '#facc15' : parseFloat(s.rel_volume) >= 1.5 ? '#60a5fa' : '#94a3b8', fontWeight: 700 }}>
+                        {s.rel_volume ? `×${parseFloat(s.rel_volume).toFixed(1)}` : '—'}
+                      </div>
+                      <div style={{ fontSize: 9, color: '#475569', marginTop: 1 }}>
+                        {fmtVol(livePrices[s.ticker]?.volume || s.volume)}
+                      </div>
+                    </td>
+
+                    {/* Short% */}
+                    <td style={TD_BASE}><ShortCell val={s.short_float} /></td>
+
+                    {/* RSI (daily + 1h + 5m) */}
+                    <td style={{ ...TD_BASE, padding: '3px 4px' }}>
+                      <RsiCell val={s.rsi} rsi1h={s.tech_indicators?.rsi_1h} rsi5m={s.tech_indicators?.rsi_5m} />
+                    </td>
+
+                    {/* Tags — catalyst first, then fundamental */}
+                    <td style={TD_BASE}>
+                      {(() => {
+                        const catTags = (s.reasons || [])
+                          .filter(r => TAG_META[r.type] && r.confidence !== 'low')
+                          .slice(0, 2);
+                        const fundTags = (s.tags || []).filter(t => TAG_META[t]);
+                        const shown = [...catTags.map(r => r.type), ...fundTags].slice(0, 3);
+                        const extra = (catTags.length + fundTags.length) - shown.length;
+                        return (
+                          <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center' }}>
+                            {shown.map((tag, i) => <TagBadge key={`${tag}-${i}`} tag={tag} />)}
+                            {extra > 0 && <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>+{extra}</span>}
+                          </div>
+                        );
+                      })()}
+                    </td>
+                    <td style={{ ...TD_BASE, width: 3, padding: 0, background: 'rgba(30,58,95,0.3)', borderLeft: '2px solid #1e3a5f' }} />
+
+                    {/* ── LEFT SIDE — secondary ── */}
 
                     {/* 30min change */}
                     <td style={TD_BASE}>
@@ -3029,16 +3247,6 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                       {s.chg_4h != null ? <PctCell val={s.chg_4h} /> : <span style={{ color: '#475569', fontSize: 10 }}>—</span>}
                     </td>
 
-                    {/* Volume */}
-                    <td style={{ ...TD_BASE, color: '#94a3b8', fontFamily: 'monospace', fontSize: 11 }}>
-                      {fmtVol(livePrices[s.ticker]?.volume || s.volume)}
-                    </td>
-
-                    {/* Relative Volume */}
-                    <td style={{ ...TD_BASE, fontFamily: 'monospace', fontSize: 11, color: parseFloat(s.rel_volume) >= 2 ? '#facc15' : parseFloat(s.rel_volume) >= 1.5 ? '#60a5fa' : '#94a3b8' }}>
-                      {s.rel_volume ? parseFloat(s.rel_volume).toFixed(2) : '—'}
-                    </td>
-
                     {/* Market Cap + EV/MC */}
                     <td style={{ ...TD_BASE, padding: '3px 4px' }}>
                       <MoneyCell val={s.market_cap} str={livePrices[s.ticker]?.market_cap_str || s.market_cap_str} />
@@ -3047,27 +3255,12 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                       )}
                     </td>
 
-                    {/* Health — badge only */}
+                    {/* Health + EPS QoQ */}
                     <td style={{ ...TD_BASE, padding: '4px 6px' }}>
                       <HealthBadge score={s.health_score} detail={s.health_detail} />
-                    </td>
-
-                    {/* EPS QoQ — earnings acceleration */}
-                    <td style={{ ...TD_BASE, textAlign: 'center' }}>
-                      <EpsQqCell val={s.eps_qq} />
-                    </td>
-
-                    {/* RSI (daily + 1h + 5m) */}
-                    <td style={{ ...TD_BASE, padding: '3px 4px' }}>
-                      <RsiCell val={s.rsi} rsi1h={s.tech_indicators?.rsi_1h} rsi5m={s.tech_indicators?.rsi_5m} />
-                    </td>
-
-                    {/* Short% */}
-                    <td style={TD_BASE}><ShortCell val={s.short_float} /></td>
-
-                    {/* SMA20% — distance from 20-day MA */}
-                    <td style={{ ...TD_BASE, textAlign: 'center' }}>
-                      <SmaCell val={s.sma20} />
+                      {s.eps_qq != null && (
+                        <div style={{ marginTop: 2 }}><EpsQqCell val={s.eps_qq} /></div>
+                      )}
                     </td>
 
                     {/* ATR */}
@@ -3078,40 +3271,6 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                     {/* Beta */}
                     <td style={{ ...TD_BASE, textAlign: 'center' }}>
                       <BetaCell beta={s.beta} />
-                    </td>
-
-                    {/* TA Signal — hero column */}
-                    <td style={{ ...TD_BASE, padding: '3px 4px' }}>
-                      <TechCell s={s} />
-                    </td>
-
-                    {/* Short Squeeze stage */}
-                    <td style={{ ...TD_BASE, padding: '3px 4px', textAlign: 'center' }}>
-                      <SqueezeCell s={s} />
-                    </td>
-
-                    {/* Tags */}
-                    <td style={TD_BASE}>
-                      <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center' }}>
-                        {(s.tags || []).slice(0, 3).map(tag => <TagBadge key={tag} tag={tag} />)}
-                        {(s.tags || []).length > 3 && (
-                          <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>+{(s.tags || []).length - 3}</span>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Performance rank */}
-                    <td style={{ ...TD_BASE, textAlign: 'center', fontWeight: 800, fontSize: 13 }}>
-                      {(() => {
-                        const rank = perfRankMap[s.ticker];
-                        if (!rank) return '-';
-                        if (rank === 1) return <span style={{ color: '#fbbf24', textShadow: '0 0 6px rgba(251,191,36,0.5)' }}>🥇</span>;
-                        if (rank === 2) return <span style={{ color: '#cbd5e1' }}>🥈</span>;
-                        if (rank === 3) return <span style={{ color: '#d97706' }}>🥉</span>;
-                        if (rank <= 5) return <span style={{ color: '#4ade80' }}>{rank}</span>;
-                        if (rank <= 10) return <span style={{ color: '#60a5fa' }}>{rank}</span>;
-                        return <span style={{ color: '#64748b' }}>{rank}</span>;
-                      })()}
                     </td>
                   </tr>,
 

@@ -110,6 +110,20 @@ def _compute(ticker: str) -> Optional[dict]:
     # Support / Resistance from recent price action
     sr = _calc_support_resistance(df_5m)
 
+    # Today's High / Low — from today's 5m bars (HOD/LOD for breakout detection)
+    try:
+        import pandas as _pd_ta
+        if df_5m.index.tz is not None:
+            _today = _pd_ta.Timestamp.now(tz=df_5m.index.tz).date()
+            _today_bars = df_5m[df_5m.index.date == _today]
+        else:
+            _today_bars = df_5m.tail(78)  # ~6.5h trading day × 12 bars/h
+        day_high = round(float(_today_bars['High'].max()), 4) if len(_today_bars) > 0 else None
+        day_low  = round(float(_today_bars['Low'].min()),  4) if len(_today_bars) > 0 else None
+    except Exception:
+        day_high = None
+        day_low  = None
+
     return {
         'tech_signal': signal,
         'tech_score': round(score),
@@ -134,6 +148,8 @@ def _compute(ticker: str) -> Optional[dict]:
         'squeeze_signals': squeeze_info['squeeze_signals'],
         'tech_support': sr.get('support'),
         'tech_resistance': sr.get('resistance'),
+        'day_high': day_high,
+        'day_low':  day_low,
         'tech_indicators': {
             'rsi_5m': round(ind_5m.get('rsi', 0), 1),
             'rsi_1h': round(ind_1h.get('rsi', 0), 1),

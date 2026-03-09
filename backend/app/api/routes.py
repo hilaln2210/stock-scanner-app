@@ -1503,14 +1503,14 @@ _FV_NEWS_CACHE_TIME: dict = {}      # {ticker: timestamp}
 _FV_NEWS_CACHE_TTL: int = 600       # news: 10 min per ticker
 _FV_INTRA_CACHE: dict = {}          # {ticker: {chg_5m, chg_30m, chg_4h}}
 _FV_INTRA_CACHE_TIME: dict = {}     # {ticker: timestamp}
-_FV_INTRA_CACHE_TTL: int = 25       # intraday: same as table refresh
+_FV_INTRA_CACHE_TTL: int = 60       # intraday: 60s to allow background task to complete for all stocks
 _FV_SUMMARY_CACHE: dict = {}        # {ticker: summary_str}
 _FV_SUMMARY_CACHE_TIME: dict = {}   # {ticker: timestamp}
 _FV_SUMMARY_CACHE_TTL: int = 3600   # business description: 1 hour
 
 _FV_TA_CACHE: dict = {}             # {ticker: tech analysis result}
 _FV_TA_CACHE_TIME: dict = {}        # {ticker: timestamp}
-_FV_TA_CACHE_TTL: int = 60          # technical analysis: 60s
+_FV_TA_CACHE_TTL: int = 90          # technical analysis: 90s (background task takes ~40s for 50 stocks)
 
 _FV_DEFAULT_FILTERS = (
     "cap_midover,sh_avgvol_o2000,sh_curvol_o300,sh_instown_o10,ta_rsi_nos50"
@@ -1877,9 +1877,10 @@ def _fetch_ticker_news_sync(ticker: str) -> list:
         with _TPE2(max_workers=1) as pool:
             raw = pool.submit(_inner).result(timeout=3)
         items = [_normalize(n) for n in raw[:5]]
-        # Translate titles to Hebrew
+        # Keep original English title for keyword matching, translate display title
         for item in items:
             if item.get('title'):
+                item['title_en'] = item['title']   # original — used by _classify_move_reason
                 item['title'] = _translate_title_he(item['title'])
         return items
     except Exception:
@@ -1967,7 +1968,8 @@ def _classify_move_reason(fund: dict, news: list, change_pct) -> list:
     for article in (news or [])[:5]:
         if len(reasons) >= 4:
             break
-        title = (article.get('title', '') or '').lower()
+        # Use original English title for keyword matching (translated title breaks English rules)
+        title = (article.get('title_en') or article.get('title', '') or '').lower()
         publisher = article.get('publisher', '') or ''
         for keywords, rtype, label, conf in _CATALYST_RULES:
             if rtype in seen_types:
@@ -2263,7 +2265,7 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
     fund_stale = (now - _FV_FUND_CACHE_TIME) > _FV_FUND_CACHE_TTL
     fund_missing = tickers if fund_stale else [t for t in tickers if t not in _FV_FUND_CACHE]
     if fund_missing:
-        batches = [fund_missing[i:i+15] for i in range(0, min(len(fund_missing), 30), 15)]
+        batches = [fund_missing[i:i+15] for i in range(0, len(fund_missing), 15)]
         results = await asyncio.gather(*[
             finviz_fundamentals.get_fundamentals_batch(b) for b in batches
         ], return_exceptions=True)
@@ -2301,7 +2303,7 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
 
     # ── 4. Intraday momentum — ברקע (chg_5m, chg_10m, chg_30m) ─────────
     intra_missing = [
-        t for t in tickers[:25]
+        t for t in tickers
         if t not in _FV_INTRA_CACHE or (now - _FV_INTRA_CACHE_TIME.get(t, 0)) > _FV_INTRA_CACHE_TTL
     ]
 
@@ -2311,9 +2313,9 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
         if t not in _FV_SUMMARY_CACHE or (now - _FV_SUMMARY_CACHE_TIME.get(t, 0)) > _FV_SUMMARY_CACHE_TTL
     ]
 
-    # ── 5b. Technical Analysis — ברקע (top 25 tickers) ──────────────────
+    # ── 5b. Technical Analysis — ברקע (all tickers) ──────────────────
     ta_missing = [
-        t for t in tickers[:25]
+        t for t in tickers
         if t not in _FV_TA_CACHE or (now - _FV_TA_CACHE_TIME.get(t, 0)) > _FV_TA_CACHE_TTL
     ]
 
@@ -2321,20 +2323,57 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
         return _compute_ta(ticker)
 
     async def _enrich_in_background():
-        """Intraday + Summary + TA — ברקע."""
+        """Intraday + Summary + TA — ברקע, מקביל."""
         loop = asyncio.get_running_loop()
-        if intra_missing:
+
+        async def _do_intra():
+            if not _bg_intra_missing:
+                return
             try:
-                with _TPE(max_workers=4) as pool:
-                    futs = [loop.run_in_executor(pool, _fetch_intraday_sync, t) for t in intra_missing]
-                    ress = await asyncio.gather(*futs, return_exceptions=True)
-                for t, res in zip(intra_missing, ress):
-                    if isinstance(res, dict) and res:
+                import yfinance as _yf2
+                # Batch download — much faster than per-ticker fetches
+                _tstr = ' '.join(_bg_intra_missing)
+                def _batch_download():
+                    return _yf2.download(
+                        tickers=_tstr, period='7d', interval='5m',
+                        prepost=True, group_by='ticker', threads=True,
+                        auto_adjust=True, progress=False,
+                    )
+                with _TPE(max_workers=1) as pool:
+                    df_all = await asyncio.wait_for(
+                        loop.run_in_executor(pool, _batch_download),
+                        timeout=20
+                    )
+                ts_now = _time.time()
+                for t in _bg_intra_missing:
+                    try:
+                        # Multi-ticker download has MultiIndex columns
+                        if isinstance(df_all.columns, __import__('pandas').MultiIndex):
+                            closes = df_all[t]['Close'].dropna() if t in df_all.columns.get_level_values(0) else None
+                        else:
+                            closes = df_all['Close'].dropna() if len(_bg_intra_missing) == 1 else None
+                        if closes is None or len(closes) < 2:
+                            continue
+                        cur = float(closes.iloc[-1])
+                        res = {'extended_price': round(cur, 4)}
+                        ago5  = float(closes.iloc[-2]) if len(closes) >= 2 else None
+                        ago10 = float(closes.iloc[-3]) if len(closes) >= 3 else None
+                        ago30 = float(closes.iloc[-7]) if len(closes) >= 7 else float(closes.iloc[0])
+                        ago4h = float(closes.iloc[-49]) if len(closes) >= 49 else float(closes.iloc[0])
+                        if ago5 and ago5 > 0:   res['chg_5m']  = round((cur-ago5)/ago5*100,2)
+                        if ago10 and ago10 > 0: res['chg_10m'] = round((cur-ago10)/ago10*100,2)
+                        if ago30 and ago30 > 0: res['chg_30m'] = round((cur-ago30)/ago30*100,2)
+                        if ago4h and ago4h > 0: res['chg_4h']  = round((cur-ago4h)/ago4h*100,2)
                         _FV_INTRA_CACHE[t] = res
-                        _FV_INTRA_CACHE_TIME[t] = _time.time()
+                        _FV_INTRA_CACHE_TIME[t] = ts_now
+                    except Exception:
+                        pass
             except Exception:
                 pass
-        if summary_missing:
+
+        async def _do_summary():
+            if not summary_missing:
+                return
             try:
                 with _TPE(max_workers=3) as pool:
                     futs = [loop.run_in_executor(pool, _fetch_summary_sync, t) for t in summary_missing]
@@ -2345,7 +2384,10 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
                         _FV_SUMMARY_CACHE_TIME[t] = now
             except Exception:
                 pass
-        if ta_missing:
+
+        async def _do_ta():
+            if not ta_missing:
+                return
             try:
                 with _TPE(max_workers=4) as pool:
                     futs = [loop.run_in_executor(pool, _compute_ta_sync, t) for t in ta_missing]
@@ -2357,20 +2399,81 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
             except Exception:
                 pass
 
-    # המתנה קצרה ל-intraday עבור הטיקרים הראשונים כדי שעמודת 30דק תמולא גם בבקשה ראשונה (כולל בענן)
-    _first_batch = (intra_missing or [])[:15]
-    if _first_batch:
+        # Run intraday + TA in parallel; summary is lightweight and can run in parallel too
+        await asyncio.gather(_do_intra(), _do_ta(), _do_summary(), return_exceptions=True)
+
+    # אחזור intraday — batch download סינכרוני לכל המניות החסרות
+    import pandas as _pd2
+    if intra_missing:
+        _t0_intra = _time.time()
         try:
-            _loop = asyncio.get_running_loop()
-            with _TPE(max_workers=4) as _pool:
-                _futs = [_loop.run_in_executor(_pool, _fetch_intraday_sync, t) for t in _first_batch]
-                _ress = await asyncio.wait_for(asyncio.gather(*_futs, return_exceptions=True), timeout=8.0)
-            for _t, _res in zip(_first_batch, _ress):
-                if isinstance(_res, dict) and _res:
-                    _FV_INTRA_CACHE[_t] = _res
-                    _FV_INTRA_CACHE_TIME[_t] = _time.time()
-        except (asyncio.TimeoutError, Exception):
-            pass
+            import yfinance as _yf_sync
+            _tstr_all = ' '.join(intra_missing)
+            def _sync_batch_dl():
+                return _yf_sync.download(
+                    tickers=_tstr_all, period='7d', interval='5m',
+                    prepost=True, group_by='ticker', threads=True,
+                    auto_adjust=True, progress=False,
+                )
+            _loop2 = asyncio.get_running_loop()
+            with _TPE(max_workers=1) as _pool2:
+                _df_sync = await asyncio.wait_for(
+                    _loop2.run_in_executor(_pool2, _sync_batch_dl),
+                    timeout=20
+                )
+            _ts_sync = _time.time()
+            _cached_count = 0
+            for _t in intra_missing:
+                try:
+                    if isinstance(_df_sync.columns, _pd2.MultiIndex):
+                        _lvl0 = _df_sync.columns.get_level_values(0)
+                        _lvl1 = _df_sync.columns.get_level_values(1)
+                        # group_by='ticker': level0=ticker, level1=OHLCV
+                        if _t in _lvl0:
+                            _cl = _df_sync[_t]['Close'].dropna()
+                        # group_by='column' (default): level0=OHLCV, level1=ticker
+                        elif _t in _lvl1:
+                            _cl = _df_sync['Close'][_t].dropna()
+                        else:
+                            continue
+                    else:
+                        _cl = _df_sync['Close'].dropna() if len(intra_missing) == 1 else None
+                    if _cl is None or len(_cl) < 2:
+                        continue
+                    _cur = float(_cl.iloc[-1])
+                    _res2 = {'extended_price': round(_cur, 4)}
+                    _a5  = float(_cl.iloc[-2]) if len(_cl) >= 2 else None
+                    _a10 = float(_cl.iloc[-3]) if len(_cl) >= 3 else None
+                    _a30 = float(_cl.iloc[-7]) if len(_cl) >= 7 else float(_cl.iloc[0])
+                    _a4h = float(_cl.iloc[-49]) if len(_cl) >= 49 else float(_cl.iloc[0])
+                    if _a5 and _a5 > 0:   _res2['chg_5m']  = round((_cur-_a5)/_a5*100, 2)
+                    if _a10 and _a10 > 0: _res2['chg_10m'] = round((_cur-_a10)/_a10*100, 2)
+                    if _a30 and _a30 > 0: _res2['chg_30m'] = round((_cur-_a30)/_a30*100, 2)
+                    if _a4h and _a4h > 0: _res2['chg_4h']  = round((_cur-_a4h)/_a4h*100, 2)
+                    _FV_INTRA_CACHE[_t] = _res2
+                    _FV_INTRA_CACHE_TIME[_t] = _ts_sync
+                    _cached_count += 1
+                except Exception:
+                    pass
+            print(f"[intra-sync] batch ok: {_cached_count}/{len(intra_missing)} cached in {_ts_sync-_t0_intra:.1f}s")
+        except asyncio.TimeoutError:
+            print(f"[intra-sync] TIMEOUT after {_time.time()-_t0_intra:.1f}s, fallback to per-ticker")
+            _first_batch = intra_missing[:15]
+            try:
+                _loop = asyncio.get_running_loop()
+                with _TPE(max_workers=4) as _pool:
+                    _futs = [_loop.run_in_executor(_pool, _fetch_intraday_sync, t) for t in _first_batch]
+                    _ress = await asyncio.wait_for(asyncio.gather(*_futs, return_exceptions=True), timeout=8.0)
+                for _t, _res in zip(_first_batch, _ress):
+                    if isinstance(_res, dict) and _res:
+                        _FV_INTRA_CACHE[_t] = _res
+                        _FV_INTRA_CACHE_TIME[_t] = _time.time()
+            except (asyncio.TimeoutError, Exception):
+                pass
+        except Exception as _e_intra:
+            print(f"[intra-sync] ERROR: {_e_intra}")
+
+    _bg_intra_missing = [t for t in intra_missing if t not in _FV_INTRA_CACHE]
     asyncio.create_task(_enrich_in_background())
 
     # ── 6. Merge — בונה טבלה עם fundamentals מ-Finviz ─────────────────────────
@@ -2456,6 +2559,9 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
             'cash_per_share': fund.get('cash_per_share', ''),
             'short_float':    fund.get('short_float', ''),
             'short_ratio':    fund.get('short_ratio', ''),
+            'short_interest': fund.get('short_interest', ''),
+            'avg_volume':     fund.get('avg_volume', ''),
+            'shs_float':      fund.get('shs_float', ''),
             'inst_own':       fund.get('inst_own', ''),
             'insider_own':    fund.get('insider_own', ''),
             'insider_trans':  fund.get('insider_trans', ''),
@@ -2511,6 +2617,8 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
             'tech_timing_down_conf': ta_data.get('tech_timing_down_conf', ''),
             'tech_support':   ta_data.get('tech_support', None),
             'tech_resistance': ta_data.get('tech_resistance', None),
+            'day_high':        ta_data.get('day_high', None),
+            'day_low':         ta_data.get('day_low', None),
             'tech_patterns':        ta_data.get('tech_patterns') or '',
             'tech_patterns_detail': ta_data.get('tech_patterns_detail') or [],
             'tech_indicators':      ta_data.get('tech_indicators') or {},
@@ -2529,7 +2637,15 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
             s['squeeze_stage']       = sq.get('squeeze_stage', s.get('squeeze_stage', 'none'))
             s['squeeze_label']       = sq.get('squeeze_label', '')
             s['squeeze_emoji']       = sq.get('squeeze_emoji', '')
+            s['squeeze_entry']       = sq.get('squeeze_entry', '')
             s['squeeze_signals']     = sq.get('squeeze_signals', s.get('squeeze_signals', []))
+            s['float_rotation']      = sq.get('float_rotation')
+            s['squeeze_catalyst']    = sq.get('squeeze_catalyst', '')
+            s['squeeze_has_catalyst']= sq.get('squeeze_has_catalyst', False)
+            s['squeeze_above_vwap']  = sq.get('squeeze_above_vwap', False)
+            s['squeeze_near_hod']    = sq.get('squeeze_near_hod', False)
+            s['squeeze_above_resistance'] = sq.get('squeeze_above_resistance', False)
+            s['squeeze_breakout_label']   = sq.get('squeeze_breakout_label', '')
     except Exception:
         pass
 
