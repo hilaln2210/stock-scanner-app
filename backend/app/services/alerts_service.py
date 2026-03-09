@@ -52,6 +52,11 @@ def _humanize_signal(signal: dict) -> str:
     reason = signal.get('reason', '')
     analysis = signal.get('analysis', '')
     engine = signal.get('engine', '')
+    squeeze_stage = signal.get('squeeze_stage', '')
+    squeeze_score = signal.get('squeeze_total_score', 0)
+    squeeze_catalyst = signal.get('squeeze_catalyst', '')
+    short_float = signal.get('short_float', 0)
+    dtc = signal.get('short_ratio', 0)
 
     pnl_pct = 0
     if action in ('CLOSED', 'SMART_EXIT'):
@@ -84,6 +89,9 @@ def _humanize_signal(signal: dict) -> str:
 סיבה: {reason}
 ניתוח נוסף: {analysis}
 {"רווח/הפסד: " + str(pnl_pct) + "%" if pnl_pct else ""}
+{f"סקוויז: שלב {squeeze_stage}, ציון {squeeze_score}" if squeeze_stage else ""}
+{f"שורט פלואט: {short_float}%, DTC: {dtc}" if short_float else ""}
+{f"קטליסט: {squeeze_catalyst}" if squeeze_catalyst else ""}
 
 מבנה ההודעה:
 1. שורה ראשונה — אימוג'י + <b>טיקר</b> + פעולה + מחיר. קצר וחד.
@@ -110,7 +118,14 @@ def _humanize_signal(signal: dict) -> str:
 🔴 <b>PENN</b> — סגרתי ב-$18.50, הפסד -6.1%
 לא עבד הפעם. המומנטום דעך מהר מדי ונפלנו לסטופ. לומדים ממשיכים.
 
-כתוב ב-HTML בלבד: <b>bold</b>, <i>italic</i>. ללא markdown. מקסימום 350 תווים."""
+דוגמה BUY סקוויז:
+🩳🔥 <b>CVNA</b> — נכנסתי ב-$72, סקוויז פעיל!
+שורט 28%, DTC 6 ימים, והמניה פורצת עם ווליום פי 8. קטליסט: דוח רבעוני beat +40%. הסקוויז בשלב firing — השורטים נלחצים. גודל פוזיציה מוגדל.
+🎯 $92 | 🛑 $63
+
+אם יש נתוני סקוויז (שלב, ציון, קטליסט, שורט פלואט, DTC) — שלב אותם בהודעה! סקוויז חזק = יותר התלהבות.
+
+כתוב ב-HTML בלבד: <b>bold</b>, <i>italic</i>. ללא markdown. מקסימום 400 תווים."""
 
     try:
         client = Groq(api_key=api_key)

@@ -1278,6 +1278,28 @@ def evaluate_exits(positions: dict, stocks: list, live_prices: dict, regime: dic
                 'urgency': 'low', 'action': 'watch',
             })
 
+        # Squeeze exhaustion — squeeze stage moved to "exhausted", time to exit
+        sq_stage = stock_data.get('squeeze_stage', '')
+        if sq_stage == 'exhausted' and pnl_pct > 0:
+            suggestions.append({
+                'ticker': ticker, 'reason': f'סקוויז נגמר (שלב: exhausted) — לממש רווח ({pnl_pct:+.1f}%)',
+                'urgency': 'high', 'action': 'close',
+            })
+
+        # Squeeze firing with big gains — tighten trailing or partial exit
+        if sq_stage == 'firing' and pnl_pct > 8:
+            suggestions.append({
+                'ticker': ticker, 'reason': f'סקוויז בפריצה עם רווח {pnl_pct:+.1f}% — הדק טריילינג',
+                'urgency': 'medium', 'action': 'tighten_trail',
+            })
+
+        # Entered on squeeze but momentum died (building stage + negative P&L after 2h)
+        if sq_stage == 'building' and pnl_pct < -2 and holding_minutes > 120:
+            suggestions.append({
+                'ticker': ticker, 'reason': f'סקוויז לא התפתח ({pnl_pct:+.1f}% אחרי {int(holding_minutes/60)}שע) — שקול יציאה',
+                'urgency': 'medium', 'action': 'close',
+            })
+
     return suggestions
 
 
