@@ -184,6 +184,14 @@ function MomentumDashboard() {
 
   const activeTab = tabs.find(t => t.key === viewMode);
 
+  // Scroll active tab into view on mobile
+  const activeTabRef = useRef(null);
+  useEffect(() => {
+    if (activeTabRef.current) {
+      activeTabRef.current.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+  }, [viewMode]);
+
   return (
     <div className="min-h-screen" style={{ background: '#080c14', color: '#e2e8f0' }}>
 
@@ -256,16 +264,16 @@ function MomentumDashboard() {
             {liveMode ? (
               <>
                 <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-                LIVE
+                <span className="hidden sm:inline">LIVE</span>
               </>
-            ) : '⏸ עצור'}
+            ) : <span className="hidden sm:inline">⏸ עצור</span>}
           </button>
 
           {/* Refresh interval */}
           <select
             value={autoRefresh}
             onChange={e => { const v = Number(e.target.value); setAutoRefresh(v); setLiveMode(v > 0 && v <= 10); }}
-            className="px-2 py-1.5 text-xs rounded-lg focus:outline-none"
+            className="hidden sm:block px-2 py-1.5 text-xs rounded-lg focus:outline-none"
             style={{
               background: '#161b22',
               border: '1px solid rgba(255,255,255,0.06)',
@@ -303,6 +311,7 @@ function MomentumDashboard() {
             const isActive = viewMode === tab.key;
             return (
               <button key={tab.key}
+                ref={isActive ? activeTabRef : null}
                 onClick={() => setViewMode(tab.key)}
                 className="relative px-4 py-3 text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-1.5"
                 style={{ color: isActive ? '#fff' : '#475569' }}
@@ -330,7 +339,7 @@ function MomentumDashboard() {
       </nav>
 
       {/* ── Main content ── */}
-      <main className="px-4 py-4 w-full">
+      <main className="px-2 sm:px-4 py-4 w-full" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
 
         {/* ── Horizontal news ticker (replaces right sidebar) ── */}
         {viewMode !== 'news' && newsData && newsData.length > 0 && (

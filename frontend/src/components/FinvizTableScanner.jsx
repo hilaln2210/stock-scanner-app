@@ -773,6 +773,114 @@ function PatternBadges({ patterns }) {
   );
 }
 
+// ── Mobile metric chip ──────────────────────────────────────────────────────
+function MetricChip({ label, value, color }) {
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+      color, background: `${color}18`, border: `1px solid ${color}44`,
+      whiteSpace: 'nowrap',
+    }}>
+      {label} {value}
+    </span>
+  );
+}
+
+// ── Mobile stock card (used when screen width < 768px) ──────────────────────
+function MobileStockCard({ s, livePrices, priceFlashes }) {
+  const liveChgStr = livePrices[s.ticker]?.change_pct;
+  const chg   = liveChgStr ? parseFloat(liveChgStr) : parseFloat(s.change_pct) || 0;
+  const price = parseFloat(livePrices[s.ticker]?.price || s.price || 0);
+  const stage = s.squeeze_stage || 'none';
+  const meta  = SQUEEZE_META[stage] || SQUEEZE_META['none'];
+  const isCatSq = s.squeeze_has_catalyst && (stage === 'firing' || stage === 'compression');
+  const flash = priceFlashes[s.ticker];
+  const sig   = (s.tech_signal || '').toLowerCase();
+  const sigColor = sig.includes('strong buy') ? '#4ade80'
+    : sig.includes('buy') ? '#86efac'
+    : sig.includes('strong sell') ? '#f87171'
+    : sig.includes('sell') ? '#fca5a5'
+    : '#64748b';
+
+  return (
+    <div
+      onClick={() => window.open(`https://finviz.com/quote.ashx?t=${s.ticker}`, '_blank')}
+      style={{
+        background: isCatSq
+          ? 'linear-gradient(135deg, rgba(251,191,36,0.13), rgba(251,146,60,0.08))'
+          : '#0f172a',
+        border: `1px solid ${isCatSq ? 'rgba(251,191,36,0.55)' : 'rgba(30,41,59,0.9)'}`,
+        borderRadius: 12,
+        padding: '11px 12px',
+        cursor: 'pointer',
+        boxShadow: isCatSq ? '0 0 10px rgba(251,191,36,0.15)' : 'none',
+        transition: 'transform 0.1s',
+        WebkitTapHighlightColor: 'transparent',
+      }}
+    >
+      {/* NEWS+SQUEEZE banner */}
+      {isCatSq && (
+        <div style={{ fontSize: 10, fontWeight: 800, color: '#fbbf24', marginBottom: 5, letterSpacing: '0.04em' }}>
+          🔥 NEWS + SQUEEZE
+        </div>
+      )}
+
+      {/* Top row: ticker / company / change */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 7 }}>
+        <div>
+          <span style={{ fontSize: 15, fontWeight: 800, color: '#f1f5f9', fontFamily: 'monospace' }}>{s.ticker}</span>
+          <div style={{ fontSize: 10, color: '#475569', marginTop: 1, maxWidth: 100, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+            {s.company || ''}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: chg >= 0 ? '#4ade80' : '#f87171',
+            animation: flash ? `flash-${flash} 0.6s ease` : 'none' }}>
+            {chg >= 0 ? '+' : ''}{chg.toFixed(1)}%
+          </div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>
+            ${price.toFixed(price >= 100 ? 2 : price >= 10 ? 2 : 3)}
+          </div>
+        </div>
+      </div>
+
+      {/* Squeeze badge row */}
+      {stage !== 'none' && meta.emoji && (
+        <div style={{ display: 'flex', gap: 5, alignItems: 'center', marginBottom: 7 }}>
+          <span style={{
+            fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 8,
+            color: isCatSq ? '#fbbf24' : meta.color,
+            background: isCatSq ? 'rgba(251,191,36,0.18)' : meta.bg,
+            border: `1px solid ${isCatSq ? 'rgba(251,191,36,0.6)' : meta.border}`,
+          }}>
+            {meta.emoji} {meta.label}
+          </span>
+          <span style={{ fontSize: 10, color: '#475569' }}>{s.squeeze_total_score || 0}pt</span>
+          {s.squeeze_has_catalyst && <span title={s.squeeze_catalyst || 'קטליסט'}>🎯</span>}
+        </div>
+      )}
+
+      {/* Metrics chips */}
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 5 }}>
+        {s.short_float  != null && <MetricChip label="Short" value={`${parseFloat(s.short_float).toFixed(0)}%`}   color="#f87171" />}
+        {s.short_ratio  != null && <MetricChip label="DTC"   value={`${parseFloat(s.short_ratio).toFixed(1)}d`}   color="#fb923c" />}
+        {s.rel_volume   != null && <MetricChip label="Vol"   value={`×${parseFloat(s.rel_volume).toFixed(1)}`}    color="#fde047" />}
+        {s.rsi          != null && <MetricChip label="RSI"   value={parseFloat(s.rsi).toFixed(0)}
+          color={parseFloat(s.rsi) > 70 ? '#f87171' : parseFloat(s.rsi) < 30 ? '#60a5fa' : '#94a3b8'} />}
+        {s.float_rotation != null && <MetricChip label="Rot" value={`${parseFloat(s.float_rotation).toFixed(1)}x`} color="#a78bfa" />}
+      </div>
+
+      {/* Tech signal */}
+      {s.tech_signal && (
+        <div style={{ fontSize: 10, color: sigColor, fontWeight: 600 }}>
+          {s.tech_signal}
+          {s.tech_score != null && <span style={{ color: '#475569', marginLeft: 4 }}>({s.tech_score > 0 ? '+' : ''}{s.tech_score})</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TechCell({ s }) {
   const signal = s.tech_signal;
   const score  = s.tech_score;
@@ -2800,6 +2908,12 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
   const [sort,   setSort]   = useState({ col: 'change_pct', dir: 'desc' });
   const [colFilter, setColFilter] = useState({});        // { col: string[] } — בחירה מרובה לכל עמודה
   const [colFilterOpen, setColFilterOpen] = useState(null); // col name of open dropdown
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
   const [expanded, setExpanded] = useState(new Set());
   const [countdown, setCountdown] = useState(effectiveRefreshSec || 30);
   const countdownRef = useRef(effectiveRefreshSec || 30);
@@ -3170,8 +3284,27 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
               STOCK SCREENER
             </h2>
             {data && (
-              <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
-                {sorted.length} מניות{effectiveRefreshSec > 0 ? ` · עדכון כל ${effectiveRefreshSec} שניות` : ' · ידני'}
+              <div style={{ fontSize: 10, color: '#64748b', marginTop: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>
+                  {sorted.length !== stocks.filter(s => s.ticker && !/^\d+$/.test(s.ticker)).length
+                    ? <><span style={{ color: '#fbbf24', fontWeight: 700 }}>{sorted.length}</span> מתוך {stocks.filter(s => s.ticker && !/^\d+$/.test(s.ticker)).length} מניות</>
+                    : <>{sorted.length} מניות</>
+                  }
+                  {effectiveRefreshSec > 0 ? ` · כל ${effectiveRefreshSec}s` : ' · ידני'}
+                </span>
+                {Object.values(colFilter).some(Boolean) && (
+                  <button
+                    onClick={() => setColFilter({})}
+                    title="נקה את כל פילטרי העמודות"
+                    style={{
+                      fontSize: 10, padding: '1px 7px', borderRadius: 5,
+                      background: 'rgba(251,191,36,0.15)',
+                      border: '1px solid rgba(251,191,36,0.4)',
+                      color: '#fbbf24', cursor: 'pointer', fontWeight: 700,
+                    }}>
+                    × נקה פילטרים
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -3364,6 +3497,13 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
       )}
 
       {sorted.length > 0 && (
+        isMobile ? (
+          <div style={{ padding: '8px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            {sorted.map((s) => (
+              <MobileStockCard key={s.ticker} s={s} livePrices={livePrices} priceFlashes={priceFlashes} />
+            ))}
+          </div>
+        ) : (
         <div className="finviz-scroll" style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
           <table className="fv-table" style={{ width: '100%', minWidth: 1380, borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
             <thead>
@@ -3466,13 +3606,15 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                   : sig.includes('sell') ? '#ef4444'
                   : 'transparent';
                 const baseBg = i % 2 === 0 ? '#0f172a' : 'rgba(30,41,59,0.4)';
-                const rowBg = taBg !== 'transparent' ? taBg : baseBg;
+                const isCatSqRow = s.squeeze_has_catalyst && (s.squeeze_stage === 'firing' || s.squeeze_stage === 'compression');
+                const rowBg = isCatSqRow ? 'rgba(251,191,36,0.07)' : (taBg !== 'transparent' ? taBg : baseBg);
+                const rowBorder = isCatSqRow ? '#fbbf24' : taBorder;
 
                 return [
                   <tr
                     key={`row-${i}-${s.ticker}`}
                     className={isStar ? 'star-stock' : ''}
-                    style={{ background: rowBg, cursor: 'pointer', borderLeft: `3px solid ${taBorder}` }}
+                    style={{ background: rowBg, cursor: 'pointer', borderLeft: `3px solid ${rowBorder}` }}
                     onClick={() => window.open(`https://finviz.com/quote.ashx?t=${s.ticker}`, '_blank')}
                     onMouseEnter={e => { e.currentTarget.style.background = '#1e293b'; }}
                     onMouseLeave={e => { e.currentTarget.style.background = rowBg; }}
@@ -3665,6 +3807,7 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
             </tbody>
           </table>
         </div>
+        )
       )}
 
       {sorted.length > 0 && (
