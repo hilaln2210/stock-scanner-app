@@ -390,17 +390,18 @@ function fmtNum(v, dec = 1) {
   return isNaN(n) ? (v || '—') : n.toFixed(dec);
 }
 
-// ── Table style constants (module-level to avoid re-creation every render) ────
+// ── Table style constants — כותרות מעוצבות (פונט נבחר via --header-font) ───────
 const TH_BASE = {
-  padding: '9px 10px',
+  padding: '11px 12px',
   textAlign: 'right',
-  fontWeight: 700,
-  fontSize: 10,
-  color: '#64748b',
-  letterSpacing: '0.06em',
+  fontWeight: 600,
+  fontSize: 11,
+  color: '#94a3b8',
+  letterSpacing: '0.045em',
   textTransform: 'uppercase',
-  background: '#080f1e',
-  borderBottom: '2px solid #1e293b',
+  background: 'linear-gradient(180deg, #0f172a 0%, #020617 100%)',
+  borderBottom: '1px solid rgba(51, 65, 85, 0.8)',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)',
   whiteSpace: 'nowrap',
   cursor: 'default',
   userSelect: 'none',
@@ -1101,37 +1102,47 @@ function SortTh({ label, col, sort, onSort, sub, title, style: extraStyle,
                    filterOpts, filterValue, onFilter, filterOpen, onFilterOpen }) {
   const active = sort.col === col;
   const hasFilter = filterOpts && filterOpts.length > 0;
-  const filterActive = !!(filterValue && filterValue !== '');
+  const selectedArr = Array.isArray(filterValue) ? filterValue : (filterValue ? [filterValue] : []);
+  const filterActive = selectedArr.length > 0;
+  const filterTitle = filterActive
+    ? (selectedArr.length === 1
+        ? (filterOpts.find(o => o.value === selectedArr[0]) || {}).label || selectedArr[0]
+        : `${selectedArr.length} אפשרויות`)
+    : 'סנן עמודה (ניתן לבחור כמה)';
 
   return (
     <th style={{
       ...TH_BASE,
       textAlign: 'right',
       cursor: 'pointer',
-      color: active ? '#60a5fa' : '#64748b',
-      background: active ? 'linear-gradient(180deg, #0f1c2e 0%, #0c1524 100%)' : TH_BASE.background,
+      color: active ? '#93c5fd' : TH_BASE.color,
+      background: active
+        ? 'linear-gradient(180deg, #1e3a5f 0%, #0f172a 100%)'
+        : filterActive
+          ? 'linear-gradient(180deg, #1c1917 0%, #0c0a09 100%)'
+          : TH_BASE.background,
       borderBottom: filterActive
-        ? '2px solid #fbbf24'
-        : active ? '2px solid #3b82f6' : '2px solid #1e293b',
+        ? '2px solid rgba(251, 191, 36, 0.85)'
+        : active ? '2px solid rgba(96, 165, 250, 0.7)' : TH_BASE.borderBottom,
       position: 'relative',
       ...extraStyle,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'space-between' }}>
         {/* Sort area */}
         <span
           onClick={() => onSort(col)}
-          style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, justifyContent: 'flex-end' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, justifyContent: 'flex-end' }}
         >
           {title && <ColTooltip text={title} />}
-          <span>{label}</span>
-          {active && <span style={{ fontSize: 10, color: '#3b82f6' }}>{sort.dir === 'desc' ? '↓' : '↑'}</span>}
-          {sub && <span style={{ fontSize: 9, color: '#475569', fontWeight: 400 }}>{sub}</span>}
+          <span style={{ fontWeight: 600 }}>{label}</span>
+          {active && <span style={{ fontSize: 11, color: '#93c5fd', opacity: 0.95 }}>{sort.dir === 'desc' ? '↓' : '↑'}</span>}
+          {sub && <span style={{ fontSize: 10, color: '#64748b', fontWeight: 400 }}>{sub}</span>}
         </span>
         {/* Filter icon */}
         {hasFilter && (
           <button
             onClick={e => { e.stopPropagation(); onFilterOpen(filterOpen ? null : col); }}
-            title={filterActive ? `סינון פעיל: ${(filterOpts.find(o => o.value === filterValue) || {}).label || filterValue}\nלחץ לשינוי` : 'סנן עמודה'}
+            title={`${filterTitle}\nלחץ לפתיחה — ניתן לסמן כמה אפשרויות`}
             style={{
               width: 16, height: 16, borderRadius: 3, border: 'none', flexShrink: 0,
               background: filterActive ? 'rgba(251,191,36,0.3)' : 'rgba(71,85,105,0.3)',
@@ -1146,34 +1157,53 @@ function SortTh({ label, col, sort, onSort, sub, title, style: extraStyle,
         )}
       </div>
 
-      {/* Filter dropdown */}
+      {/* Filter dropdown — בחירה מורחבת (צ'קבוקסים), הדרופדאון נשאר פתוח עד סגירה */}
       {filterOpen && hasFilter && (
         <div
           style={{
             position: 'absolute', top: '100%', right: 0, zIndex: 2000,
             background: '#1e293b', border: '1px solid #334155', borderRadius: 8,
             boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
-            minWidth: 180, padding: '4px 0',
+            minWidth: 200, padding: '6px 0', maxHeight: 320, overflowY: 'auto',
           }}
           onClick={e => e.stopPropagation()}
         >
-          {filterOpts.map(opt => (
-            <div
-              key={opt.value}
-              onClick={() => { onFilter(col, opt.value); onFilterOpen(null); }}
-              style={{
-                padding: '7px 14px', fontSize: 11, cursor: 'pointer',
-                color: filterValue === opt.value ? '#fbbf24' : '#e2e8f0',
-                background: filterValue === opt.value ? 'rgba(251,191,36,0.15)' : 'transparent',
-                fontWeight: filterValue === opt.value ? 700 : 400,
-                transition: 'background 0.1s',
-              }}
-              onMouseEnter={e => { if (filterValue !== opt.value) e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
-              onMouseLeave={e => { if (filterValue !== opt.value) e.currentTarget.style.background = 'transparent'; }}
-            >
-              {opt.label}
-            </div>
-          ))}
+          <div style={{ padding: '4px 12px 6px', fontSize: 10, color: '#94a3b8', borderBottom: '1px solid #334155', marginBottom: 4 }}>
+            בחר אחד או יותר (שורה עוברת אם מתאימה לאחד)
+          </div>
+          {filterOpts.map(opt => {
+            const isAny = opt.value === '';
+            const checked = isAny ? selectedArr.length === 0 : selectedArr.includes(opt.value);
+            return (
+              <div
+                key={opt.value || 'any'}
+                onClick={() => {
+                  onFilter(col, opt.value);
+                  if (isAny) onFilterOpen(null);
+                }}
+                style={{
+                  padding: '6px 14px 6px 10px', fontSize: 11, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  color: checked ? '#fbbf24' : '#e2e8f0',
+                  background: checked ? 'rgba(251,191,36,0.15)' : 'transparent',
+                  fontWeight: checked ? 700 : 400,
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => { if (!checked) e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+                onMouseLeave={e => { if (!checked) e.currentTarget.style.background = 'transparent'; }}
+              >
+                <span style={{
+                  width: 14, height: 14, borderRadius: 3, flexShrink: 0,
+                  border: `2px solid ${checked ? '#fbbf24' : '#64748b'}`,
+                  background: checked ? '#fbbf24' : 'transparent',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9,
+                }}>
+                  {checked && '✓'}
+                </span>
+                {opt.label}
+              </div>
+            );
+          })}
         </div>
       )}
     </th>
@@ -2768,7 +2798,7 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
   const [sma200, setSma200]  = useState('');
   const [earnings, setEarnings] = useState('');
   const [sort,   setSort]   = useState({ col: 'change_pct', dir: 'desc' });
-  const [colFilter, setColFilter] = useState({});        // { col: filterValue }
+  const [colFilter, setColFilter] = useState({});        // { col: string[] } — בחירה מרובה לכל עמודה
   const [colFilterOpen, setColFilterOpen] = useState(null); // col name of open dropdown
   const [expanded, setExpanded] = useState(new Set());
   const [countdown, setCountdown] = useState(effectiveRefreshSec || 30);
@@ -2918,109 +2948,130 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
         return !isNaN(chg) && chg >= minPct;
       });
     }
-    // ── Column filters ─────────────────────────────────────────────────────────
-    if (colFilter.squeeze_total_score) {
-      const f = colFilter.squeeze_total_score;
-      list = list.filter(s => {
+    // ── Column filters (בחירה מורחבת — מערך ערכים, שורה עוברת אם מתאימה לאחד מהערכים) ──
+    const arr = (col, def) => {
+      const v = colFilter[col];
+      if (!v) return def ? [def] : [];
+      return Array.isArray(v) ? v : [v];
+    };
+    const squeezeArr = arr('squeeze_total_score');
+    if (squeezeArr.length > 0) {
+      list = list.filter(s => squeezeArr.some(f => {
         if (f === 'catalyst_squeeze') return s.squeeze_has_catalyst && (s.squeeze_stage === 'firing' || s.squeeze_stage === 'compression');
         if (f === 'none')             return !s.squeeze_stage || s.squeeze_stage === 'none';
         return s.squeeze_stage === f;
-      });
+      }));
     }
-    if (colFilter.tech_score) {
-      const f = colFilter.tech_score;
+    const techArr = arr('tech_score');
+    if (techArr.length > 0) {
       list = list.filter(s => {
         const sig = (s.tech_signal || '').toLowerCase();
-        if (f === 'strong_buy')  return sig.includes('strong buy');
-        if (f === 'buy')         return sig.includes('buy') && !sig.includes('strong');
-        if (f === 'neutral')     return sig.includes('neutral');
-        if (f === 'sell')        return sig.includes('sell') && !sig.includes('strong');
-        if (f === 'strong_sell') return sig.includes('strong sell');
-        return true;
+        return techArr.some(f => {
+          if (f === 'strong_buy')  return sig.includes('strong buy');
+          if (f === 'buy')         return sig.includes('buy') && !sig.includes('strong');
+          if (f === 'neutral')     return sig.includes('neutral');
+          if (f === 'sell')        return sig.includes('sell') && !sig.includes('strong');
+          if (f === 'strong_sell') return sig.includes('strong sell');
+          return false;
+        });
       });
     }
-    if (colFilter.rsi) {
-      const f = colFilter.rsi;
+    const rsiArr = arr('rsi');
+    if (rsiArr.length > 0) {
       list = list.filter(s => {
         const r = parseFloat(s.rsi);
         if (isNaN(r)) return false;
-        if (f === 'overbought') return r > 70;
-        if (f === 'normal')     return r >= 30 && r <= 70;
-        if (f === 'oversold')   return r < 30;
-        return true;
+        return rsiArr.some(f => {
+          if (f === 'overbought') return r > 70;
+          if (f === 'normal')     return r >= 30 && r <= 70;
+          if (f === 'oversold')   return r < 30;
+          return false;
+        });
       });
     }
-    if (colFilter.short_float) {
-      const f = colFilter.short_float;
+    const shortFloatArr = arr('short_float');
+    if (shortFloatArr.length > 0) {
       list = list.filter(s => {
         const sf = parseFloat(s.short_float);
         if (isNaN(sf)) return false;
-        if (f === 'sh_high')    return sf > 20;
-        if (f === 'sh_mid')     return sf >= 10 && sf <= 20;
-        if (f === 'sh_low')     return sf >= 5 && sf < 10;
-        if (f === 'sh_minimal') return sf < 5;
-        return true;
+        return shortFloatArr.some(f => {
+          if (f === 'sh_high')    return sf > 20;
+          if (f === 'sh_mid')     return sf >= 10 && sf <= 20;
+          if (f === 'sh_low')     return sf >= 5 && sf < 10;
+          if (f === 'sh_minimal') return sf < 5;
+          return false;
+        });
       });
     }
-    if (colFilter.rel_volume) {
-      const f = colFilter.rel_volume;
+    const relVolArr = arr('rel_volume');
+    if (relVolArr.length > 0) {
       list = list.filter(s => {
         const rv = parseFloat(s.rel_volume);
         if (isNaN(rv)) return false;
-        if (f === 'rv_extreme') return rv > 3;
-        if (f === 'rv_high')    return rv >= 2 && rv <= 3;
-        if (f === 'rv_normal')  return rv >= 1 && rv < 2;
-        if (f === 'rv_low')     return rv < 1;
-        return true;
+        return relVolArr.some(f => {
+          if (f === 'rv_extreme') return rv > 3;
+          if (f === 'rv_high')    return rv >= 2 && rv <= 3;
+          if (f === 'rv_normal')  return rv >= 1 && rv < 2;
+          if (f === 'rv_low')     return rv < 1;
+          return false;
+        });
       });
     }
-    if (colFilter.change_pct) {
-      const f = colFilter.change_pct;
+    const changePctArr = arr('change_pct');
+    if (changePctArr.length > 0) {
       list = list.filter(s => {
         const chgVal = parseFloat(isExtended && s.extended_chg_pct != null ? s.extended_chg_pct : s.change_pct);
         if (isNaN(chgVal)) return false;
-        if (f === 'chg_huge') return chgVal > 10;
-        if (f === 'chg_high') return chgVal >= 5 && chgVal <= 10;
-        if (f === 'chg_mid')  return chgVal >= 2 && chgVal < 5;
-        if (f === 'chg_neg')  return chgVal < 0;
-        return true;
+        return changePctArr.some(f => {
+          if (f === 'chg_huge') return chgVal > 10;
+          if (f === 'chg_high') return chgVal >= 5 && chgVal <= 10;
+          if (f === 'chg_mid')  return chgVal >= 2 && chgVal < 5;
+          if (f === 'chg_neg')  return chgVal < 0;
+          return false;
+        });
       });
     }
-    if (colFilter.market_cap) {
-      const f = colFilter.market_cap;
+    const mcapArr = arr('market_cap');
+    if (mcapArr.length > 0) {
       list = list.filter(s => {
-        const mc = parseFloat(s.market_cap_num || s.market_cap) / 1e9; // assume billions
+        const mc = parseFloat(s.market_cap_num || s.market_cap) / 1e9;
         if (isNaN(mc)) return false;
-        if (f === 'mega')  return mc >= 200;
-        if (f === 'large') return mc >= 10 && mc < 200;
-        if (f === 'mid')   return mc >= 2 && mc < 10;
-        if (f === 'small') return mc >= 0.3 && mc < 2;
-        if (f === 'micro') return mc < 0.3;
-        return true;
+        return mcapArr.some(f => {
+          if (f === 'mega')  return mc >= 200;
+          if (f === 'large') return mc >= 10 && mc < 200;
+          if (f === 'mid')   return mc >= 2 && mc < 10;
+          if (f === 'small') return mc >= 0.3 && mc < 2;
+          if (f === 'micro') return mc < 0.3;
+          return false;
+        });
       });
     }
-    if (colFilter.health_score) {
-      const f = colFilter.health_score;
+    const healthArr = arr('health_score');
+    if (healthArr.length > 0) {
       list = list.filter(s => {
         const hs = parseFloat(s.health_score);
         if (isNaN(hs)) return false;
-        if (f === 'health_excel') return hs > 85;
-        if (f === 'health_good')  return hs >= 70 && hs <= 85;
-        if (f === 'health_fair')  return hs >= 50 && hs < 70;
-        if (f === 'health_poor')  return hs < 50;
-        return true;
+        return healthArr.some(f => {
+          if (f === 'health_excel') return hs > 85;
+          if (f === 'health_good')  return hs >= 70 && hs <= 85;
+          if (f === 'health_fair')  return hs >= 50 && hs < 70;
+          if (f === 'health_poor')  return hs < 50;
+          return false;
+        });
       });
     }
-    if (colFilter.chg_30m) {
-      const f = colFilter.chg_30m;
+    const chg30mArr = arr('chg_30m');
+    if (chg30mArr.length > 0) {
       list = list.filter(s => {
         const m = parseFloat(s.chg_30m);
         if (isNaN(m)) return false;
-        if (f === 'mom_strong') return m > 3;
-        if (f === 'mom_mid')    return m >= 1 && m <= 3;
-        if (f === 'mom_flat')   return m >= -1 && m < 1;
-        if (f === 'mom_neg')    return m < -1;
-        return true;
+        return chg30mArr.some(f => {
+          if (f === 'mom_strong') return m > 3;
+          if (f === 'mom_mid')    return m >= 1 && m <= 3;
+          if (f === 'mom_flat')   return m >= -1 && m < 1;
+          if (f === 'mom_neg')    return m < -1;
+          return false;
+        });
       });
     }
     // ── Sort ──────────────────────────────────────────────────────────────────
@@ -3058,8 +3109,14 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
     return () => document.removeEventListener('click', close);
   }, [colFilterOpen]);
 
-  const handleColFilter = useCallback((col, value) => {
-    setColFilter(prev => ({ ...prev, [col]: value || undefined }));
+  // בחירה מורחבת: כל עמודה — מערך ערכים. לחיצה על "הכל" מנקה; על אפשרות — מוסיפה/מסירה (toggle).
+  const handleColFilterToggle = useCallback((col, value) => {
+    setColFilter(prev => {
+      const arr = Array.isArray(prev[col]) ? prev[col] : (prev[col] ? [prev[col]] : []);
+      if (value === '') return { ...prev, [col]: [] };
+      const next = arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value];
+      return { ...prev, [col]: next };
+    });
   }, []);
 
   const perfRankMap = useMemo(() => {
@@ -3274,7 +3331,12 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
         }
         .session-badge { animation: sessionPulse 2.5s ease-in-out infinite; }
         .fv-table { border-spacing: 0; }
-        .fv-table thead th { user-select: none; }
+        .fv-table thead th {
+          user-select: none;
+          font-weight: 600;
+          letter-spacing: 0.045em;
+        }
+        .fv-table thead tr { box-shadow: 0 1px 0 rgba(51,65,85,0.5); }
         .fv-table td { border-left: 1px solid rgba(30,41,59,0.4); }
         .fv-table td:first-child { border-left: none; }
         .fv-table tbody tr { transition: background 0.12s ease; }
@@ -3312,7 +3374,7 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                   title={"זיהוי Short Squeeze — לחץ שורטיסטים\n\nשלבים + מתי להיכנס:\n👀 צבירה — ⏳ המתיני לדחיסה (מוקדם מדי)\n⏳ דחיסה — 🎯 כניסה אידיאלית לפני הפיצוץ!\n🚀 יורה — ⚡ כניסה אגרסיבית עם STOP TIGHT\n⚠️ עייפות — 🚪 אל תיכנסי, שקלי יציאה\n\n🔥 NEWS + SQUEEZE = השילוב החזק ביותר\nחדשות + לחץ שורט = לולאת האצה\n\nנוסחת ניקוד (קרנות גידור):\n• Short Float — כמה אנשים בשורט\n• DTC — כמה קשה לצאת (ימים לכיסוי)\n• Rel Volume — עוצמת הקונים\n• Float Rotation — כמה פעמים הפלואט נסחר\n• Borrow Fee — לחץ כלכלי על שורטים\n• ניתוח תוך-יומי (5m/1h)"}
                   filterOpts={COL_FILTER_OPTS.squeeze_total_score}
                   filterValue={colFilter.squeeze_total_score || ''}
-                  onFilter={handleColFilter}
+                  onFilter={handleColFilterToggle}
                   filterOpen={colFilterOpen === 'squeeze_total_score'}
                   onFilterOpen={setColFilterOpen} />
                 <SortTh label="מניה"    col="ticker"       sort={sort} onSort={handleSort} style={{ width: 90 }}
@@ -3323,7 +3385,7 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                   title={"שינוי אחוזי מסגירת אתמול\nחישוב: (מחיר עכשיו ÷ סגירה אתמול - 1) × 100\nבשעות ארכה: שינוי ממחיר הסגירה"}
                   filterOpts={COL_FILTER_OPTS.change_pct}
                   filterValue={colFilter.change_pct || ''}
-                  onFilter={handleColFilter}
+                  onFilter={handleColFilterToggle}
                   filterOpen={colFilterOpen === 'change_pct'}
                   onFilterOpen={setColFilterOpen} />
                 <SortTh label="פער%"   col="gap_pct"      sort={sort} onSort={handleSort} style={{ width: 52 }}
@@ -3332,28 +3394,28 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                   title={"ציון ניתוח טכני מרוכב (מינוס 100 עד פלוס 100)\nמקור: yfinance (נרות 5 דקות ושעתיים)\n• מגמה: ממוצעים נעים 50/200, חציית ממוצעים\n• מומנטום: מאקד, מדד תעלה, כוח יחסי\n• נפח: נפח מאוזן\n• תנודתיות: משטר טווח\nחיובי = סיגנלי קנייה | שלילי = סיגנלי מכירה"}
                   filterOpts={COL_FILTER_OPTS.tech_score}
                   filterValue={colFilter.tech_score || ''}
-                  onFilter={handleColFilter}
+                  onFilter={handleColFilterToggle}
                   filterOpen={colFilterOpen === 'tech_score'}
                   onFilterOpen={setColFilterOpen} />
                 <SortTh label="נפח יחסי" col="rel_volume" sort={sort} onSort={handleSort} style={{ width: 64 }}
                   title={"נפח יחסי: נפח היום חלקי ממוצע 10 ימים באותה שעה\nחישוב: נפח עכשיו ÷ ממוצע היסטורי\n>2.0 = נפח חריג, סיגנל חזק\n1.0 = רגיל | פחות מ-0.5 = שקט\nשורה שנייה: נפח מוחלט"}
                   filterOpts={COL_FILTER_OPTS.rel_volume}
                   filterValue={colFilter.rel_volume || ''}
-                  onFilter={handleColFilter}
+                  onFilter={handleColFilterToggle}
                   filterOpen={colFilterOpen === 'rel_volume'}
                   onFilterOpen={setColFilterOpen} />
                 <SortTh label="שורט%"  col="short_float"  sort={sort} onSort={handleSort} style={{ width: 52 }}
                   title={"אחוז מניות מושאלות למכירה בחסר מסך הצף\nמקור: Finviz\nמעל 20% = לחץ שורט גבוה, פוטנציאל לסחיטת שורטים\nמעל 10% = משמעותי | מתחת ל-5% = נמוך"}
                   filterOpts={COL_FILTER_OPTS.short_float}
                   filterValue={colFilter.short_float || ''}
-                  onFilter={handleColFilter}
+                  onFilter={handleColFilterToggle}
                   filterOpen={colFilterOpen === 'short_float'}
                   onFilterOpen={setColFilterOpen} />
                 <SortTh label="RSI"    col="rsi"          sort={sort} onSort={handleSort} style={{ width: 72 }}
                   title={"מדד כוח יחסי (14 נרות) — עוצמת מגמה\nחישוב: ממוצע עליות ÷ ממוצע ירידות\nמעל 70 = קנוי יתר, אזהרת תיקון\nמתחת ל-30 = מכור יתר, הזדמנות\nמוצג: יומי (גדול) + שעתי + 5 דקות"}
                   filterOpts={COL_FILTER_OPTS.rsi}
                   filterValue={colFilter.rsi || ''}
-                  onFilter={handleColFilter}
+                  onFilter={handleColFilterToggle}
                   filterOpen={colFilterOpen === 'rsi'}
                   onFilterOpen={setColFilterOpen} />
                 <th style={{ ...TH_BASE, width: 84, textAlign: 'right', background: TH_BASE.background }}>תגיות</th>
@@ -3363,21 +3425,21 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                   title={"שינוי תוך-יומי\nשורה 1: 30 דקות אחרונות\nשורה 2: 4 שעות אחרונות"}
                   filterOpts={COL_FILTER_OPTS.chg_30m}
                   filterValue={colFilter.chg_30m || ''}
-                  onFilter={handleColFilter}
+                  onFilter={handleColFilterToggle}
                   filterOpen={colFilterOpen === 'chg_30m'}
                   onFilterOpen={setColFilterOpen} />
                 <SortTh label="שווי"   col="market_cap"   sort={sort} onSort={handleSort} style={{ width: 72 }}
                   title={"שווי שוק = מחיר × מספר מניות\nשורה שנייה — ערך ארגוני לעומת שווי שוק:\nפחות מ-1 = מזומנים עודפים, חיובי\nיותר מ-1.3 = חוב גבוה, סיכון"}
                   filterOpts={COL_FILTER_OPTS.market_cap}
                   filterValue={colFilter.market_cap || ''}
-                  onFilter={handleColFilter}
+                  onFilter={handleColFilterToggle}
                   filterOpen={colFilterOpen === 'market_cap'}
                   onFilterOpen={setColFilterOpen} />
                 <SortTh label="בריאות" col="health_score" sort={sort} onSort={handleSort} style={{ width: 82 }}
                   title={"ציון בריאות פונדמנטלית (0-100)\nמקור: Finviz\n• רווחיות: רווח למניה, מכפיל רווח\n• צמיחה: רווח רבעוני, הכנסות\n• מאזן: חוב, נזילות\n• ביצועים: ביחס למדד\nמעל 70 = בריא | מעל 85 = מצוין\nשורה שנייה: EPS QoQ (צמיחת רווח רבעוני)"}
                   filterOpts={COL_FILTER_OPTS.health_score}
                   filterValue={colFilter.health_score || ''}
-                  onFilter={handleColFilter}
+                  onFilter={handleColFilterToggle}
                   filterOpen={colFilterOpen === 'health_score'}
                   onFilterOpen={setColFilterOpen} />
                 <SortTh label="טווח"   col="atr"          sort={sort} onSort={handleSort} style={{ width: 56 }}
