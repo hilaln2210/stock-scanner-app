@@ -360,17 +360,28 @@ function MomentumDashboard() {
               <span className="text-xs font-black text-white whitespace-nowrap">📰 חדשות שוק</span>
               <span className="text-xs" style={{ color: '#475569' }}>{newsData.length} כתבות</span>
 
-              {/* Collapsed: show mini preview of top tickers */}
+              {/* Collapsed: show mini preview of top tickers with price change */}
               {newsCollapsed && (
-                <div className="flex items-center gap-2 overflow-hidden" style={{ maxWidth: '60%' }}>
-                  {newsData.slice(0, 5).map((item, i) => {
+                <div className="flex items-center gap-2 overflow-hidden" style={{ maxWidth: '70%' }}>
+                  {newsData.slice(0, 6).map((item, i) => {
                     const tk = item.tickers ? item.tickers.split(',')[0]?.trim() : '';
-                    return tk ? (
-                      <span key={i} className="font-mono text-xs font-bold px-1.5 py-0.5 rounded"
+                    if (!tk) return null;
+                    const tc = (item.ticker_changes || {})[tk];
+                    const chg = tc?.change_pct;
+                    return (
+                      <span key={i} className="font-mono text-xs font-bold px-1.5 py-0.5 rounded flex items-center gap-1"
                         style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24', fontSize: 10 }}>
                         {tk}
+                        {chg != null && (
+                          <span style={{
+                            color: chg >= 0 ? '#4ade80' : '#f87171',
+                            fontSize: 9, fontWeight: 800,
+                          }}>
+                            {chg >= 0 ? '+' : ''}{chg.toFixed(1)}%
+                          </span>
+                        )}
                       </span>
-                    ) : null;
+                    );
                   })}
                 </div>
               )}
