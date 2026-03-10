@@ -1271,16 +1271,10 @@ export default function PatternScanner() {
                           const insightLines = generateStockInsight(s, botPick, isTop, hasIB);
                           return (
                             <tr style={{ background: 'rgba(139,92,246,0.04)', borderBottom: '1px solid rgba(139,92,246,0.1)' }}>
-                              <td colSpan={10} className="px-4 py-3">
-                                <div className="flex flex-col gap-1.5">
-                                  <div className="flex items-center gap-1.5 mb-0.5">
-                                    <span style={{ color: '#a78bfa', fontSize: 11, fontWeight: 'bold' }}>💡 ניתוח מילולי — {s.ticker}</span>
-                                    <span className="text-slate-600" style={{ fontSize: 10 }}>לחץ על הטיקר לסגירה</span>
-                                  </div>
+                              <td colSpan={10} className="px-3 py-1.5">
+                                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5" style={{ fontSize: 11 }}>
                                   {insightLines.map((line, i) => (
-                                    <div key={i} className="text-xs text-slate-300 leading-relaxed">
-                                      {line}
-                                    </div>
+                                    <span key={i} className="text-slate-400 whitespace-nowrap">{line}</span>
                                   ))}
                                 </div>
                               </td>
