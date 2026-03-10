@@ -11,13 +11,33 @@ const changeColor = (v) => v > 0 ? '#4ade80' : v < 0 ? '#f87171' : '#94a3b8';
 const strengthLabel = { very_strong: 'חזק מאוד', strong: 'חזק', moderate: 'בינוני', weak: 'חלש' };
 const strengthColor = { very_strong: '#4ade80', strong: '#a3e635', moderate: '#fbbf24', weak: '#64748b' };
 
+// ── Get current NY time window ───────────────────────────────────────────────
+function getCurrentNYWindow() {
+  const ny = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const h = ny.getHours(), m = ny.getMinutes();
+  const totalMin = h * 60 + m;
+  const windows = [
+    [570, '09:30-10:00'], [600, '10:00-10:30'], [630, '10:30-11:00'],
+    [660, '11:00-11:30'], [690, '11:30-12:00'], [720, '12:00-12:30'],
+    [750, '12:30-13:00'], [780, '13:00-13:30'], [810, '13:30-14:00'],
+    [840, '14:00-14:30'], [870, '14:30-15:00'], [900, '15:00-15:30'],
+    [930, '15:30-16:00'],
+  ];
+  for (let i = windows.length - 1; i >= 0; i--) {
+    if (totalMin >= windows[i][0]) return windows[i][1];
+  }
+  return null;
+}
+
 // ── Pattern Heatmap Chart (SVG) ──────────────────────────────────────────────
-function PatternHeatmap({ windows, height = 320 }) {
+function PatternHeatmap({ windows, height = 420, investment = 700, price = 0 }) {
   if (!windows || windows.length === 0) return null;
+
+  const currentWindow = getCurrentNYWindow();
 
   const W = 900;
   const H = height;
-  const pad = { top: 40, right: 30, bottom: 60, left: 55 };
+  const pad = { top: 55, right: 30, bottom: 70, left: 55 };
   const chartW = W - pad.left - pad.right;
   const chartH = H - pad.top - pad.bottom;
   const barW = Math.min(chartW / windows.length - 4, 50);
@@ -35,8 +55,16 @@ function PatternHeatmap({ windows, height = 320 }) {
           <stop offset="0%" stopColor="#f87171" stopOpacity="0.6" />
           <stop offset="100%" stopColor="#ef4444" stopOpacity="0.9" />
         </linearGradient>
+        <linearGradient id="entryGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#fbbf24" stopOpacity="1" />
+          <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.8" />
+        </linearGradient>
         <filter id="glow">
           <feGaussianBlur stdDeviation="2" result="blur" />
+          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+        <filter id="glowGold">
+          <feGaussianBlur stdDeviation="3" result="blur" />
           <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
         </filter>
       </defs>
@@ -67,21 +95,43 @@ function PatternHeatmap({ windows, height = 320 }) {
         const x = pad.left + (i * (chartW / windows.length)) + (chartW / windows.length - barW) / 2;
         const zeroY = pad.top + chartH / 2;
 
-        // Main bar: avg change
         const barH = Math.abs(w.avg_change / maxRange) * (chartH / 2);
         const barY = w.avg_change >= 0 ? zeroY - barH : zeroY;
         const isWin = w.avg_change >= 0;
 
-        // Win rate indicator dot
         const dotR = 5 + (w.win_rate - 50) / 10;
         const dotColor = winColor(w.win_rate);
-
-        // Range whisker
         const rangeH = (w.avg_range / maxRange) * (chartH / 2);
+
+        // Dollar P&L for this window
+        const pnl = investment * (w.avg_change / 100);
+        const pnlWin = investment * ((w.avg_win || 0) / 100);
+        const pnlLoss = investment * ((w.avg_loss || 0) / 100);
+
+        // Is this the current live window?
+        const isCurrent = w.window === currentWindow;
+
+        // Entry point logic: tradeable = entry point
+        const isEntry = w.tradeable;
 
         return (
           <g key={i}>
-            {/* Range whisker (thin line showing total range) */}
+            {/* Current window highlight — full-height glow strip */}
+            {isCurrent && (
+              <>
+                <rect x={x - 4} y={pad.top - 2} width={barW + 8} height={chartH + 4} rx="4"
+                  fill="rgba(251,191,36,0.06)" stroke="rgba(251,191,36,0.25)" strokeWidth="1" strokeDasharray="3,3" />
+                <text x={x + barW / 2} y={pad.top - 22} fill="#fbbf24" fontSize="8" fontWeight="bold"
+                  textAnchor="middle">
+                  עכשיו
+                </text>
+                <polygon
+                  points={`${x + barW / 2 - 4},${pad.top - 17} ${x + barW / 2 + 4},${pad.top - 17} ${x + barW / 2},${pad.top - 12}`}
+                  fill="#fbbf24" opacity="0.7" />
+              </>
+            )}
+
+            {/* Range whisker */}
             <line x1={x + barW / 2} y1={zeroY - rangeH} x2={x + barW / 2} y2={zeroY + rangeH}
               stroke="rgba(148,163,184,0.25)" strokeWidth="1" />
             <line x1={x + barW / 2 - 3} y1={zeroY - rangeH} x2={x + barW / 2 + 3} y2={zeroY - rangeH}
@@ -94,16 +144,60 @@ function PatternHeatmap({ windows, height = 320 }) {
               fill={isWin ? 'url(#winGrad)' : 'url(#lossGrad)'}
               opacity={w.tradeable ? 1 : 0.5} />
 
-            {/* Tradeable highlight */}
+            {/* Tradeable highlight border */}
             {w.tradeable && (
               <rect x={x - 2} y={barY - 2} width={barW + 4} height={Math.max(barH, 1) + 4} rx="4"
                 fill="none" stroke={dotColor} strokeWidth="1.5" opacity="0.5" filter="url(#glow)" />
             )}
 
+            {/* ★ ENTRY POINT marker — gold diamond on tradeable windows */}
+            {isEntry && (
+              <g>
+                <polygon
+                  points={`${x + barW / 2},${zeroY - rangeH - 18} ${x + barW / 2 + 7},${zeroY - rangeH - 10} ${x + barW / 2},${zeroY - rangeH - 2} ${x + barW / 2 - 7},${zeroY - rangeH - 10}`}
+                  fill="url(#entryGrad)" filter="url(#glowGold)" />
+                <text x={x + barW / 2} y={zeroY - rangeH - 10} fill="#0f172a" fontSize="6" fontWeight="900"
+                  textAnchor="middle" dominantBaseline="middle">$</text>
+              </g>
+            )}
+
+            {/* ★ Dollar P&L label below bar */}
+            {isEntry && (
+              <text x={x + barW / 2} y={zeroY + rangeH + 14}
+                fill={pnl >= 0 ? '#4ade80' : '#f87171'} fontSize="8" fontWeight="900"
+                textAnchor="middle" fontFamily="monospace">
+                {pnl >= 0 ? '+' : ''}{pnl < 10 && pnl > -10 ? pnl.toFixed(2) : pnl.toFixed(1)}$
+              </text>
+            )}
+
+            {/* ★ "Enter here?" badge on current window if tradeable */}
+            {isCurrent && isEntry && (
+              <g>
+                <rect x={x + barW / 2 - 28} y={zeroY + rangeH + 20} width="56" height="18" rx="9"
+                  fill="rgba(251,191,36,0.2)" stroke="#fbbf24" strokeWidth="1" />
+                <text x={x + barW / 2} y={zeroY + rangeH + 31} fill="#fbbf24" fontSize="8" fontWeight="900"
+                  textAnchor="middle">
+                  להיכנס? {w.win_rate}%
+                </text>
+              </g>
+            )}
+
+            {/* ★ "Don't enter" badge on current window if NOT tradeable */}
+            {isCurrent && !isEntry && (
+              <g>
+                <rect x={x + barW / 2 - 22} y={zeroY + rangeH + 20} width="44" height="16" rx="8"
+                  fill="rgba(248,113,113,0.12)" stroke="rgba(248,113,113,0.4)" strokeWidth="1" />
+                <text x={x + barW / 2} y={zeroY + rangeH + 30} fill="#f87171" fontSize="7" fontWeight="bold"
+                  textAnchor="middle">
+                  לא עכשיו
+                </text>
+              </g>
+            )}
+
             {/* Win rate dot on top */}
-            <circle cx={x + barW / 2} cy={pad.top - 15} r={Math.max(dotR, 3)}
+            <circle cx={x + barW / 2} cy={pad.top - 5} r={Math.max(dotR, 3)}
               fill={dotColor} opacity="0.9" />
-            <text x={x + barW / 2} y={pad.top - 14} fill="#0f172a" fontSize="7" fontWeight="bold"
+            <text x={x + barW / 2} y={pad.top - 4} fill="#0f172a" fontSize="7" fontWeight="bold"
               textAnchor="middle" dominantBaseline="middle">
               {Math.round(w.win_rate)}
             </text>
@@ -116,7 +210,8 @@ function PatternHeatmap({ windows, height = 320 }) {
             </text>
 
             {/* Time label */}
-            <text x={x + barW / 2} y={H - pad.bottom + 15} fill="#94a3b8" fontSize="9"
+            <text x={x + barW / 2} y={H - pad.bottom + 15} fill={isCurrent ? '#fbbf24' : '#94a3b8'}
+              fontSize={isCurrent ? '10' : '9'} fontWeight={isCurrent ? 'bold' : 'normal'}
               textAnchor="middle" transform={`rotate(-35, ${x + barW / 2}, ${H - pad.bottom + 15})`}>
               {w.window.split('-')[0]}
             </text>
@@ -125,15 +220,14 @@ function PatternHeatmap({ windows, height = 320 }) {
       })}
 
       {/* Legend */}
-      <g transform={`translate(${pad.left + 10}, ${H - 15})`}>
-        <circle cx="0" cy="0" r="5" fill="#4ade80" opacity="0.9" />
-        <text x="10" y="4" fill="#94a3b8" fontSize="9">Win Rate (בעיגול)</text>
-        <line x1="100" y1="-3" x2="100" y2="3" stroke="rgba(148,163,184,0.4)" strokeWidth="1" />
-        <text x="108" y="4" fill="#94a3b8" fontSize="9">| טווח ממוצע (ויסקר)</text>
-        <rect x="230" y="-6" width="12" height="12" rx="2" fill="url(#winGrad)" opacity="0.7" />
-        <text x="246" y="4" fill="#94a3b8" fontSize="9">שינוי ממוצע</text>
-        <rect x="320" y="-7" width="14" height="14" rx="3" fill="none" stroke="#4ade80" strokeWidth="1.5" opacity="0.5" />
-        <text x="340" y="4" fill="#94a3b8" fontSize="9">= חלון למסחר (WR≥60%)</text>
+      <g transform={`translate(${pad.left + 5}, ${H - 12})`}>
+        <circle cx="0" cy="0" r="4" fill="#4ade80" opacity="0.9" />
+        <text x="8" y="3" fill="#94a3b8" fontSize="8">Win Rate</text>
+        <polygon points="68,-5 74,0 68,5 62,0" fill="#fbbf24" />
+        <text x="78" y="3" fill="#94a3b8" fontSize="8">= נקודת כניסה</text>
+        <rect x="155" y="-5" width="10" height="10" rx="2" fill="none" stroke="rgba(251,191,36,0.5)" strokeWidth="1" strokeDasharray="2,2" />
+        <text x="170" y="3" fill="#94a3b8" fontSize="8">= עכשיו</text>
+        <text x="210" y="3" fill="#64748b" fontSize="8">| ${investment} השקעה</text>
       </g>
     </svg>
   );
@@ -231,6 +325,7 @@ export default function PatternScanner() {
   const [expandedTicker, setExpandedTicker] = useState(null);
   const [activeTab, setActiveTab] = useState('analyze'); // pool | analyze
   const [poolRequested, setPoolRequested] = useState(false);
+  const [investment, setInvestment] = useState(700);
 
   // Step 1: Pool — only fetch when explicitly requested
   const { data: poolData, isLoading: poolLoading, refetch: refetchPool } = useQuery({
@@ -487,6 +582,63 @@ export default function PatternScanner() {
                 </div>
               </div>
 
+              {/* ── Entry Points Summary Cards ── */}
+              {tickerAnalysis.tradeable_windows.length > 0 && (() => {
+                const tw = tickerAnalysis.tradeable_windows;
+                const totalEV = tw.reduce((s, w) => s + investment * (w.avg_change / 100), 0);
+                const bestW = tw[0];
+                const bestPnl = investment * (bestW.avg_change / 100);
+                const currentW = getCurrentNYWindow();
+                const nowTrade = tw.find(w => w.window === currentW);
+                return (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {/* Best entry */}
+                    <div className="rounded-xl p-3" style={{ background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.15)' }}>
+                      <div className="text-xs text-slate-500 mb-1">נקודת כניסה הכי טובה</div>
+                      <div className="text-lg font-black text-white">{bestW.window}</div>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-sm font-bold" style={{ color: '#4ade80' }}>WR {bestW.win_rate}%</span>
+                        <span className="text-xs font-mono" style={{ color: '#4ade80' }}>+${bestPnl.toFixed(1)}</span>
+                      </div>
+                    </div>
+                    {/* Total daily EV */}
+                    <div className="rounded-xl p-3" style={{ background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.15)' }}>
+                      <div className="text-xs text-slate-500 mb-1">סה״כ EV יומי (${investment})</div>
+                      <div className="text-lg font-black font-mono" style={{ color: totalEV >= 0 ? '#4ade80' : '#f87171' }}>
+                        {totalEV >= 0 ? '+' : ''}${totalEV.toFixed(1)}
+                      </div>
+                      <div className="text-xs text-slate-500">{tw.length} כניסות</div>
+                    </div>
+                    {/* Now — should I enter? */}
+                    <div className="rounded-xl p-3 sm:col-span-2" style={{
+                      background: nowTrade ? 'rgba(251,191,36,0.08)' : 'rgba(248,113,113,0.05)',
+                      border: `1px solid ${nowTrade ? 'rgba(251,191,36,0.25)' : 'rgba(248,113,113,0.15)'}`,
+                    }}>
+                      <div className="text-xs text-slate-500 mb-1">עכשיו ({currentW || 'מחוץ לשעות'})</div>
+                      {nowTrade ? (
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg font-black" style={{ color: '#fbbf24' }}>כן — להיכנס!</span>
+                            <span className="px-2 py-0.5 rounded text-xs font-bold" style={{
+                              background: 'rgba(74,222,128,0.15)', color: '#4ade80'
+                            }}>WR {nowTrade.win_rate}%</span>
+                          </div>
+                          <div className="flex gap-3 mt-1 text-xs">
+                            <span style={{ color: '#4ade80' }}>Win: <span className="font-mono font-bold">+${(investment * nowTrade.avg_win / 100).toFixed(1)}</span></span>
+                            <span style={{ color: '#f87171' }}>Loss: <span className="font-mono font-bold">${(investment * nowTrade.avg_loss / 100).toFixed(1)}</span></span>
+                            <span style={{ color: '#c4b5fd' }}>EV: <span className="font-mono font-bold">+${(investment * nowTrade.avg_change / 100).toFixed(1)}</span></span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-lg font-black" style={{ color: '#f87171' }}>
+                          {currentW ? 'לא — אין דפוס חזק עכשיו' : 'השוק סגור'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* ── Chart ── */}
               <div className="rounded-xl p-4" style={{
                 background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)',
@@ -494,9 +646,16 @@ export default function PatternScanner() {
                 <div className="flex items-center gap-2 mb-3">
                   <BarChart3 size={16} color="#a78bfa" />
                   <span className="text-sm font-bold text-white">גרף דפוסים לפי חצי שעה</span>
-                  <span className="text-xs text-slate-500">שינוי ממוצע + טווח + Win Rate</span>
+                  <span className="text-xs text-slate-500">שינוי ממוצע + טווח + Win Rate + נקודות כניסה</span>
+                  <div className="mr-auto flex items-center gap-1.5">
+                    <span className="text-xs text-slate-500">השקעה $</span>
+                    <input type="number" value={investment} onChange={e => setInvestment(Number(e.target.value) || 700)}
+                      className="w-20 px-2 py-1 text-xs rounded-lg text-right font-mono"
+                      style={{ background: '#161b22', border: '1px solid rgba(255,255,255,0.08)', color: '#fbbf24' }}
+                    />
+                  </div>
                 </div>
-                <PatternHeatmap windows={tickerAnalysis.windows} height={340} />
+                <PatternHeatmap windows={tickerAnalysis.windows} height={420} investment={investment} price={tickerAnalysis.price} />
               </div>
 
               {/* ── Windows Table ── */}
