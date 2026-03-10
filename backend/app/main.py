@@ -146,10 +146,11 @@ async def lifespan(app: FastAPI):
             print(f"[TG Bot] Startup failed (server continues): {e}")
     asyncio.create_task(_run_bot_safe())
 
-    # Pattern Auto-Trader — background tick loop (always running, only acts when enabled)
-    from app.services.pattern_autotrader import start_background_loop as _start_autotrader
+    # Pattern Auto-Trader — start loop AND auto-enable with $700 portfolio
+    from app.services.pattern_autotrader import start_background_loop as _start_autotrader, enable as _enable_autotrader
     _start_autotrader()
-    print("Pattern Auto-Trader: background loop started (disabled by default)")
+    asyncio.create_task(_enable_autotrader(amount=700, top_n=3))
+    print("Pattern Auto-Trader: auto-enabled — $700 portfolio, top 3 picks, max 1 concurrent")
 
     yield
 

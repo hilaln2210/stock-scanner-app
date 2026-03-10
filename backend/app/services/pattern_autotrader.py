@@ -50,6 +50,14 @@ def _parse_hhmm(s: str):
     h, m = map(int, s.split(":"))
     return h * 60 + m
 
+# ── Risk parameters ────────────────────────────────────────────────────────────
+PORTFOLIO_SIZE   = 700    # $ total portfolio
+MAX_CONCURRENT   = 1      # max open positions at once (1 = full portfolio on 1 trade)
+DAILY_LOSS_LIMIT = -50    # $ — stop trading today if daily_pnl drops below this
+STOP_LOSS_PCT    = 1.5    # % from entry — exit early if loss exceeds this
+MIN_WIN_RATE     = 65     # % — only trade windows with WR >= this
+MIN_SAMPLE_DAYS  = 10     # minimum backtested days required per window
+
 # ── State ──────────────────────────────────────────────────────────────────────
 _state: Dict = {
     "enabled": False,
@@ -59,9 +67,10 @@ _state: Dict = {
     "daily_pnl": 0.0,
     "last_scan_date": None,   # date string "YYYY-MM-DD"
     "last_alert_sent": {},    # {window_label: "warn"/"enter"}
-    "amount_per_trade": 700,  # $ per position
-    "top_n": 5,
+    "amount_per_trade": PORTFOLIO_SIZE,
+    "top_n": 3,               # pick best 3 — execute only 1 at a time (MAX_CONCURRENT)
     "status_msg": "לא פעיל",
+    "daily_loss_hit": False,  # True = stop trading today (loss limit reached)
 }
 
 
@@ -159,7 +168,15 @@ async def _run_daily_scan():
                         continue
                     wr = w.get("win_rate", 0)
                     ac = abs(w.get("avg_change", 0))
-                    score = wr * ac
+                    samples = w.get("sample_days", 0)
+                    # Strict quality gates
+                    if wr < MIN_WIN_RATE:
+                        continue
+                    if samples < MIN_SAMPLE_DAYS:
+                        continue
+                    # Score: win_rate × avg_change × sample_bonus
+                    sample_bonus = min(samples / 20, 1.5)  # up to 1.5x for 30+ samples
+                    score = wr * ac * sample_bonus
                     if score > best_score:
                         best_score = score
                         best_window = w
@@ -185,7 +202,8 @@ async def _run_daily_scan():
     _state["today_picks"] = picks
     _state["last_scan_date"] = date.today().isoformat()
     _state["last_alert_sent"] = {}
-    _state["status_msg"] = f"פעיל — {len(picks)} מניות נבחרו להיום"
+    _state["daily_loss_hit"] = False
+    _state["status_msg"] = f"פעיל — {len(picks)} מניות נבחרו להיום (מקסימום {MAX_CONCURRENT} במקביל)"
 
     if picks:
         lines = ["🤖 <b>Pattern Bot — המניות להיום</b>\n"]
@@ -200,8 +218,27 @@ async def _run_daily_scan():
 
 
 # ── Tick: runs every 30 seconds ───────────────────────────────────────────────
+def _get_current_price(ticker: str) -> Optional[float]:
+    """Quick price fetch via yfinance fast_info — used for stop-loss checks."""
+    import threading, yfinance as yf
+    result = [None]
+    done = threading.Event()
+    def _fetch():
+        try:
+            fi = yf.Ticker(ticker).fast_info
+            p = fi.last_price or fi.previous_close
+            result[0] = float(p) if p and not math.isnan(float(p)) else None
+        except Exception:
+            pass
+        finally:
+            done.set()
+    threading.Thread(target=_fetch, daemon=True).start()
+    done.wait(timeout=4)
+    return result[0]
+
+
 async def _tick():
-    """Check if any window is about to open (5-min warning) or just opened (entry)."""
+    """Check windows for entries/exits + monitor open trades for stop-loss."""
     if not _state["enabled"] or not _state["today_picks"]:
         return
 
@@ -209,8 +246,40 @@ async def _tick():
     h, m = now.hour, now.minute
     total_min = h * 60 + m
 
-    # Pre-market + regular hours: 3:55 AM – 16:05 PM ET
+    # Operating hours: 3:55 AM – 16:05 PM ET
     if not (3 * 60 + 55 <= total_min <= 16 * 60 + 5):
+        return
+
+    # ── Stop-loss check for active trades ──────────────────────────────────
+    for trade in list(_state["active_trades"]):
+        cur = await asyncio.get_event_loop().run_in_executor(None, _get_current_price, trade["ticker"])
+        if cur is None:
+            continue
+        entry = trade["entry_price"]
+        if trade["direction"] == "LONG":
+            loss_pct = (entry - cur) / entry * 100
+        else:
+            loss_pct = (cur - entry) / entry * 100
+        if loss_pct >= STOP_LOSS_PCT:
+            await send_telegram(
+                f"🛑 <b>Stop Loss — {trade['ticker']}</b>\n"
+                f"כניסה: ${entry} → עכשיו: ${cur:.2f}\n"
+                f"הפסד: -{loss_pct:.1f}% (מגבלה: -{STOP_LOSS_PCT}%)"
+            )
+            await _exit_trade(trade, reason="stop_loss")
+
+    # ── Daily loss limit ────────────────────────────────────────────────────
+    if _state["daily_pnl"] <= DAILY_LOSS_LIMIT and not _state["daily_loss_hit"]:
+        _state["daily_loss_hit"] = True
+        _state["status_msg"] = f"⛔ הפסד יומי מקסימלי הושג (${_state['daily_pnl']}) — הפסקת מסחר"
+        await send_telegram(
+            f"⛔ <b>מגבלת הפסד יומית</b>\n"
+            f"הפסד יומי: ${_state['daily_pnl']} (מגבלה: ${DAILY_LOSS_LIMIT})\n"
+            f"הבוט מפסיק לסחור היום."
+        )
+        return
+
+    if _state["daily_loss_hit"]:
         return
 
     picks_by_window: Dict[str, list] = {}
@@ -224,21 +293,32 @@ async def _tick():
         picks      = picks_by_window.get(label, [])
         last_alert = _state["last_alert_sent"].get(label)
 
-        # ── 5-min warning (at HH:25 or HH:55) ─────────────────────────────
+        # ── 5-min warning ───────────────────────────────────────────────────
         if total_min == start_min - 5 and last_alert is None and picks:
             _state["last_alert_sent"][label] = "warn"
+            concurrent = len(_state["active_trades"])
             lines = [f"⚠️ <b>עוד 5 דקות! — {label}</b>\n"]
             for p in picks:
                 arrow = "📈 LONG" if p["direction"] == "LONG" else "📉 SHORT"
                 lines.append(f"  {arrow} <b>{p['ticker']}</b> | WR {p['win_rate']}%")
-            lines.append("\nהכנסו לפוזיציה ב-" + w_start + " 🎯")
+            if concurrent >= MAX_CONCURRENT:
+                lines.append(f"\n⏸ פוזיציה פתוחה — לא נכנס (max {MAX_CONCURRENT})")
+            else:
+                lines.append("\nאכנס אוטומטית ב-" + w_start + " 🎯")
             await send_telegram("\n".join(lines))
 
-        # ── Window open: enter trade ────────────────────────────────────────
+        # ── Window open: enter trade (only if slot available) ───────────────
         elif total_min == start_min and last_alert in (None, "warn") and picks:
             _state["last_alert_sent"][label] = "enter"
-            for p in picks:
-                await _enter_trade(p, label)
+            if len(_state["active_trades"]) < MAX_CONCURRENT:
+                # Take only the best pick for this window
+                best_pick = max(picks, key=lambda p: p["score"])
+                await _enter_trade(best_pick, label)
+            else:
+                await send_telegram(
+                    f"⏸ <b>דילוג — {label}</b>\n"
+                    f"יש {len(_state['active_trades'])} פוזיציה פתוחה (max {MAX_CONCURRENT})"
+                )
 
         # ── Window close: exit trades ───────────────────────────────────────
         elif total_min >= end_min:
@@ -284,7 +364,7 @@ async def _enter_trade(pick: dict, window_label: str):
     await send_telegram(msg)
 
 
-async def _exit_trade(trade: dict):
+async def _exit_trade(trade: dict, reason: str = "window_close"):
     if trade not in _state["active_trades"]:
         return
     _state["active_trades"].remove(trade)
@@ -306,14 +386,15 @@ async def _exit_trade(trade: dict):
 
     _state["daily_pnl"] = round(_state["daily_pnl"] + pnl, 2)
     closed = {**trade, "exit_price": exit_price, "pnl": pnl,
-              "closed_at": _ny_now().strftime("%H:%M")}
+              "closed_at": _ny_now().strftime("%H:%M"), "exit_reason": reason}
     _state["trade_history"].insert(0, closed)
     _state["trade_history"] = _state["trade_history"][:20]
 
     emoji = "✅" if pnl >= 0 else "❌"
+    reason_tag = "🛑 Stop Loss" if reason == "stop_loss" else "⏰ סוף חלון"
     ib_tag = "✅ יצא דרך IB" if ib_result else "⚡ ידני"
     msg = (
-        f"{emoji} <b>יציאה — {ticker}</b>\n"
+        f"{emoji} <b>יציאה — {ticker}</b> ({reason_tag})\n"
         f"חלון: {trade['window']}\n"
         f"כניסה: ${trade['entry_price']}  →  יציאה: ${exit_price}\n"
         f"P&L: <b>{'+'if pnl>=0 else ''}${pnl}</b>  |  יומי: {'+'if _state['daily_pnl']>=0 else ''}${_state['daily_pnl']}\n"
