@@ -3064,6 +3064,7 @@ from app.services.pattern_scanner import (
     analyze_pool_patterns, generate_trade_signals,
     get_portfolio, open_trade, close_trade, reset_portfolio,
 )
+from app.services import pattern_autotrader
 
 _pattern_lock = None
 def _get_pattern_lock():
@@ -3174,3 +3175,33 @@ async def pattern_portfolio_reset(payload: dict = Body({})):
     """Reset portfolio to starting balance."""
     bal = float(payload.get("balance", 700))
     return reset_portfolio(bal)
+
+
+# ── Pattern Auto-Trader ────────────────────────────────────────────────────────
+
+@router.get("/pattern/autotrader/status")
+async def autotrader_status():
+    """Get auto-trader state (picks, active trades, P&L)."""
+    return pattern_autotrader.get_state()
+
+
+@router.post("/pattern/autotrader/enable")
+async def autotrader_enable(payload: dict = Body({})):
+    """Enable the auto-trader. Triggers immediate daily scan if not done today."""
+    amount = float(payload.get("amount", 700))
+    top_n  = int(payload.get("top_n", 5))
+    return await pattern_autotrader.enable(amount=amount, top_n=top_n)
+
+
+@router.post("/pattern/autotrader/disable")
+async def autotrader_disable():
+    """Disable the auto-trader (won't enter new trades; active trades stay open)."""
+    return pattern_autotrader.disable()
+
+
+@router.post("/pattern/autotrader/scan")
+async def autotrader_scan(payload: dict = Body({})):
+    """Force an immediate re-scan to refresh today's top picks."""
+    amount = float(payload.get("amount", 700))
+    top_n  = int(payload.get("top_n", 5))
+    return await pattern_autotrader.manual_scan(amount=amount, top_n=top_n)

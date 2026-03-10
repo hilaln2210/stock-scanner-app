@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { RefreshCw, Search, TrendingUp, TrendingDown, Target, Shield, Zap, ChevronDown, ChevronUp, Clock, BarChart3, DollarSign, Wallet } from 'lucide-react';
+import { RefreshCw, Search, TrendingUp, TrendingDown, Target, Shield, Zap, Clock, BarChart3, Wallet, Bot, Power, PowerOff, Send } from 'lucide-react';
 
 const api = axios.create({ baseURL: '/api', timeout: 120000 });
 
@@ -256,6 +256,203 @@ function PatternHeatmap({ windows, height = 580, investment = 700, price = 0 }) 
         <text x="210" y="3" fill="#64748b" fontSize="8">| ${investment} השקעה</text>
       </g>
     </svg>
+  );
+}
+
+// ── Auto Bot Panel ───────────────────────────────────────────────────────────
+function AutoBotPanel({ investment }) {
+  const qc = useQueryClient();
+
+  const { data: bot, isLoading } = useQuery({
+    queryKey: ['autoBotStatus'],
+    queryFn: async () => (await api.get('/pattern/autotrader/status')).data,
+    refetchInterval: 15000,
+    staleTime: 10000,
+  });
+
+  const toggle = useCallback(async () => {
+    if (!bot) return;
+    if (bot.enabled) {
+      await api.post('/pattern/autotrader/disable');
+    } else {
+      await api.post('/pattern/autotrader/enable', { amount: investment, top_n: 5 });
+    }
+    qc.invalidateQueries({ queryKey: ['autoBotStatus'] });
+  }, [bot, investment, qc]);
+
+  const scan = useCallback(async () => {
+    await api.post('/pattern/autotrader/scan', { amount: investment, top_n: 5 });
+    qc.invalidateQueries({ queryKey: ['autoBotStatus'] });
+  }, [investment, qc]);
+
+  if (isLoading || !bot) return (
+    <div className="text-center py-8 text-slate-500 text-sm">טוען...</div>
+  );
+
+  const enabled = bot.enabled;
+
+  return (
+    <div className="space-y-4">
+
+      {/* ── Header card ── */}
+      <div className="rounded-xl p-4" style={{
+        background: enabled
+          ? 'linear-gradient(135deg, rgba(74,222,128,0.08), rgba(16,185,129,0.05))'
+          : 'linear-gradient(135deg, rgba(100,116,139,0.08), rgba(71,85,105,0.05))',
+        border: `1px solid ${enabled ? 'rgba(74,222,128,0.25)' : 'rgba(100,116,139,0.2)'}`,
+      }}>
+        <div className="flex items-center gap-3 flex-wrap">
+          <Bot size={22} color={enabled ? '#4ade80' : '#64748b'} />
+          <div>
+            <div className="text-base font-black text-white">Pattern Auto-Trader</div>
+            <div className="text-xs mt-0.5" style={{ color: enabled ? '#4ade80' : '#64748b' }}>
+              {bot.status_msg}
+            </div>
+          </div>
+
+          {/* P&L */}
+          {enabled && (
+            <div className="mr-4 text-center">
+              <div className="text-xs text-slate-500">P&L היום</div>
+              <div className="text-xl font-black font-mono" style={{
+                color: bot.daily_pnl >= 0 ? '#4ade80' : '#f87171'
+              }}>
+                {bot.daily_pnl >= 0 ? '+' : ''}${bot.daily_pnl}
+              </div>
+            </div>
+          )}
+
+          <div className="mr-auto flex gap-2">
+            <button onClick={scan}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"
+              style={{ background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.3)', color: '#c4b5fd' }}>
+              <RefreshCw size={12} /> סרוק עכשיו
+            </button>
+            <button onClick={toggle}
+              className="px-4 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all"
+              style={{
+                background: enabled
+                  ? 'linear-gradient(135deg, #ef4444, #dc2626)'
+                  : 'linear-gradient(135deg, #22c55e, #16a34a)',
+                color: '#fff',
+                boxShadow: enabled ? '0 0 12px rgba(239,68,68,0.3)' : '0 0 12px rgba(34,197,94,0.3)',
+              }}>
+              {enabled ? <><PowerOff size={13} /> כבה</> : <><Power size={13} /> הפעל</>}
+            </button>
+          </div>
+        </div>
+
+        {/* Info box */}
+        <div className="mt-3 p-2 rounded-lg text-xs text-slate-500" style={{ background: 'rgba(0,0,0,0.2)' }}>
+          <span className="text-slate-400">📋 איך עובד: </span>
+          <span>
+            <b className="text-slate-300">חלון 10:00-10:30</b> = נכנסים בדיוק ב-10:00 (שעון ניו-יורק), יוצאים ב-10:30.
+            {' '}הבוט שולח התראת טלגרם <b className="text-slate-300">5 דקות לפני</b> כל כניסה, ונכנס אוטומטית ל-IB.
+          </span>
+        </div>
+      </div>
+
+      {/* ── Today's picks ── */}
+      {bot.today_picks && bot.today_picks.length > 0 && (
+        <div className="rounded-xl overflow-hidden" style={{
+          background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)',
+        }}>
+          <div className="p-3 flex items-center gap-2 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+            <Target size={14} color="#a78bfa" />
+            <span className="text-sm font-bold text-white">מניות נבחרות להיום</span>
+            <span className="text-xs text-slate-500">{bot.last_scan_date}</span>
+            <div className="mr-auto flex items-center gap-1 text-xs text-slate-500">
+              <Send size={11} color="#4ade80" /> טלגרם + IB אוטומטי
+            </div>
+          </div>
+          <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+            {bot.today_picks.map((p, i) => (
+              <div key={i} className="px-4 py-3 flex items-center gap-3 flex-wrap">
+                <span className="text-base font-black text-white w-16">{p.ticker}</span>
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-1.5">
+                    <Clock size={11} className="text-slate-500" />
+                    <span className="text-xs font-bold text-white">{p.window}</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500">נכנסים ב-{p.window.split('-')[0]}</span>
+                </div>
+                <span className="text-xs font-black px-2 py-0.5 rounded" style={{
+                  background: p.direction === 'LONG' ? 'rgba(74,222,128,0.15)' : 'rgba(248,113,113,0.15)',
+                  color: p.direction === 'LONG' ? '#4ade80' : '#f87171',
+                }}>{p.direction}</span>
+                <span className="text-xs font-bold" style={{ color: winColor(p.win_rate) }}>WR {p.win_rate}%</span>
+                <span className="text-xs font-mono font-bold" style={{ color: changeColor(p.avg_change) }}>
+                  {p.avg_change > 0 ? '+' : ''}{p.avg_change}%
+                </span>
+                <span className="text-xs text-slate-500">ציון {p.score}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Active IB trades ── */}
+      {bot.active_trades && bot.active_trades.length > 0 && (
+        <div className="rounded-xl p-4 space-y-2" style={{
+          background: 'rgba(74,222,128,0.05)', border: '1px solid rgba(74,222,128,0.2)',
+        }}>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            <span className="text-sm font-bold text-white">פוזיציות פתוחות ב-IB</span>
+          </div>
+          {bot.active_trades.map((t, i) => (
+            <div key={i} className="flex items-center gap-3 text-xs flex-wrap">
+              <span className="font-black text-white">{t.ticker}</span>
+              <span className="px-1.5 py-0.5 rounded font-bold" style={{
+                background: t.direction === 'LONG' ? 'rgba(74,222,128,0.15)' : 'rgba(248,113,113,0.15)',
+                color: t.direction === 'LONG' ? '#4ade80' : '#f87171',
+              }}>{t.direction}</span>
+              <span className="text-slate-400">{t.shares} @ ${t.entry_price}</span>
+              <span className="text-slate-500">{t.window}</span>
+              <span className="text-slate-500">{t.opened_at}</span>
+              <span className="text-[10px] px-1 rounded" style={{
+                background: t.ib_filled ? 'rgba(74,222,128,0.1)' : 'rgba(251,191,36,0.1)',
+                color: t.ib_filled ? '#4ade80' : '#fbbf24',
+              }}>
+                {t.ib_filled ? '✓ IB' : '⚡ ידני'}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Trade history ── */}
+      {bot.trade_history && bot.trade_history.length > 0 && (
+        <div className="rounded-xl overflow-hidden" style={{
+          background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)',
+        }}>
+          <div className="p-3 border-b text-sm font-bold text-white" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+            היסטוריית עסקאות אוטומטיות
+          </div>
+          <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+            {bot.trade_history.map((t, i) => (
+              <div key={i} className="px-4 py-2 flex items-center gap-3 text-xs flex-wrap">
+                <span className="font-black text-white w-14">{t.ticker}</span>
+                <span className="text-slate-500">{t.window}</span>
+                <span className="text-slate-400">{t.opened_at}→{t.closed_at}</span>
+                <span className="font-mono font-black" style={{ color: t.pnl >= 0 ? '#4ade80' : '#f87171' }}>
+                  {t.pnl >= 0 ? '+' : ''}${t.pnl}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {(!bot.today_picks || bot.today_picks.length === 0) && (
+        <div className="text-center py-10">
+          <Bot size={36} className="mx-auto mb-3 text-slate-700" />
+          <div className="text-sm text-slate-500 mb-1">לא בוצעה סריקה היום עדיין</div>
+          <div className="text-xs text-slate-600">לחץ "סרוק עכשיו" כדי לבחור את 5 המניות הכי חזקות להיום</div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -628,10 +825,11 @@ export default function PatternScanner() {
         {[
           { key: 'pool', label: 'מאגר מניות', icon: Shield, count: poolData?.count },
           { key: 'analyze', label: 'ניתוח דפוסים', icon: Target, count: tickerAnalysis?.tradeable_windows?.length },
+          { key: 'autobot', label: '🤖 Auto Bot', icon: Bot, accent: '#4ade80' },
         ].map(tab => (
           <button key={tab.key} onClick={() => { setActiveTab(tab.key); if (tab.key === 'pool') setPoolRequested(true); }}
             className="relative px-4 py-2.5 text-sm font-semibold transition-all flex items-center gap-1.5"
-            style={{ color: activeTab === tab.key ? '#fff' : '#475569' }}>
+            style={{ color: activeTab === tab.key ? (tab.accent || '#fff') : '#475569' }}>
             <tab.icon size={14} />
             {tab.label}
             {tab.count != null && (
@@ -642,7 +840,7 @@ export default function PatternScanner() {
             )}
             {activeTab === tab.key && (
               <div className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full"
-                style={{ background: '#8b5cf6', boxShadow: '0 0 8px rgba(139,92,246,0.5)' }} />
+                style={{ background: tab.accent || '#8b5cf6', boxShadow: `0 0 8px ${tab.accent || '#8b5cf6'}80` }} />
             )}
           </button>
         ))}
@@ -993,6 +1191,9 @@ export default function PatternScanner() {
           )}
         </div>
       )}
+
+      {/* ── Auto Bot Tab ── */}
+      {activeTab === 'autobot' && <AutoBotPanel investment={investment} />}
     </div>
   );
 }
