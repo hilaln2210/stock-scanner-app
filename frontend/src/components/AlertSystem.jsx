@@ -130,6 +130,12 @@ function AlertToast({ alert, onDismiss }) {
               </span>
             </div>
 
+            {/* Move reason */}
+            {alert.reason_he && (
+              <p className="text-[10px] mt-1.5 font-semibold" style={{ color: '#fbbf24', direction: 'rtl' }}>
+                💡 {alert.reason_he}
+              </p>
+            )}
             {/* Market cap */}
             {alert.mcap_str && (
               <p className="text-[10px] mt-1" style={{ color: '#334155' }}>

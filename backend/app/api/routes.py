@@ -1391,15 +1391,25 @@ def _fetch_alert_ticker_sync(ticker: str) -> Optional[dict]:
         mcap_b = mcap / 1e9 if mcap >= 1e9 else None
         mcap_m = mcap / 1e6 if mcap < 1e9 else None
         mcap_str = f"${mcap_b:.1f}B" if mcap_b else f"${mcap_m:.0f}M"
+        # Detect move reason from news + fundamentals
+        reason_he = ''
+        try:
+            news = _fetch_ticker_news_sync(ticker)
+            reasons = _classify_move_reason(info, news, pct)
+            if reasons:
+                reason_he = reasons[0]['label']
+        except Exception:
+            pass
         return {
-            'ticker':  ticker,
-            'company': company,
-            'sector':  sector,
-            'price':   round(price, 2),
-            'open':    round(open_p, 2),
-            'pct':     pct,
-            'mcap':    mcap,
-            'mcap_str': mcap_str,
+            'ticker':    ticker,
+            'company':   company,
+            'sector':    sector,
+            'price':     round(price, 2),
+            'open':      round(open_p, 2),
+            'pct':       pct,
+            'mcap':      mcap,
+            'mcap_str':  mcap_str,
+            'reason_he': reason_he,
         }
     except Exception:
         return None
