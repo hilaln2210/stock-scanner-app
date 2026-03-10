@@ -30,14 +30,14 @@ function getCurrentNYWindow() {
 }
 
 // ── Pattern Heatmap Chart (SVG) ──────────────────────────────────────────────
-function PatternHeatmap({ windows, height = 520, investment = 700, price = 0 }) {
+function PatternHeatmap({ windows, height = 580, investment = 700, price = 0 }) {
   if (!windows || windows.length === 0) return null;
 
   const currentWindow = getCurrentNYWindow();
 
-  const W = 1000;
+  const W = 1050;
   const H = height;
-  const pad = { top: 60, right: 30, bottom: 75, left: 60 };
+  const pad = { top: 65, right: 30, bottom: 85, left: 60 };
   const chartW = W - pad.left - pad.right;
   const chartH = H - pad.top - pad.bottom;
   const barW = Math.min(chartW / windows.length - 4, 58);
@@ -150,48 +150,74 @@ function PatternHeatmap({ windows, height = 520, investment = 700, price = 0 }) 
                 fill="none" stroke={dotColor} strokeWidth="1.5" opacity="0.5" filter="url(#glow)" />
             )}
 
-            {/* ★ ENTRY POINT marker — gold diamond on tradeable windows */}
+            {/* ★ ENTRY POINT — gold diamond + verbal label */}
             {isEntry && (
               <g>
+                {/* Diamond marker */}
                 <polygon
-                  points={`${x + barW / 2},${zeroY - rangeH - 18} ${x + barW / 2 + 7},${zeroY - rangeH - 10} ${x + barW / 2},${zeroY - rangeH - 2} ${x + barW / 2 - 7},${zeroY - rangeH - 10}`}
+                  points={`${x + barW / 2},${zeroY - rangeH - 22} ${x + barW / 2 + 8},${zeroY - rangeH - 13} ${x + barW / 2},${zeroY - rangeH - 4} ${x + barW / 2 - 8},${zeroY - rangeH - 13}`}
                   fill="url(#entryGrad)" filter="url(#glowGold)" />
-                <text x={x + barW / 2} y={zeroY - rangeH - 10} fill="#0f172a" fontSize="6" fontWeight="900"
+                <text x={x + barW / 2} y={zeroY - rangeH - 13} fill="#0f172a" fontSize="7" fontWeight="900"
                   textAnchor="middle" dominantBaseline="middle">$</text>
+
+                {/* Verbal: "כאן נכנסים" */}
+                <text x={x + barW / 2} y={zeroY - rangeH - 27} fill="#fbbf24" fontSize="8" fontWeight="bold"
+                  textAnchor="middle">כאן נכנסים</text>
               </g>
             )}
 
-            {/* ★ Dollar P&L label below bar */}
+            {/* ★ Dollar P&L verbal callout below bar */}
             {isEntry && (
-              <text x={x + barW / 2} y={zeroY + rangeH + 14}
-                fill={pnl >= 0 ? '#4ade80' : '#f87171'} fontSize="8" fontWeight="900"
-                textAnchor="middle" fontFamily="monospace">
-                {pnl >= 0 ? '+' : ''}{pnl < 10 && pnl > -10 ? pnl.toFixed(2) : pnl.toFixed(1)}$
-              </text>
+              <g>
+                <text x={x + barW / 2} y={zeroY + rangeH + 14}
+                  fill={pnl >= 0 ? '#4ade80' : '#f87171'} fontSize="9" fontWeight="900"
+                  textAnchor="middle" fontFamily="monospace">
+                  {pnl >= 0 ? '+' : ''}{pnl < 10 && pnl > -10 ? pnl.toFixed(2) : pnl.toFixed(1)}$
+                </text>
+                {/* Verbal: "היית מרוויח/מפסיד" */}
+                <text x={x + barW / 2} y={zeroY + rangeH + 26}
+                  fill={pnl >= 0 ? 'rgba(74,222,128,0.7)' : 'rgba(248,113,113,0.7)'} fontSize="7"
+                  textAnchor="middle">
+                  {pnl >= 0 ? `רווח מ-$${investment}` : `הפסד מ-$${investment}`}
+                </text>
+              </g>
             )}
 
-            {/* ★ "Enter here?" badge on current window if tradeable */}
+            {/* ★ Current window + tradeable = "להיכנס עכשיו!" */}
             {isCurrent && isEntry && (
               <g>
-                <rect x={x + barW / 2 - 28} y={zeroY + rangeH + 20} width="56" height="18" rx="9"
-                  fill="rgba(251,191,36,0.2)" stroke="#fbbf24" strokeWidth="1" />
-                <text x={x + barW / 2} y={zeroY + rangeH + 31} fill="#fbbf24" fontSize="8" fontWeight="900"
+                <rect x={x + barW / 2 - 35} y={zeroY + rangeH + 34} width="70" height="30" rx="6"
+                  fill="rgba(251,191,36,0.15)" stroke="#fbbf24" strokeWidth="1.5" />
+                <text x={x + barW / 2} y={zeroY + rangeH + 47} fill="#fbbf24" fontSize="9" fontWeight="900"
                   textAnchor="middle">
-                  להיכנס? {w.win_rate}%
+                  להיכנס עכשיו!
+                </text>
+                <text x={x + barW / 2} y={zeroY + rangeH + 58} fill="rgba(251,191,36,0.8)" fontSize="7"
+                  textAnchor="middle">
+                  WR {w.win_rate}% | +${pnlWin.toFixed(0)} / ${pnlLoss.toFixed(0)}
                 </text>
               </g>
             )}
 
-            {/* ★ "Don't enter" badge on current window if NOT tradeable */}
+            {/* ★ Current window + NOT tradeable = "לא להיכנס" */}
             {isCurrent && !isEntry && (
               <g>
-                <rect x={x + barW / 2 - 22} y={zeroY + rangeH + 20} width="44" height="16" rx="8"
-                  fill="rgba(248,113,113,0.12)" stroke="rgba(248,113,113,0.4)" strokeWidth="1" />
-                <text x={x + barW / 2} y={zeroY + rangeH + 30} fill="#f87171" fontSize="7" fontWeight="bold"
+                <rect x={x + barW / 2 - 30} y={zeroY + rangeH + 34} width="60" height="22" rx="5"
+                  fill="rgba(248,113,113,0.1)" stroke="rgba(248,113,113,0.35)" strokeWidth="1" />
+                <text x={x + barW / 2} y={zeroY + rangeH + 48} fill="#f87171" fontSize="8" fontWeight="bold"
                   textAnchor="middle">
-                  לא עכשיו
+                  לא להיכנס
                 </text>
               </g>
+            )}
+
+            {/* Non-tradeable label — short reason */}
+            {!isEntry && !isCurrent && w.sample_days >= 5 && (
+              <text x={x + barW / 2} y={zeroY + rangeH + 14}
+                fill="rgba(100,116,139,0.5)" fontSize="6.5"
+                textAnchor="middle">
+                {w.win_rate < 55 ? 'חלש' : w.win_rate < 60 ? 'לא מספיק' : 'תנודה קטנה'}
+              </text>
             )}
 
             {/* Win rate dot on top */}
@@ -836,7 +862,7 @@ export default function PatternScanner() {
                     />
                   </div>
                 </div>
-                <PatternHeatmap windows={tickerAnalysis.windows} height={520} investment={investment} price={tickerAnalysis.price} />
+                <PatternHeatmap windows={tickerAnalysis.windows} height={580} investment={investment} price={tickerAnalysis.price} />
               </div>
 
               {/* ── Windows Table ── */}
