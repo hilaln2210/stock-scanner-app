@@ -430,3 +430,100 @@ def generate_trade_signals(pattern: dict) -> List[dict]:
 
     signals.sort(key=lambda x: x["confidence"], reverse=True)
     return signals
+
+
+# ── Pattern Bot Demo Portfolio ────────────────────────────────────────────────
+import json as _json
+import os as _os
+
+_PORTFOLIO_FILE = _os.path.join(_os.path.dirname(__file__), "..", "..", "data", "pattern_portfolio.json")
+
+def _load_portfolio() -> dict:
+    try:
+        with open(_PORTFOLIO_FILE, "r") as f:
+            return _json.load(f)
+    except Exception:
+        return {"balance": 700, "initial": 700, "trades": [], "open_position": None}
+
+def _save_portfolio(p: dict):
+    _os.makedirs(_os.path.dirname(_PORTFOLIO_FILE), exist_ok=True)
+    with open(_PORTFOLIO_FILE, "w") as f:
+        _json.dump(p, f, indent=2)
+
+def get_portfolio() -> dict:
+    p = _load_portfolio()
+    total_pnl = sum(t.get("pnl", 0) for t in p["trades"])
+    wins = [t for t in p["trades"] if t.get("pnl", 0) > 0]
+    losses = [t for t in p["trades"] if t.get("pnl", 0) < 0]
+    return {
+        **p,
+        "total_pnl": round(total_pnl, 2),
+        "win_count": len(wins),
+        "loss_count": len(losses),
+        "trade_count": len(p["trades"]),
+        "win_rate": round(len(wins) / len(p["trades"]) * 100, 1) if p["trades"] else 0,
+        "current_value": round(p["balance"], 2),
+        "return_pct": round((p["balance"] - p["initial"]) / p["initial"] * 100, 2),
+    }
+
+def open_trade(ticker: str, direction: str, entry_price: float,
+               stop_price: float, target_price: float,
+               window: str, win_rate: float, amount: float = 0) -> dict:
+    p = _load_portfolio()
+    if p.get("open_position"):
+        return {"error": "יש פוזיציה פתוחה — סגור אותה קודם"}
+
+    trade_amount = amount if amount > 0 else p["balance"]
+    if trade_amount > p["balance"]:
+        trade_amount = p["balance"]
+
+    shares = trade_amount / entry_price if entry_price > 0 else 0
+
+    p["open_position"] = {
+        "ticker": ticker,
+        "direction": direction,
+        "entry_price": entry_price,
+        "stop_price": stop_price,
+        "target_price": target_price,
+        "shares": round(shares, 4),
+        "amount": round(trade_amount, 2),
+        "window": window,
+        "win_rate": win_rate,
+        "opened_at": datetime.now().isoformat(),
+    }
+    _save_portfolio(p)
+    return {"success": True, "position": p["open_position"], "balance": p["balance"]}
+
+def close_trade(exit_price: float, reason: str = "manual") -> dict:
+    p = _load_portfolio()
+    pos = p.get("open_position")
+    if not pos:
+        return {"error": "אין פוזיציה פתוחה"}
+
+    if pos["direction"] == "LONG":
+        pnl_per_share = exit_price - pos["entry_price"]
+    else:
+        pnl_per_share = pos["entry_price"] - exit_price
+
+    pnl = round(pnl_per_share * pos["shares"], 2)
+    pnl_pct = round(pnl / pos["amount"] * 100, 2) if pos["amount"] > 0 else 0
+
+    trade_record = {
+        **pos,
+        "exit_price": exit_price,
+        "pnl": pnl,
+        "pnl_pct": pnl_pct,
+        "reason": reason,
+        "closed_at": datetime.now().isoformat(),
+    }
+
+    p["trades"].append(trade_record)
+    p["balance"] = round(p["balance"] + pnl, 2)
+    p["open_position"] = None
+    _save_portfolio(p)
+    return {"success": True, "trade": trade_record, "balance": p["balance"]}
+
+def reset_portfolio(starting_balance: float = 700) -> dict:
+    p = {"balance": starting_balance, "initial": starting_balance, "trades": [], "open_position": None}
+    _save_portfolio(p)
+    return p

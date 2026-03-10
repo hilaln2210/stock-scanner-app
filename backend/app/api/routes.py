@@ -3061,7 +3061,8 @@ async def test_telegram():
 
 from app.services.pattern_scanner import (
     filter_stock_pool, analyze_single_ticker,
-    analyze_pool_patterns, generate_trade_signals
+    analyze_pool_patterns, generate_trade_signals,
+    get_portfolio, open_trade, close_trade, reset_portfolio,
 )
 
 _pattern_lock = None
@@ -3136,3 +3137,40 @@ async def pattern_full_scan(
             "analyzed": len(patterns),
             "stocks": patterns,
         }
+
+
+@router.get("/pattern/portfolio")
+async def pattern_portfolio():
+    """Get pattern bot demo portfolio."""
+    return get_portfolio()
+
+
+@router.post("/pattern/portfolio/trade")
+async def pattern_portfolio_trade(payload: dict = Body(...)):
+    """Open a trade in the pattern bot demo portfolio."""
+    return open_trade(
+        ticker=payload.get("ticker", ""),
+        direction=payload.get("direction", "LONG"),
+        entry_price=float(payload.get("entry_price", 0)),
+        stop_price=float(payload.get("stop_price", 0)),
+        target_price=float(payload.get("target_price", 0)),
+        window=payload.get("window", ""),
+        win_rate=float(payload.get("win_rate", 0)),
+        amount=float(payload.get("amount", 0)),
+    )
+
+
+@router.post("/pattern/portfolio/close")
+async def pattern_portfolio_close(payload: dict = Body(...)):
+    """Close the open position."""
+    return close_trade(
+        exit_price=float(payload.get("exit_price", 0)),
+        reason=payload.get("reason", "manual"),
+    )
+
+
+@router.post("/pattern/portfolio/reset")
+async def pattern_portfolio_reset(payload: dict = Body({})):
+    """Reset portfolio to starting balance."""
+    bal = float(payload.get("balance", 700))
+    return reset_portfolio(bal)

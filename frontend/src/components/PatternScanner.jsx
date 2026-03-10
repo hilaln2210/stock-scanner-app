@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { RefreshCw, Search, TrendingUp, TrendingDown, Target, Shield, Zap, ChevronDown, ChevronUp, Clock, BarChart3 } from 'lucide-react';
+import { RefreshCw, Search, TrendingUp, TrendingDown, Target, Shield, Zap, ChevronDown, ChevronUp, Clock, BarChart3, DollarSign, Wallet } from 'lucide-react';
 
 const api = axios.create({ baseURL: '/api', timeout: 120000 });
 
@@ -30,17 +30,17 @@ function getCurrentNYWindow() {
 }
 
 // ── Pattern Heatmap Chart (SVG) ──────────────────────────────────────────────
-function PatternHeatmap({ windows, height = 420, investment = 700, price = 0 }) {
+function PatternHeatmap({ windows, height = 520, investment = 700, price = 0 }) {
   if (!windows || windows.length === 0) return null;
 
   const currentWindow = getCurrentNYWindow();
 
-  const W = 900;
+  const W = 1000;
   const H = height;
-  const pad = { top: 55, right: 30, bottom: 70, left: 55 };
+  const pad = { top: 60, right: 30, bottom: 75, left: 60 };
   const chartW = W - pad.left - pad.right;
   const chartH = H - pad.top - pad.bottom;
-  const barW = Math.min(chartW / windows.length - 4, 50);
+  const barW = Math.min(chartW / windows.length - 4, 58);
 
   const maxRange = Math.max(...windows.map(w => Math.max(Math.abs(w.avg_change), w.avg_range || 0.5)), 0.5);
 
@@ -251,67 +251,207 @@ function WinDonut({ winRate, size = 36 }) {
   );
 }
 
-// ── Signal Card ──────────────────────────────────────────────────────────────
-function SignalCard({ signal }) {
+// ── Signal Card with TRADE button ────────────────────────────────────────────
+function SignalCard({ signal, onTrade, hasOpenPosition, investment = 700 }) {
   const isLong = signal.direction === 'LONG';
+  const dollarPnl = investment * (signal.avg_change / 100);
+  const dollarWin = investment * (signal.avg_win / 100);
+  const dollarLoss = investment * (signal.avg_loss / 100);
   return (
-    <div className="rounded-lg p-3 flex items-center gap-3" style={{
+    <div className="rounded-lg p-4 flex items-center gap-4" style={{
       background: isLong ? 'rgba(74,222,128,0.06)' : 'rgba(248,113,113,0.06)',
       border: `1px solid ${isLong ? 'rgba(74,222,128,0.2)' : 'rgba(248,113,113,0.2)'}`,
     }}>
       <div className="flex flex-col items-center gap-1">
-        {isLong ? <TrendingUp size={18} color="#4ade80" /> : <TrendingDown size={18} color="#f87171" />}
-        <span className="text-xs font-black" style={{ color: isLong ? '#4ade80' : '#f87171' }}>
+        {isLong ? <TrendingUp size={22} color="#4ade80" /> : <TrendingDown size={22} color="#f87171" />}
+        <span className="text-sm font-black" style={{ color: isLong ? '#4ade80' : '#f87171' }}>
           {signal.direction}
         </span>
       </div>
-      <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+      <div className="flex-1 grid grid-cols-2 sm:grid-cols-5 gap-3 text-sm">
         <div>
-          <span className="text-slate-500">חלון</span>
+          <span className="text-slate-500 text-xs">חלון</span>
           <div className="font-bold text-white flex items-center gap-1">
-            <Clock size={11} className="text-slate-500" />
+            <Clock size={12} className="text-slate-500" />
             {signal.window}
           </div>
         </div>
         <div>
-          <span className="text-slate-500">Win Rate</span>
-          <div className="font-black" style={{ color: winColor(signal.win_rate) }}>
+          <span className="text-slate-500 text-xs">Win Rate</span>
+          <div className="font-black text-lg" style={{ color: winColor(signal.win_rate) }}>
             {signal.win_rate}%
           </div>
         </div>
         <div>
-          <span className="text-slate-500">R:R</span>
-          <div className="font-bold" style={{ color: signal.risk_reward >= 1.5 ? '#4ade80' : '#fbbf24' }}>
+          <span className="text-slate-500 text-xs">R:R</span>
+          <div className="font-bold text-lg" style={{ color: signal.risk_reward >= 1.5 ? '#4ade80' : '#fbbf24' }}>
             1:{signal.risk_reward}
           </div>
         </div>
         <div>
-          <span className="text-slate-500">EV</span>
-          <div className="font-bold" style={{ color: changeColor(signal.expected_value) }}>
-            {signal.expected_value > 0 ? '+' : ''}{signal.expected_value}%
+          <span className="text-slate-500 text-xs">רווח ממוצע</span>
+          <div className="font-bold font-mono" style={{ color: '#4ade80' }}>+${dollarWin.toFixed(1)}</div>
+          <div className="font-bold font-mono text-xs" style={{ color: '#f87171' }}>${dollarLoss.toFixed(1)}</div>
+        </div>
+        <div>
+          <span className="text-slate-500 text-xs">EV (${investment})</span>
+          <div className="font-black font-mono text-lg" style={{ color: changeColor(dollarPnl) }}>
+            {dollarPnl >= 0 ? '+' : ''}${dollarPnl.toFixed(1)}
           </div>
         </div>
       </div>
-      <div className="text-xs text-right space-y-0.5" style={{ minWidth: 100 }}>
+      <div className="text-xs text-right space-y-1" style={{ minWidth: 110 }}>
         <div className="flex justify-between gap-2">
           <span className="text-slate-500">כניסה</span>
-          <span className="font-mono text-white">${signal.entry}</span>
+          <span className="font-mono text-white font-bold">${signal.entry}</span>
         </div>
         <div className="flex justify-between gap-2">
           <span className="text-slate-500">סטופ</span>
-          <span className="font-mono" style={{ color: '#f87171' }}>${signal.stop}</span>
+          <span className="font-mono font-bold" style={{ color: '#f87171' }}>${signal.stop}</span>
         </div>
         <div className="flex justify-between gap-2">
           <span className="text-slate-500">יעד</span>
-          <span className="font-mono" style={{ color: '#4ade80' }}>${signal.target}</span>
+          <span className="font-mono font-bold" style={{ color: '#4ade80' }}>${signal.target}</span>
         </div>
       </div>
-      <div className="flex flex-col items-center">
-        <div className="text-xs text-slate-500">ביטחון</div>
-        <div className="text-lg font-black" style={{ color: signal.confidence >= 70 ? '#4ade80' : signal.confidence >= 55 ? '#fbbf24' : '#f87171' }}>
-          {signal.confidence}
+      <div className="flex flex-col items-center gap-2">
+        <div className="text-center">
+          <div className="text-xs text-slate-500">ביטחון</div>
+          <div className="text-xl font-black" style={{ color: signal.confidence >= 70 ? '#4ade80' : signal.confidence >= 55 ? '#fbbf24' : '#f87171' }}>
+            {signal.confidence}
+          </div>
         </div>
+        {onTrade && (
+          <button onClick={() => onTrade(signal)}
+            disabled={hasOpenPosition}
+            className="px-4 py-2 rounded-lg text-xs font-black transition-all whitespace-nowrap"
+            style={{
+              background: hasOpenPosition ? 'rgba(100,116,139,0.2)' :
+                isLong ? 'linear-gradient(135deg, #22c55e, #16a34a)' : 'linear-gradient(135deg, #ef4444, #dc2626)',
+              color: hasOpenPosition ? '#64748b' : '#fff',
+              cursor: hasOpenPosition ? 'not-allowed' : 'pointer',
+              boxShadow: hasOpenPosition ? 'none' : `0 0 12px ${isLong ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+            }}>
+            {hasOpenPosition ? 'פוזיציה פתוחה' : `סחר ${signal.direction}`}
+          </button>
+        )}
       </div>
+    </div>
+  );
+}
+
+// ── Portfolio Widget ─────────────────────────────────────────────────────────
+function PortfolioWidget({ portfolio, onClose, onReset }) {
+  if (!portfolio) return null;
+  const pos = portfolio.open_position;
+  const pnlColor = portfolio.total_pnl >= 0 ? '#4ade80' : '#f87171';
+  const retColor = portfolio.return_pct >= 0 ? '#4ade80' : '#f87171';
+
+  return (
+    <div className="rounded-xl p-4 space-y-3" style={{
+      background: 'linear-gradient(135deg, rgba(251,191,36,0.06), rgba(139,92,246,0.04))',
+      border: '1px solid rgba(251,191,36,0.2)',
+    }}>
+      <div className="flex items-center gap-3 flex-wrap">
+        <Wallet size={18} color="#fbbf24" />
+        <span className="text-sm font-black text-white">תיק דמו Pattern Bot</span>
+
+        {/* Balance */}
+        <div className="flex items-baseline gap-2 mr-4">
+          <span className="text-2xl font-black font-mono text-white">${portfolio.current_value}</span>
+          <span className="text-sm font-bold font-mono" style={{ color: retColor }}>
+            {portfolio.return_pct >= 0 ? '+' : ''}{portfolio.return_pct}%
+          </span>
+        </div>
+
+        {/* Stats */}
+        <div className="flex gap-4 text-xs">
+          <div>
+            <span className="text-slate-500">P&L</span>
+            <div className="font-bold font-mono" style={{ color: pnlColor }}>
+              {portfolio.total_pnl >= 0 ? '+' : ''}${portfolio.total_pnl}
+            </div>
+          </div>
+          <div>
+            <span className="text-slate-500">עסקאות</span>
+            <div className="font-bold text-white">{portfolio.trade_count}</div>
+          </div>
+          <div>
+            <span className="text-slate-500">Win Rate</span>
+            <div className="font-bold" style={{ color: winColor(portfolio.win_rate) }}>
+              {portfolio.win_rate}%
+            </div>
+          </div>
+          <div>
+            <span className="text-slate-500">W/L</span>
+            <div>
+              <span style={{ color: '#4ade80' }} className="font-bold">{portfolio.win_count}</span>
+              <span className="text-slate-600">/</span>
+              <span style={{ color: '#f87171' }} className="font-bold">{portfolio.loss_count}</span>
+            </div>
+          </div>
+        </div>
+
+        <button onClick={onReset} className="mr-auto text-xs px-2 py-1 rounded"
+          style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.2)', color: '#f87171' }}>
+          איפוס
+        </button>
+      </div>
+
+      {/* Open position */}
+      {pos && (
+        <div className="rounded-lg p-3 flex items-center gap-3 flex-wrap" style={{
+          background: pos.direction === 'LONG' ? 'rgba(74,222,128,0.08)' : 'rgba(248,113,113,0.08)',
+          border: `1px solid ${pos.direction === 'LONG' ? 'rgba(74,222,128,0.25)' : 'rgba(248,113,113,0.25)'}`,
+        }}>
+          <span className="text-xs font-bold px-2 py-0.5 rounded" style={{
+            background: pos.direction === 'LONG' ? 'rgba(74,222,128,0.2)' : 'rgba(248,113,113,0.2)',
+            color: pos.direction === 'LONG' ? '#4ade80' : '#f87171',
+          }}>
+            {pos.direction} פתוח
+          </span>
+          <span className="font-black text-white">{pos.ticker}</span>
+          <span className="text-xs text-slate-400">{pos.shares} מניות @ ${pos.entry_price}</span>
+          <span className="text-xs text-slate-400">${pos.amount} השקעה</span>
+          <span className="text-xs text-slate-500">חלון: {pos.window}</span>
+
+          <div className="mr-auto flex gap-2">
+            <button onClick={() => onClose(pos.target_price, 'target')}
+              className="px-3 py-1.5 rounded text-xs font-bold"
+              style={{ background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.3)', color: '#4ade80' }}>
+              סגור ביעד ${pos.target_price}
+            </button>
+            <button onClick={() => onClose(pos.stop_price, 'stop')}
+              className="px-3 py-1.5 rounded text-xs font-bold"
+              style={{ background: 'rgba(248,113,113,0.15)', border: '1px solid rgba(248,113,113,0.3)', color: '#f87171' }}>
+              סגור בסטופ ${pos.stop_price}
+            </button>
+            <button onClick={() => onClose(pos.entry_price, 'breakeven')}
+              className="px-3 py-1.5 rounded text-xs font-bold"
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8' }}>
+              סגור ב-B/E
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Recent trades */}
+      {portfolio.trades && portfolio.trades.length > 0 && (
+        <div className="flex gap-1.5 flex-wrap">
+          {portfolio.trades.slice(-10).reverse().map((t, i) => (
+            <div key={i} className="px-2 py-1 rounded text-xs flex items-center gap-1.5" style={{
+              background: t.pnl >= 0 ? 'rgba(74,222,128,0.08)' : 'rgba(248,113,113,0.08)',
+              border: `1px solid ${t.pnl >= 0 ? 'rgba(74,222,128,0.15)' : 'rgba(248,113,113,0.15)'}`,
+            }}>
+              <span className="font-bold text-white">{t.ticker}</span>
+              <span className="font-mono font-bold" style={{ color: t.pnl >= 0 ? '#4ade80' : '#f87171' }}>
+                {t.pnl >= 0 ? '+' : ''}${t.pnl}
+              </span>
+              <span className="text-slate-600">{t.reason}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -326,6 +466,47 @@ export default function PatternScanner() {
   const [activeTab, setActiveTab] = useState('analyze'); // pool | analyze
   const [poolRequested, setPoolRequested] = useState(false);
   const [investment, setInvestment] = useState(700);
+  const qc = useQueryClient();
+
+  // Portfolio
+  const { data: portfolio, refetch: refetchPortfolio } = useQuery({
+    queryKey: ['patternPortfolio'],
+    queryFn: async () => (await api.get('/pattern/portfolio')).data,
+    staleTime: 5000,
+    refetchInterval: 10000,
+  });
+
+  const handleTrade = useCallback(async (signal) => {
+    try {
+      await api.post('/pattern/portfolio/trade', {
+        ticker: signal.ticker,
+        direction: signal.direction,
+        entry_price: signal.entry,
+        stop_price: signal.stop,
+        target_price: signal.target,
+        window: signal.window,
+        win_rate: signal.win_rate,
+        amount: investment,
+      });
+      refetchPortfolio();
+    } catch (e) {
+      console.error('Trade error', e);
+    }
+  }, [investment, refetchPortfolio]);
+
+  const handleClose = useCallback(async (exitPrice, reason) => {
+    try {
+      await api.post('/pattern/portfolio/close', { exit_price: exitPrice, reason });
+      refetchPortfolio();
+    } catch (e) {
+      console.error('Close error', e);
+    }
+  }, [refetchPortfolio]);
+
+  const handleReset = useCallback(async () => {
+    await api.post('/pattern/portfolio/reset', { balance: investment });
+    refetchPortfolio();
+  }, [investment, refetchPortfolio]);
 
   // Step 1: Pool — only fetch when explicitly requested
   const { data: poolData, isLoading: poolLoading, refetch: refetchPool } = useQuery({
@@ -655,7 +836,7 @@ export default function PatternScanner() {
                     />
                   </div>
                 </div>
-                <PatternHeatmap windows={tickerAnalysis.windows} height={420} investment={investment} price={tickerAnalysis.price} />
+                <PatternHeatmap windows={tickerAnalysis.windows} height={520} investment={investment} price={tickerAnalysis.price} />
               </div>
 
               {/* ── Windows Table ── */}
@@ -681,6 +862,7 @@ export default function PatternScanner() {
                         <th className="text-right py-2 px-2">הכי טוב</th>
                         <th className="text-right py-2 px-2">הכי גרוע</th>
                         <th className="text-right py-2 px-2">EV</th>
+                        <th className="text-right py-2 px-2">💰 ${investment}</th>
                         <th className="text-right py-2 px-2">חוזק</th>
                         <th className="text-center py-2 px-2">סטטוס</th>
                       </tr>
@@ -728,6 +910,9 @@ export default function PatternScanner() {
                           <td className="py-2 px-2 font-mono font-bold" style={{ color: changeColor(w.expected_value || 0) }}>
                             {(w.expected_value || 0) > 0 ? '+' : ''}{(w.expected_value || 0)}%
                           </td>
+                          <td className="py-2 px-2 font-mono font-bold" style={{ color: changeColor(w.avg_change) }}>
+                            {(() => { const d = investment * (w.avg_change / 100); return `${d >= 0 ? '+' : ''}$${d.toFixed(1)}`; })()}
+                          </td>
                           <td className="py-2 px-2">
                             <span className="px-1.5 py-0.5 rounded text-xs font-bold" style={{
                               background: `${strengthColor[w.strength]}15`,
@@ -753,18 +938,22 @@ export default function PatternScanner() {
                 </div>
               </div>
 
+              {/* ── Portfolio Widget ── */}
+              <PortfolioWidget portfolio={portfolio} onClose={handleClose} onReset={handleReset} />
+
               {/* ── Trade Signals (Step 3) ── */}
               {tickerAnalysis.signals && tickerAnalysis.signals.length > 0 && (
                 <div className="rounded-xl p-4 space-y-3" style={{
                   background: '#0d1117', border: '1px solid rgba(74,222,128,0.15)',
                 }}>
                   <div className="flex items-center gap-2">
-                    <Target size={16} color="#4ade80" />
-                    <span className="text-sm font-bold text-white">שלב 3: סיגנלים למסחר</span>
-                    <span className="text-xs text-slate-500">חלונות עם Win Rate ≥60% + שינוי ≥0.05%</span>
+                    <Target size={18} color="#4ade80" />
+                    <span className="text-base font-bold text-white">שלב 3: סיגנלים למסחר</span>
+                    <span className="text-xs text-slate-500">לחצי "סחר" כדי לפתוח פוזיציה בתיק הדמו</span>
                   </div>
                   {tickerAnalysis.signals.map((sig, i) => (
-                    <SignalCard key={i} signal={sig} />
+                    <SignalCard key={i} signal={sig} onTrade={handleTrade}
+                      hasOpenPosition={!!portfolio?.open_position} investment={investment} />
                   ))}
                 </div>
               )}
