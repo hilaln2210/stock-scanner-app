@@ -165,7 +165,7 @@ def _analyze_ticker_patterns(ticker: str, days: int = 45, interval: str = "5m") 
         max_days = 59 if interval == "5m" else 59
         days = min(days, max_days)
 
-        hist = stock.history(period=f"{days}d", interval=interval, timeout=10)
+        hist = stock.history(period=f"{days}d", interval=interval, prepost=True, timeout=10)
         if hist.empty or len(hist) < 50:
             return None
 
