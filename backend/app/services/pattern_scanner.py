@@ -199,12 +199,16 @@ def _analyze_ticker_patterns(ticker: str, days: int = 45, interval: str = "5m") 
     try:
         stock = yf.Ticker(ticker)
 
-        # yfinance limits: 5m data max 60 days, 15m max 60 days
-        max_days = 59 if interval == "5m" else 59
+        # yfinance limits: 5m/15m max 60 days, 1h max 730 days
+        if interval == "1h":
+            max_days = 729
+        else:
+            max_days = 59
         days = min(days, max_days)
 
         hist = stock.history(period=f"{days}d", interval=interval, prepost=True, timeout=10)
-        if hist.empty or len(hist) < 50:
+        min_candles = 20 if interval == "1h" else 50
+        if hist.empty or len(hist) < min_candles:
             return None
 
         # Get daily data for context
@@ -224,21 +228,33 @@ def _analyze_ticker_patterns(ticker: str, days: int = 45, interval: str = "5m") 
                 trs.append(tr)
             daily_atr = float(np.mean(trs[-14:]))
 
-        # Parse into half-hour windows
-        # Pre-market (4:00-9:30 ET) + Regular hours (9:30-16:00 ET)
-        windows = [
-            # Pre-market
-            ("04:00", "04:30"), ("04:30", "05:00"), ("05:00", "05:30"),
-            ("05:30", "06:00"), ("06:00", "06:30"), ("06:30", "07:00"),
-            ("07:00", "07:30"), ("07:30", "08:00"), ("08:00", "08:30"),
-            ("08:30", "09:00"), ("09:00", "09:30"),
-            # Regular hours
-            ("09:30", "10:00"), ("10:00", "10:30"), ("10:30", "11:00"),
-            ("11:00", "11:30"), ("11:30", "12:00"), ("12:00", "12:30"),
-            ("12:30", "13:00"), ("13:00", "13:30"), ("13:30", "14:00"),
-            ("14:00", "14:30"), ("14:30", "15:00"), ("15:00", "15:30"),
-            ("15:30", "16:00"),
-        ]
+        # Choose windows based on interval:
+        # 1h uses hourly windows (one candle per window), 5m/15m uses 30-min windows
+        if interval == "1h":
+            # Hourly windows — pre-market + regular hours
+            windows = [
+                ("04:00", "05:00"), ("05:00", "06:00"), ("06:00", "07:00"),
+                ("07:00", "08:00"), ("08:00", "09:00"), ("09:00", "09:30"),
+                # Regular hours (each candle at :30 for NYSE equities)
+                ("09:30", "10:30"), ("10:30", "11:30"), ("11:30", "12:30"),
+                ("12:30", "13:30"), ("13:30", "14:30"), ("14:30", "15:30"),
+                ("15:30", "16:30"),
+            ]
+        else:
+            # Half-hour windows — pre-market (4:00-9:30 ET) + regular hours (9:30-16:00 ET)
+            windows = [
+                # Pre-market
+                ("04:00", "04:30"), ("04:30", "05:00"), ("05:00", "05:30"),
+                ("05:30", "06:00"), ("06:00", "06:30"), ("06:30", "07:00"),
+                ("07:00", "07:30"), ("07:30", "08:00"), ("08:00", "08:30"),
+                ("08:30", "09:00"), ("09:00", "09:30"),
+                # Regular hours
+                ("09:30", "10:00"), ("10:00", "10:30"), ("10:30", "11:00"),
+                ("11:00", "11:30"), ("11:30", "12:00"), ("12:00", "12:30"),
+                ("12:30", "13:00"), ("13:00", "13:30"), ("13:30", "14:00"),
+                ("14:00", "14:30"), ("14:30", "15:00"), ("15:00", "15:30"),
+                ("15:30", "16:00"),
+            ]
 
         # Group candles by date
         hist = hist.copy()

@@ -823,6 +823,19 @@ export default function PatternScanner() {
   }, [botStatus]);
 
   // Sorted + annotated pool
+  // Compute composite "quality score" for each stock: ATR% (volatility) + volume + low spread
+  const topTickers = useMemo(() => {
+    if (!poolData?.pool) return new Set();
+    const scored = poolData.pool.map(s => ({
+      ticker: s.ticker,
+      score: (s.atr_pct || 0) * 3
+            + Math.log10((s.avg_volume || 1e6) / 1e6 + 1) * 5
+            - (s.spread_pct || 0) * 20,
+    }));
+    scored.sort((a, b) => b.score - a.score);
+    return new Set(scored.slice(0, 5).map(x => x.ticker));
+  }, [poolData]);
+
   const sortedPool = useMemo(() => {
     if (!poolData?.pool) return [];
     const arr = [...poolData.pool];
@@ -875,12 +888,13 @@ export default function PatternScanner() {
               }}
             />
           </div>
-          <select value={interval} onChange={e => setInterval_(e.target.value)}
+          <select value={interval} onChange={e => { setInterval_(e.target.value); if (e.target.value !== '1h' && days > 59) setDays(45); }}
             className="px-2 py-1.5 text-xs rounded-lg" style={{
               background: '#161b22', border: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8'
             }}>
-            <option value="5m">5 דקות</option>
-            <option value="15m">15 דקות</option>
+            <option value="5m">5 דק׳ (אינטרה)</option>
+            <option value="15m">15 דק׳ (אינטרה)</option>
+            <option value="1h">שעתי (1h)</option>
           </select>
           <select value={days} onChange={e => setDays(Number(e.target.value))}
             className="px-2 py-1.5 text-xs rounded-lg" style={{
@@ -889,6 +903,12 @@ export default function PatternScanner() {
             <option value={30}>30 ימים</option>
             <option value={45}>45 ימים</option>
             <option value={59}>60 ימים</option>
+            {interval === '1h' && <option value={90}>90 ימים</option>}
+            {interval === '1h' && <option value={120}>120 ימים</option>}
+            {interval === '1h' && <option value={180}>180 ימים (6 חודש)</option>}
+            {interval === '1h' && <option value={252}>252 ימים (שנה)</option>}
+            {interval === '1h' && <option value={500}>500 ימים</option>}
+            {interval === '1h' && <option value={729}>729 ימים (מקסימום)</option>}
           </select>
           <button onClick={handleAnalyze}
             className="px-4 py-1.5 rounded-lg text-xs font-bold transition-all"
@@ -975,10 +995,11 @@ export default function PatternScanner() {
 
           {/* Legend */}
           <div className="flex flex-wrap gap-3 text-xs text-slate-500">
+            <span className="flex items-center gap-1"><span style={{ color: '#f59e0b' }}>▲</span><span style={{ color: '#fbbf24', fontWeight: 'bold' }}>TOP</span> טופ 5 ע"פ ATR%+נפח+Bid/Ask</span>
             <span className="flex items-center gap-1"><span style={{ color: '#fbbf24' }}>●</span> פוזיציה פתוחה ב-IB</span>
             <span className="flex items-center gap-1"><span style={{ color: '#4ade80' }}>★</span> נבחר ע"י Bot היום</span>
-            <span className="flex items-center gap-1 cursor-help" title="ספרד = הפרש bid/ask חלקי המחיר — עלות הכניסה/יציאה. נמוך = טוב יותר. מעל 0.1% = פחות אטרקטיבי.">
-              <Info size={11} /> ספרד = פרש Bid/Ask %
+            <span className="flex items-center gap-1 cursor-help" title="Bid/Ask% = הפרש בין מחיר הקנייה למכירה כאחוז מהמחיר. ככל שנמוך יותר — עלות הכניסה/יציאה זולה יותר. מעל 0.1% = פחות אטרקטיבי.">
+              <Info size={11} /> Bid/Ask% = עלות כניסה/יציאה
             </span>
           </div>
 
@@ -1021,8 +1042,8 @@ export default function PatternScanner() {
                       <SortTh col="atr_pct" label="ATR %" className="text-right font-semibold" />
                       <SortTh col="avg_volume" label="מחזור" className="text-right font-semibold" />
                       <th className="text-right py-2.5 px-2 font-semibold cursor-help whitespace-nowrap"
-                        title="ספרד = הפרש Bid/Ask חלקי המחיר. ככל שנמוך יותר, עלות הכניסה/יציאה זולה יותר.">
-                        ספרד%
+                        title="Bid/Ask% = הפרש בין מחיר הקנייה למכירה. ככל שנמוך יותר, עלות הכניסה/יציאה זולה יותר.">
+                        Bid/Ask%
                       </th>
                       <th className="text-right py-2.5 px-2 font-semibold">Bot</th>
                       <th className="text-center py-2.5 px-2 font-semibold">פעולה</th>
@@ -1032,25 +1053,36 @@ export default function PatternScanner() {
                     {sortedPool.map((s) => {
                       const hasIB = ibOpenTickers.has(s.ticker);
                       const botPick = botPicksMap[s.ticker];
+                      const isTop = topTickers.has(s.ticker);
+                      // Priority: IB > Bot > Top > default
                       const rowBg = hasIB
-                        ? 'rgba(251,191,36,0.04)'
+                        ? 'rgba(251,191,36,0.07)'
                         : botPick
-                        ? 'rgba(74,222,128,0.03)'
+                        ? 'rgba(74,222,128,0.07)'
+                        : isTop
+                        ? 'rgba(245,158,11,0.04)'
                         : 'transparent';
                       const borderColor = hasIB
-                        ? 'rgba(251,191,36,0.15)'
+                        ? 'rgba(251,191,36,0.3)'
                         : botPick
-                        ? 'rgba(74,222,128,0.1)'
+                        ? 'rgba(74,222,128,0.3)'
+                        : isTop
+                        ? 'rgba(245,158,11,0.15)'
                         : 'rgba(255,255,255,0.03)';
 
                       return (
                         <tr key={s.ticker} className="border-b transition-colors hover:bg-slate-800/40"
-                          style={{ borderColor, background: rowBg }}>
+                          style={{ borderColor, background: rowBg,
+                            boxShadow: botPick ? 'inset 3px 0 0 #4ade80' : hasIB ? 'inset 3px 0 0 #fbbf24' : 'none' }}>
 
                           {/* Ticker + badges */}
                           <td className="py-2.5 px-3">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-black text-white">{s.ticker}</span>
+                              {isTop && (
+                                <span className="text-xs px-1.5 rounded font-bold" title="טופ 5 — ATR% גבוה + נפח + Bid/Ask נמוך"
+                                  style={{ background: 'rgba(245,158,11,0.2)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)', fontSize: 9 }}>▲TOP</span>
+                              )}
                               {hasIB && (
                                 <span className="text-xs px-1 rounded font-bold" title="פוזיציה פתוחה ב-IB"
                                   style={{ background: 'rgba(251,191,36,0.2)', color: '#fbbf24' }}>IB</span>
@@ -1096,9 +1128,9 @@ export default function PatternScanner() {
                               : `${(s.avg_volume / 1e3).toFixed(0)}K`}
                           </td>
 
-                          {/* Spread */}
+                          {/* Bid/Ask% */}
                           <td className="py-2.5 px-2 font-mono"
-                            title={`ספרד Bid/Ask: ${s.spread_pct}% — ${s.spread_pct <= 0.05 ? 'מצוין' : s.spread_pct <= 0.1 ? 'טוב' : s.spread_pct <= 0.2 ? 'בינוני' : 'גבוה'}`}
+                            title={`Bid/Ask%: ${s.spread_pct}% — ${s.spread_pct <= 0.05 ? 'מצוין' : s.spread_pct <= 0.1 ? 'טוב' : s.spread_pct <= 0.2 ? 'בינוני' : 'גבוה'} (עלות כניסה/יציאה)`}
                             style={{ color: s.spread_pct <= 0.05 ? '#4ade80' : s.spread_pct <= 0.1 ? '#a3e635' : s.spread_pct <= 0.2 ? '#fbbf24' : '#f87171' }}>
                             {s.spread_pct > 0 ? `${s.spread_pct}%` : '—'}
                           </td>
