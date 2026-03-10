@@ -195,7 +195,7 @@ def _pool_subprocess_worker(tickers, min_atr, min_atr_pct, min_volume, q):
 
 def _run_pool_with_timeout(tickers, min_atr, min_atr_pct, min_volume, timeout=45) -> List[dict]:
     """Run pool filter in a subprocess — hard-killable on timeout."""
-    ctx = multiprocessing.get_context("fork")
+    ctx = multiprocessing.get_context("spawn")
     q = ctx.Queue()
     p = ctx.Process(target=_pool_subprocess_worker,
                     args=(tickers, min_atr, min_atr_pct, min_volume, q), daemon=True)
@@ -431,7 +431,7 @@ def _run_with_hard_timeout(ticker: str, days: int, interval: str, timeout: int) 
     Unlike run_in_executor(thread), a subprocess can be terminate()/kill()ed.
     Uses 'fork' context on Linux — fast, no re-import overhead.
     """
-    ctx = multiprocessing.get_context("fork")
+    ctx = multiprocessing.get_context("spawn")
     q = ctx.Queue()
     p = ctx.Process(target=_subprocess_worker, args=(ticker, days, interval, q), daemon=True)
     p.start()
