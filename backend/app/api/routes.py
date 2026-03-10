@@ -3094,12 +3094,18 @@ async def pattern_pool(
 @router.get("/pattern/analyze/{ticker}")
 async def pattern_analyze_ticker(
     ticker: str,
-    days: int = Query(45, ge=10, le=59),
-    interval: str = Query("5m", regex="^(5m|15m)$"),
+    days: int = Query(45, ge=10, le=729),
+    interval: str = Query("5m", regex="^(5m|15m|1h)$"),
 ):
     """Step 2: Analyze intraday patterns for a single ticker."""
     ticker = ticker.upper()
-    result = await analyze_single_ticker(ticker, days=days, interval=interval)
+    # Cap days per interval limits
+    if interval in ("5m", "15m"):
+        days = min(days, 59)
+    try:
+        result = await asyncio.wait_for(analyze_single_ticker(ticker, days=days, interval=interval), timeout=60)
+    except asyncio.TimeoutError:
+        return {"error": f"Timeout analyzing {ticker} — נסה שוב או הפחת ימים"}
     if not result:
         return {"error": f"No data for {ticker}"}
     if "error" in result:

@@ -1314,12 +1314,16 @@ export default function PatternScanner() {
                 <div className="p-3 flex items-center gap-2 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
                   <Clock size={14} color="#a78bfa" />
                   <span className="text-sm font-bold text-white">טבלת חלונות זמן</span>
+                  <span className="text-xs text-slate-500 mr-1">🇮🇱 ישראל למעלה · 🇺🇸 NY למטה</span>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="text-slate-500 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-                        <th className="text-right py-2 px-3">חלון</th>
+                        <th className="text-right py-2 px-3">
+                          <div className="text-slate-300">🇮🇱 ישראל</div>
+                          <div className="text-slate-600 font-normal">🇺🇸 NY</div>
+                        </th>
                         <th className="text-right py-2 px-2">שינוי ממוצע</th>
                         <th className="text-right py-2 px-2">Win Rate</th>
                         <th className="text-center py-2 px-2">W/L</th>
@@ -1342,9 +1346,18 @@ export default function PatternScanner() {
                             borderColor: 'rgba(255,255,255,0.03)',
                             background: w.tradeable ? 'rgba(139,92,246,0.04)' : 'transparent',
                           }}>
-                          <td className="py-2 px-3 font-bold text-white whitespace-nowrap">
-                            <Clock size={11} className="inline ml-1 text-slate-500" />
-                            {w.window}
+                          <td className="py-2 px-3 whitespace-nowrap">
+                            {(() => {
+                              const [s, e] = w.window.split('-');
+                              return (
+                                <div>
+                                  <div className="font-bold text-white">{etToIL(s)}–{etToIL(e)}</div>
+                                  <div className="text-slate-500" style={{ fontSize: 10 }}>
+                                    <Clock size={9} className="inline ml-0.5" />{s}–{e}
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="py-2 px-2 font-mono font-bold" style={{ color: changeColor(w.avg_change) }}>
                             {w.avg_change > 0 ? '+' : ''}{w.avg_change}%
