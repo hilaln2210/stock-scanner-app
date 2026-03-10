@@ -229,14 +229,16 @@ export default function PatternScanner() {
   const [interval, setInterval_] = useState('5m');
   const [days, setDays] = useState(45);
   const [expandedTicker, setExpandedTicker] = useState(null);
-  const [activeTab, setActiveTab] = useState('pool'); // pool | analyze
+  const [activeTab, setActiveTab] = useState('analyze'); // pool | analyze
+  const [poolRequested, setPoolRequested] = useState(false);
 
-  // Step 1: Pool
+  // Step 1: Pool — only fetch when explicitly requested
   const { data: poolData, isLoading: poolLoading, refetch: refetchPool } = useQuery({
     queryKey: ['patternPool'],
     queryFn: async () => (await api.get('/pattern/pool')).data,
     staleTime: 60 * 60 * 1000,
     refetchInterval: 0,
+    enabled: poolRequested,
   });
 
   // Manual ticker analysis
@@ -325,7 +327,7 @@ export default function PatternScanner() {
           { key: 'pool', label: 'מאגר מניות', icon: Shield, count: poolData?.count },
           { key: 'analyze', label: 'ניתוח דפוסים', icon: Target, count: tickerAnalysis?.tradeable_windows?.length },
         ].map(tab => (
-          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+          <button key={tab.key} onClick={() => { setActiveTab(tab.key); if (tab.key === 'pool') setPoolRequested(true); }}
             className="relative px-4 py-2.5 text-sm font-semibold transition-all flex items-center gap-1.5"
             style={{ color: activeTab === tab.key ? '#fff' : '#475569' }}>
             <tab.icon size={14} />

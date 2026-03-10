@@ -48,22 +48,11 @@ CANDIDATE_TICKERS = [
 
 
 def _fetch_stock_filter_data(ticker: str) -> Optional[dict]:
-    """Fetch market cap, ATR, volume for a single ticker. Returns None if fails."""
+    """Fetch ATR and volume from history only (no stock.info — it hangs)."""
     try:
         stock = yf.Ticker(ticker)
-        from concurrent.futures import ThreadPoolExecutor as _TPE
-        with _TPE(max_workers=1) as ex:
-            fut = ex.submit(lambda: stock.info)
-            info = fut.result(timeout=4)
 
-        market_cap = info.get("marketCap", 0) or 0
-        avg_volume = info.get("averageDailyVolume10Day", 0) or info.get("averageVolume", 0) or 0
-        bid = info.get("bid", 0) or 0
-        ask = info.get("ask", 0) or 0
-        spread = (ask - bid) if (ask > 0 and bid > 0) else 0
-        price = info.get("currentPrice", 0) or info.get("regularMarketPrice", 0) or 0
-
-        # Get ATR from recent daily data
+        # Use history() with timeout — never use stock.info for pool filtering
         hist = stock.history(period="30d", interval="1d", timeout=5)
         if hist.empty or len(hist) < 10:
             return None
@@ -71,6 +60,13 @@ def _fetch_stock_filter_data(ticker: str) -> Optional[dict]:
         highs = hist["High"].values
         lows = hist["Low"].values
         closes = hist["Close"].values
+        volumes = hist["Volume"].values
+
+        price = float(closes[-1])
+        if price <= 0:
+            return None
+
+        avg_volume = int(np.mean(volumes[-10:]))
 
         # True Range calculation
         trs = []
@@ -85,6 +81,12 @@ def _fetch_stock_filter_data(ticker: str) -> Optional[dict]:
         atr_14 = float(np.mean(trs[-14:])) if len(trs) >= 14 else float(np.mean(trs))
         atr_pct = (atr_14 / price * 100) if price > 0 else 0
 
+        # Get fast_info for market cap (much faster than .info)
+        try:
+            market_cap = stock.fast_info.get("marketCap", 0) or stock.fast_info.get("market_cap", 0) or 0
+        except Exception:
+            market_cap = 0
+
         return {
             "ticker": ticker,
             "price": round(price, 2),
@@ -92,10 +94,10 @@ def _fetch_stock_filter_data(ticker: str) -> Optional[dict]:
             "avg_volume": avg_volume,
             "atr": round(atr_14, 2),
             "atr_pct": round(atr_pct, 2),
-            "spread": round(spread, 3),
-            "spread_pct": round(spread / price * 100, 3) if price > 0 else 0,
-            "company": info.get("shortName", ticker),
-            "sector": info.get("sector", ""),
+            "spread": 0,
+            "spread_pct": 0,
+            "company": ticker,
+            "sector": "",
         }
     except Exception:
         return None
@@ -133,7 +135,7 @@ async def filter_stock_pool(
     # Apply filters — ATR must meet EITHER absolute OR percentage threshold
     pool = []
     for s in results:
-        if s["market_cap"] < min_market_cap:
+        if s["market_cap"] > 0 and s["market_cap"] < min_market_cap:
             continue
         if s["atr"] < min_atr and s["atr_pct"] < min_atr_pct:
             continue
