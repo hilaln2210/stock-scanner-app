@@ -37,6 +37,30 @@ async def send_telegram(message: str, parse_mode: str = 'HTML') -> bool:
         return False
 
 
+async def send_telegram_with_buttons(message: str, buttons: list, parse_mode: str = 'HTML') -> bool:
+    """Send a Telegram message with inline keyboard buttons.
+    buttons = [[{'text': '...', 'callback_data': '...'}, ...], ...]  (rows of button dicts)
+    """
+    token = settings.telegram_bot_token
+    chat_id = settings.telegram_chat_id
+    if not token or not chat_id:
+        return False
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {
+        'chat_id': chat_id,
+        'text': message,
+        'parse_mode': parse_mode,
+        'reply_markup': json.dumps({'inline_keyboard': buttons}),
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                return resp.status == 200
+    except Exception as e:
+        print(f"[Telegram] send_with_buttons error: {e}")
+        return False
+
+
 def _humanize_signal(signal: dict) -> str:
     """Use Groq to generate a human-like Hebrew Telegram message."""
     api_key = settings.groq_api_key

@@ -422,6 +422,13 @@ function AutoBotPanel({ investment }) {
               }}>
                 {bot.daily_pnl >= 0 ? '+' : ''}${bot.daily_pnl}
               </div>
+              {bot.amount_per_trade > 0 && (
+                <div className="text-xs font-bold font-mono" style={{
+                  color: bot.daily_pnl >= 0 ? '#4ade80' : '#f87171', opacity: 0.75,
+                }}>
+                  {bot.daily_pnl >= 0 ? '+' : ''}{(bot.daily_pnl / bot.amount_per_trade * 100).toFixed(2)}%
+                </div>
+              )}
             </div>
           )}
 
@@ -490,6 +497,101 @@ function AutoBotPanel({ investment }) {
                   {p.avg_change > 0 ? '+' : ''}{p.avg_change}%
                 </span>
                 <span className="text-xs text-slate-500">ציון {p.score}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Upcoming windows (future picks today) ── */}
+      {bot.upcoming_windows && bot.upcoming_windows.length > 0 && (
+        <div className="rounded-xl overflow-hidden" style={{
+          background: '#0d1117', border: '1px solid rgba(96,165,250,0.15)',
+        }}>
+          <div className="p-3 flex items-center gap-2 border-b" style={{ borderColor: 'rgba(96,165,250,0.1)' }}>
+            <span className="text-sm">⏳</span>
+            <span className="text-sm font-bold text-white">חלונות קרובים היום</span>
+            <span className="text-xs text-slate-500">הזדמנויות שעוד לא הגיעו</span>
+          </div>
+          <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+            {bot.upcoming_windows.map((p, i) => (
+              <div key={i} className="px-4 py-2.5 flex items-center gap-3 flex-wrap">
+                <span className="text-sm font-black text-white w-16">{p.ticker}</span>
+                <span className="text-xs font-bold font-mono text-white">{fmtWindow(p.window)}</span>
+                <span className="text-[10px] text-slate-500">{p.window.split('-')[0]} NY / {etToIL(p.window.split('-')[0])} IL</span>
+                <span className="text-xs font-black px-2 py-0.5 rounded" style={{
+                  background: p.direction === 'LONG' ? 'rgba(74,222,128,0.12)' : 'rgba(248,113,113,0.12)',
+                  color: p.direction === 'LONG' ? '#4ade80' : '#f87171',
+                }}>{p.direction}</span>
+                <span className="text-xs font-bold" style={{ color: winColor(p.win_rate) }}>WR {p.win_rate}%</span>
+                <span className="text-xs font-mono font-bold" style={{ color: changeColor(p.avg_change) }}>
+                  {p.avg_change > 0 ? '+' : ''}{p.avg_change}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Missed windows today ── */}
+      {bot.missed_windows && bot.missed_windows.length > 0 && (
+        <div className="rounded-xl overflow-hidden" style={{
+          background: '#0d1117', border: '1px solid rgba(251,191,36,0.15)',
+        }}>
+          <div className="p-3 flex items-center gap-2 border-b" style={{ borderColor: 'rgba(251,191,36,0.1)' }}>
+            <span className="text-sm">⚠️</span>
+            <span className="text-sm font-bold text-white">עסקאות שהתפספסו היום</span>
+            <span className="text-xs text-slate-500">חלונות שעברו ללא כניסה</span>
+          </div>
+          <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+            {bot.missed_windows.map((m, i) => (
+              <div key={i} className="px-4 py-2.5 flex items-center gap-3 flex-wrap">
+                <span className="text-sm font-black text-white w-16">{m.ticker}</span>
+                <span className="text-xs font-bold font-mono" style={{ color: '#94a3b8' }}>{fmtWindow(m.window)}</span>
+                <span className="text-xs font-black px-2 py-0.5 rounded" style={{
+                  background: m.direction === 'LONG' ? 'rgba(74,222,128,0.12)' : 'rgba(248,113,113,0.12)',
+                  color: m.direction === 'LONG' ? '#4ade80' : '#f87171',
+                }}>{m.direction}</span>
+                <span className="text-xs font-bold" style={{ color: winColor(m.win_rate) }}>WR {m.win_rate}%</span>
+                <span className="text-xs font-mono" style={{ color: changeColor(m.avg_change) }}>
+                  avg {m.avg_change > 0 ? '+' : ''}{m.avg_change}%
+                </span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded ml-auto" style={{
+                  background: 'rgba(251,191,36,0.1)', color: '#fbbf24',
+                }}>{m.reason_missed}</span>
+              </div>
+            ))}
+          </div>
+          <div className="px-4 py-2 border-t text-[10px] text-slate-600" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+            💡 הבוט לומד מהתפספסויות אלו ומשפר את הבחירה הבאה
+          </div>
+        </div>
+      )}
+
+      {/* ── IB Demo trades (user-confirmed) ── */}
+      {bot.ib_demo_trades && bot.ib_demo_trades.length > 0 && (
+        <div className="rounded-xl overflow-hidden" style={{
+          background: '#0d1117', border: '1px solid rgba(139,92,246,0.2)',
+        }}>
+          <div className="p-3 flex items-center gap-2 border-b" style={{ borderColor: 'rgba(139,92,246,0.1)' }}>
+            <span className="text-sm">🏦</span>
+            <span className="text-sm font-bold text-white">IB דמו — עסקאות שלי</span>
+            <span className="text-xs text-slate-500">אישרת כניסה ב-IB</span>
+          </div>
+          <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+            {bot.ib_demo_trades.map((t, i) => (
+              <div key={i} className="px-4 py-2.5 flex items-center gap-3 flex-wrap">
+                <span className="text-sm font-black text-white w-16">{t.ticker}</span>
+                <span className="text-xs font-bold font-mono" style={{ color: '#c4b5fd' }}>{fmtWindow(t.window)}</span>
+                <span className="text-xs font-black px-2 py-0.5 rounded" style={{
+                  background: t.direction === 'LONG' ? 'rgba(74,222,128,0.12)' : 'rgba(248,113,113,0.12)',
+                  color: t.direction === 'LONG' ? '#4ade80' : '#f87171',
+                }}>{t.direction}</span>
+                <span className="text-xs font-bold" style={{ color: winColor(t.win_rate) }}>WR {t.win_rate}%</span>
+                <span className="text-[10px] text-slate-500">נאשר: {t.confirmed_at}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded ml-auto" style={{
+                  background: 'rgba(139,92,246,0.12)', color: '#a78bfa',
+                }}>{t.status}</span>
               </div>
             ))}
           </div>

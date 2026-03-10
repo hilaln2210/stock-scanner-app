@@ -803,6 +803,29 @@ async def _handle_callback(callback_data: str, callback_query_id: str) -> tuple:
     if callback_data == 'top5':
         return (await _cmd_top(), None)
 
+    # ── IB Demo confirmation buttons ─────────────────────────────────────────
+    if callback_data.startswith('ibyes_'):
+        ticker = callback_data[6:].upper()
+        try:
+            from app.services.pattern_autotrader import confirm_ib_demo
+            result = confirm_ib_demo(ticker)
+            if result.get("ok"):
+                e = result["entry"]
+                return (
+                    f"✅ <b>נרשמת לעסקה ב-IB דמו!</b>\n"
+                    f"📊 {ticker} | {e['window']} | {e['direction']}\n"
+                    f"WR {e['win_rate']}% | avg {e['avg_change']:+.2f}%\n"
+                    f"הבוט יעקוב אחרי מצב העסקה 🎯",
+                    ticker,
+                )
+            return (f"⚠️ {result.get('msg', 'שגיאה')}", None)
+        except Exception as ex:
+            return (f"שגיאה: {ex}", None)
+
+    if callback_data.startswith('ibno_'):
+        ticker = callback_data[5:].upper()
+        return (f"👍 בסדר, לא נכנסת ל-{ticker} ב-IB דמו.", None)
+
     parts = callback_data.split('_', 1)
     if len(parts) != 2:
         return ("לא הבנתי את הבקשה 🤔", None)

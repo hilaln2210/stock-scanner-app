@@ -20,7 +20,7 @@ from typing import Dict, List, Optional
 import pytz
 
 from app.config import settings
-from app.services.alerts_service import send_telegram
+from app.services.alerts_service import send_telegram, send_telegram_with_buttons
 from app.services.pattern_scanner import analyze_single_ticker, filter_stock_pool
 
 _NY = pytz.timezone("America/New_York")
@@ -71,6 +71,8 @@ _state: Dict = {
     "top_n": 3,               # pick best 3 — execute only 1 at a time (MAX_CONCURRENT)
     "status_msg": "לא פעיל",
     "daily_loss_hit": False,  # True = stop trading today (loss limit reached)
+    "missed_windows": [],     # [{ticker, window, direction, win_rate, avg_change, reason_missed, date}]
+    "ib_demo_trades": [],     # [{ticker, window, direction, confirmed_at, status, date}]
 }
 
 
@@ -135,6 +137,42 @@ def _place_ib_order(ticker: str, action: str, amount: float) -> Optional[dict]:
     t.start()
     done.wait(timeout=20)
     return result_holder[0]
+
+
+# ── AI Learning: record missed pattern windows ─────────────────────────────────
+def _record_missed_lesson(entry: dict):
+    """Save a missed window to ai_learning.json so the bot can learn from it."""
+    import os
+    try:
+        data_path = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "data", "ai_learning.json")
+        )
+        if os.path.exists(data_path):
+            with open(data_path, "r") as f:
+                data = json.load(f)
+        else:
+            data = {"strategy": {}, "lessons": [], "missed_patterns": []}
+        if "missed_patterns" not in data:
+            data["missed_patterns"] = []
+        data["missed_patterns"].insert(0, {
+            "ticker":       entry["ticker"],
+            "window":       entry["window"],
+            "direction":    entry["direction"],
+            "win_rate":     entry["win_rate"],
+            "avg_change":   entry["avg_change"],
+            "reason_missed": entry["reason_missed"],
+            "date":         entry["date"],
+            "lesson":       (
+                f"פספסנו {entry['ticker']} חלון {entry['window']} "
+                f"(WR {entry['win_rate']}%, avg {entry['avg_change']:+.2f}%) — {entry['reason_missed']}"
+            ),
+        })
+        data["missed_patterns"] = data["missed_patterns"][:100]
+        data["updated"] = datetime.now().isoformat()
+        with open(data_path, "w") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"[AutoTrader] missed_lesson write failed: {e}")
 
 
 # ── Daily scan: pick top N stocks ─────────────────────────────────────────────
@@ -302,10 +340,17 @@ async def _tick():
                 arrow = "📈 LONG" if p["direction"] == "LONG" else "📉 SHORT"
                 lines.append(f"  {arrow} <b>{p['ticker']}</b> | WR {p['win_rate']}%")
             if concurrent >= MAX_CONCURRENT:
-                lines.append(f"\n⏸ פוזיציה פתוחה — לא נכנס (max {MAX_CONCURRENT})")
+                lines.append(f"\n⏸ פוזיציה פתוחה — הבוט לא נכנס (max {MAX_CONCURRENT})")
             else:
                 lines.append("\nאכנס אוטומטית ב-" + w_start + " 🎯")
-            await send_telegram("\n".join(lines))
+            lines.append("\n❓ האם תכנסי גם ב-IB דמו?")
+            best = max(picks, key=lambda p: p["score"])
+            t_cb = best["ticker"]
+            buttons = [[
+                {"text": f"✅ כן — {t_cb}", "callback_data": f"ibyes_{t_cb}"},
+                {"text": "❌ לא", "callback_data": f"ibno_{t_cb}"},
+            ]]
+            await send_telegram_with_buttons("\n".join(lines), buttons)
 
         # ── Window open: enter trade (only if slot available) ───────────────
         elif total_min == start_min and last_alert in (None, "warn") and picks:
@@ -320,11 +365,36 @@ async def _tick():
                     f"יש {len(_state['active_trades'])} פוזיציה פתוחה (max {MAX_CONCURRENT})"
                 )
 
-        # ── Window close: exit trades ───────────────────────────────────────
+        # ── Window close: exit trades + record missed ───────────────────────
         elif total_min >= end_min:
             to_close = [t for t in _state["active_trades"] if t["window"] == label]
             for trade in to_close:
                 await _exit_trade(trade)
+            # Record missed opportunities (picks that were never entered today)
+            if picks:
+                today_str = date.today().isoformat()
+                already_missed = {(m["ticker"], m["window"]) for m in _state["missed_windows"]}
+                was_entered = _state["last_alert_sent"].get(label) == "enter"
+                if not was_entered:
+                    reason = (
+                        "מגבלת הפסד יומית" if _state["daily_loss_hit"]
+                        else "פוזיציה פתוחה" if len(_state["active_trades"]) > 0
+                        else "לא נכנסנו"
+                    )
+                    for p in picks:
+                        key = (p["ticker"], label)
+                        if key not in already_missed:
+                            missed_entry = {
+                                "ticker":       p["ticker"],
+                                "window":       label,
+                                "direction":    p["direction"],
+                                "win_rate":     p["win_rate"],
+                                "avg_change":   p["avg_change"],
+                                "reason_missed": reason,
+                                "date":         today_str,
+                            }
+                            _state["missed_windows"].insert(0, missed_entry)
+                            _record_missed_lesson(missed_entry)
 
 
 async def _enter_trade(pick: dict, window_label: str):
@@ -433,6 +503,20 @@ def start_background_loop():
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 def get_state() -> dict:
+    now = _ny_now()
+    total_min = now.hour * 60 + now.minute
+    today_str = date.today().isoformat()
+
+    # Upcoming = picks whose window start is still in the future
+    upcoming = [
+        p for p in _state["today_picks"]
+        if _parse_hhmm(p["window"].split("-")[0]) > total_min
+    ]
+    # Missed today only
+    missed_today = [m for m in _state["missed_windows"] if m.get("date") == today_str]
+    # IB demo trades today
+    ib_demo_today = [t for t in _state["ib_demo_trades"] if t.get("date") == today_str]
+
     return {
         "enabled": _state["enabled"],
         "today_picks": _state["today_picks"],
@@ -443,7 +527,38 @@ def get_state() -> dict:
         "amount_per_trade": _state["amount_per_trade"],
         "top_n": _state["top_n"],
         "status_msg": _state["status_msg"],
+        "upcoming_windows": upcoming,
+        "missed_windows": missed_today,
+        "ib_demo_trades": ib_demo_today,
     }
+
+
+def confirm_ib_demo(ticker: str) -> dict:
+    """Called when user confirms entering a trade in IB demo (via Telegram).
+    Finds the matching pick and records it in ib_demo_trades."""
+    today_str = date.today().isoformat()
+    pick = next(
+        (p for p in _state["today_picks"] if p["ticker"].upper() == ticker.upper()),
+        None,
+    )
+    if not pick:
+        return {"ok": False, "msg": f"לא נמצאה מניה {ticker} בבחירות היום"}
+    # Avoid duplicates
+    for existing in _state["ib_demo_trades"]:
+        if existing["ticker"] == ticker and existing["window"] == pick["window"] and existing["date"] == today_str:
+            return {"ok": False, "msg": "כבר רשום"}
+    entry = {
+        "ticker":       ticker,
+        "window":       pick["window"],
+        "direction":    pick["direction"],
+        "win_rate":     pick["win_rate"],
+        "avg_change":   pick["avg_change"],
+        "confirmed_at": _ny_now().strftime("%H:%M"),
+        "status":       "פתוחה",
+        "date":         today_str,
+    }
+    _state["ib_demo_trades"].append(entry)
+    return {"ok": True, "entry": entry}
 
 
 async def enable(amount: float = 700, top_n: int = 5) -> dict:
