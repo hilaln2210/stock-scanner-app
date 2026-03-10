@@ -259,6 +259,17 @@ function PatternHeatmap({ windows, height = 580, investment = 700, price = 0 }) 
   );
 }
 
+// ── ET → IL time helper (ET is always 7h behind Israel) ─────────────────────
+const etToIL = (t) => {
+  const [h, m] = t.split(':').map(Number);
+  return `${String((h + 7) % 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+};
+const fmtWindow = (w) => {
+  const [s, e] = w.split('-');
+  return `${s}–${e} NY  /  ${etToIL(s)}–${etToIL(e)} IL`;
+};
+const fmtTime = (t) => t ? `${t} NY / ${etToIL(t)} IL` : t;
+
 // ── Auto Bot Panel ───────────────────────────────────────────────────────────
 function AutoBotPanel({ investment }) {
   const qc = useQueryClient();
@@ -358,7 +369,7 @@ function AutoBotPanel({ investment }) {
         <div className="mt-3 p-2 rounded-lg text-xs text-slate-500" style={{ background: 'rgba(0,0,0,0.2)' }}>
           <span className="text-slate-400">📋 איך עובד: </span>
           <span>
-            <b className="text-slate-300">חלון 10:00-10:30</b> = נכנסים בדיוק ב-10:00 (שעון ניו-יורק), יוצאים ב-10:30.
+            <b className="text-slate-300">חלון 10:00–10:30 NY (17:00–17:30 IL)</b> = נכנסים בדיוק ב-10:00 NY / 17:00 IL, יוצאים ב-10:30 NY / 17:30 IL.
             {' '}הבוט שולח התראת טלגרם <b className="text-slate-300">5 דקות לפני</b> כל כניסה, ונכנס אוטומטית ל-IB.
           </span>
         </div>
@@ -384,9 +395,9 @@ function AutoBotPanel({ investment }) {
                 <div className="flex flex-col">
                   <div className="flex items-center gap-1.5">
                     <Clock size={11} className="text-slate-500" />
-                    <span className="text-xs font-bold text-white">{p.window}</span>
+                    <span className="text-xs font-bold text-white font-mono">{fmtWindow(p.window)}</span>
                   </div>
-                  <span className="text-[10px] text-slate-500">נכנסים ב-{p.window.split('-')[0]}</span>
+                  <span className="text-[10px] text-slate-500">כניסה: {p.window.split('-')[0]} NY / {etToIL(p.window.split('-')[0])} IL</span>
                 </div>
                 <span className="text-xs font-black px-2 py-0.5 rounded" style={{
                   background: p.direction === 'LONG' ? 'rgba(74,222,128,0.15)' : 'rgba(248,113,113,0.15)',
@@ -420,8 +431,8 @@ function AutoBotPanel({ investment }) {
                 color: t.direction === 'LONG' ? '#4ade80' : '#f87171',
               }}>{t.direction}</span>
               <span className="text-slate-400">{t.shares} @ ${t.entry_price}</span>
-              <span className="text-slate-500">{t.window}</span>
-              <span className="text-slate-500">{t.opened_at}</span>
+              <span className="text-slate-500 font-mono text-[10px]">{fmtWindow(t.window)}</span>
+              <span className="text-slate-500 font-mono text-[10px]">{fmtTime(t.opened_at)}</span>
               <span className="text-[10px] px-1 rounded" style={{
                 background: t.ib_filled ? 'rgba(74,222,128,0.1)' : 'rgba(251,191,36,0.1)',
                 color: t.ib_filled ? '#4ade80' : '#fbbf24',
@@ -445,8 +456,8 @@ function AutoBotPanel({ investment }) {
             {bot.trade_history.map((t, i) => (
               <div key={i} className="px-4 py-2 flex items-center gap-3 text-xs flex-wrap">
                 <span className="font-black text-white w-14">{t.ticker}</span>
-                <span className="text-slate-500">{t.window}</span>
-                <span className="text-slate-400">{t.opened_at}→{t.closed_at}</span>
+                <span className="text-slate-500 font-mono text-[10px]">{fmtWindow(t.window)}</span>
+                <span className="text-slate-400 font-mono text-[10px]">{fmtTime(t.opened_at)} → {fmtTime(t.closed_at)}</span>
                 <span className="font-mono font-black" style={{ color: t.pnl >= 0 ? '#4ade80' : '#f87171' }}>
                   {t.pnl >= 0 ? '+' : ''}${t.pnl}
                 </span>
