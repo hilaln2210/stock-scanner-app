@@ -47,19 +47,53 @@ CANDIDATE_TICKERS = [
 ]
 
 
+# Static approximate market caps (USD) — avoids slow per-ticker API calls.
+# Values are rough order-of-magnitude; updated manually when needed.
+_STATIC_MARKET_CAP: Dict[str, int] = {
+    "NVDA": 3_200_000_000_000, "AAPL": 3_500_000_000_000, "MSFT": 3_100_000_000_000,
+    "AMZN": 2_200_000_000_000, "GOOGL": 2_100_000_000_000, "META": 1_500_000_000_000,
+    "TSLA": 1_000_000_000_000, "AVGO": 900_000_000_000, "NFLX": 400_000_000_000,
+    "AMD": 250_000_000_000, "CRM": 300_000_000_000, "ORCL": 450_000_000_000,
+    "INTC": 100_000_000_000, "MU": 130_000_000_000, "QCOM": 180_000_000_000,
+    "MRVL": 80_000_000_000, "ANET": 100_000_000_000, "PANW": 120_000_000_000,
+    "SNOW": 40_000_000_000, "PLTR": 220_000_000_000,
+    "COIN": 70_000_000_000, "MARA": 6_000_000_000, "RIOT": 3_000_000_000,
+    "SMCI": 25_000_000_000, "ARM": 170_000_000_000, "IONQ": 3_000_000_000,
+    "RGTI": 1_000_000_000, "SOUN": 2_000_000_000, "RKLB": 10_000_000_000,
+    "MSTR": 80_000_000_000, "SQ": 50_000_000_000, "SHOP": 120_000_000_000,
+    "ROKU": 10_000_000_000, "SNAP": 20_000_000_000, "PINS": 20_000_000_000,
+    "UBER": 180_000_000_000, "LYFT": 8_000_000_000, "DASH": 70_000_000_000,
+    "MRNA": 16_000_000_000, "BNTX": 14_000_000_000, "BIIB": 35_000_000_000,
+    "VRTX": 125_000_000_000, "REGN": 80_000_000_000, "GILD": 100_000_000_000,
+    "AMGN": 160_000_000_000, "XOM": 500_000_000_000, "CVX": 270_000_000_000,
+    "SLB": 60_000_000_000, "OXY": 50_000_000_000, "FSLR": 20_000_000_000,
+    "ENPH": 10_000_000_000, "JPM": 750_000_000_000, "GS": 200_000_000_000,
+    "MS": 200_000_000_000, "BAC": 350_000_000_000, "C": 180_000_000_000,
+    "SCHW": 140_000_000_000, "NKE": 80_000_000_000, "SBUX": 90_000_000_000,
+    "MCD": 220_000_000_000, "DIS": 200_000_000_000, "WMT": 800_000_000_000,
+    "COST": 400_000_000_000, "TGT": 70_000_000_000, "BA": 110_000_000_000,
+    "CAT": 180_000_000_000, "DE": 110_000_000_000, "UNH": 550_000_000_000,
+    "LLY": 850_000_000_000, "JNJ": 400_000_000_000, "PFE": 150_000_000_000,
+    "ABBV": 350_000_000_000, "SPY": 0, "QQQ": 0, "IWM": 0,
+}
+
+
 def _bulk_filter_pool(tickers: List[str], min_atr: float, min_atr_pct: float,
                        min_volume: int) -> List[dict]:
-    """Bulk-download all tickers in ONE yf.download() call — 5-10x faster."""
+    """
+    Bulk-download all tickers in ONE yf.download() call — fast.
+    change_pct is computed from OHLCV data (no extra API calls).
+    market_cap comes from _STATIC_MARKET_CAP (no extra API calls).
+    """
     ticker_str = " ".join(tickers)
     df = yf.download(ticker_str, period="30d", interval="1d",
-                     group_by="ticker", threads=True, timeout=10, progress=False)
+                     group_by="ticker", threads=True, timeout=15, progress=False)
     if df.empty:
         return []
 
     results = []
     for ticker in tickers:
         try:
-            # Extract per-ticker data from multi-level columns
             if len(tickers) == 1:
                 td = df
             else:
@@ -80,6 +114,10 @@ def _bulk_filter_pool(tickers: List[str], min_atr: float, min_atr_pct: float,
             if price <= 0 or math.isnan(price):
                 continue
 
+            # change_pct from daily close — no extra HTTP call needed
+            prev_close = float(closes[-2]) if len(closes) >= 2 else price
+            change_pct = round((price - prev_close) / prev_close * 100, 2) if prev_close > 0 else 0.0
+
             avg_volume = int(np.nanmean(volumes[-10:]))
 
             # ATR-14
@@ -95,9 +133,8 @@ def _bulk_filter_pool(tickers: List[str], min_atr: float, min_atr_pct: float,
                 continue
 
             atr_14 = float(np.mean(trs[-14:])) if len(trs) >= 14 else float(np.mean(trs))
-            atr_pct = (atr_14 / price * 100)
+            atr_pct = atr_14 / price * 100
 
-            # Quick filters before adding
             if atr_14 < min_atr and atr_pct < min_atr_pct:
                 continue
             if avg_volume < min_volume:
@@ -106,41 +143,18 @@ def _bulk_filter_pool(tickers: List[str], min_atr: float, min_atr_pct: float,
             results.append({
                 "ticker": ticker,
                 "price": round(price, 2),
-                "market_cap": 0,  # skipped for speed
+                "market_cap": _STATIC_MARKET_CAP.get(ticker, 0),
+                "change_pct": change_pct,
                 "avg_volume": avg_volume,
                 "atr": round(atr_14, 2),
                 "atr_pct": round(atr_pct, 2),
-                "spread": 0,
                 "spread_pct": 0,
                 "company": ticker,
-                "sector": "",
             })
         except Exception:
             continue
 
     return results
-
-
-def _fetch_fast_info(ticker: str) -> dict:
-    """Fetch market cap, today's change%, and 52w change% via fast_info."""
-    try:
-        fi = yf.Ticker(ticker).fast_info
-        mc = fi.market_cap
-        pc = fi.previous_close or 0
-        pr = fi.last_price or 0
-        chg = round((pr - pc) / pc * 100, 2) if pc > 0 else 0
-        try:
-            yr_chg = round(float(fi.year_change) * 100, 1)
-        except Exception:
-            yr_chg = 0.0
-        return {
-            "ticker": ticker,
-            "market_cap": int(mc) if mc and not math.isnan(float(mc)) else 0,
-            "change_pct": chg,
-            "year_change_pct": yr_chg,
-        }
-    except Exception:
-        return {"ticker": ticker, "market_cap": 0, "change_pct": 0.0, "year_change_pct": 0.0}
 
 
 async def filter_stock_pool(
@@ -150,7 +164,7 @@ async def filter_stock_pool(
     min_volume: int = 5_000_000,
     max_spread_pct: float = 0.15,
 ) -> List[dict]:
-    """Step 1: Filter stocks into a trading pool. Single bulk download."""
+    """Step 1: Filter stocks into a trading pool. Single bulk download, no extra HTTP calls."""
     global _pool_cache, _pool_cache_time
 
     cache_key = f"{min_market_cap}_{min_atr}_{min_atr_pct}_{min_volume}"
@@ -158,32 +172,41 @@ async def filter_stock_pool(
     if cache_key in _pool_cache and now - _pool_cache_time < _POOL_CACHE_TTL:
         return _pool_cache[cache_key]
 
+    # Run bulk download in subprocess so it can be hard-killed on timeout
     loop = asyncio.get_event_loop()
     pool = await loop.run_in_executor(
-        None, _bulk_filter_pool, CANDIDATE_TICKERS, min_atr, min_atr_pct, min_volume
+        None, _run_pool_with_timeout, CANDIDATE_TICKERS, min_atr, min_atr_pct, min_volume
     )
+    if not pool:
+        pool = []
 
     pool.sort(key=lambda x: x["atr_pct"], reverse=True)
-
-    # Enrich with market cap + today's change% in parallel
-    with ThreadPoolExecutor(max_workers=5) as tpe:
-        fi_tasks = [loop.run_in_executor(tpe, _fetch_fast_info, s["ticker"]) for s in pool]
-        fi_results = await asyncio.gather(*fi_tasks, return_exceptions=True)
-
-    fi_map = {}
-    for r in fi_results:
-        if isinstance(r, dict):
-            fi_map[r["ticker"]] = r
-
-    for s in pool:
-        fi = fi_map.get(s["ticker"], {})
-        s["market_cap"] = fi.get("market_cap", 0)
-        s["change_pct"] = fi.get("change_pct", 0.0)
-        s["year_change_pct"] = fi.get("year_change_pct", 0.0)
-
     _pool_cache[cache_key] = pool
     _pool_cache_time = now
     return pool
+
+
+def _pool_subprocess_worker(tickers, min_atr, min_atr_pct, min_volume, q):
+    try:
+        q.put(_bulk_filter_pool(tickers, min_atr, min_atr_pct, min_volume))
+    except Exception as e:
+        q.put([])
+
+
+def _run_pool_with_timeout(tickers, min_atr, min_atr_pct, min_volume, timeout=45) -> List[dict]:
+    """Run pool filter in a subprocess — hard-killable on timeout."""
+    ctx = multiprocessing.get_context("fork")
+    q = ctx.Queue()
+    p = ctx.Process(target=_pool_subprocess_worker,
+                    args=(tickers, min_atr, min_atr_pct, min_volume, q), daemon=True)
+    p.start()
+    p.join(timeout=timeout)
+    if p.is_alive():
+        p.terminate(); p.join(2)
+        if p.is_alive():
+            p.kill(); p.join()
+        return []
+    return q.get_nowait() if not q.empty() else []
 
 
 def _analyze_ticker_patterns(ticker: str, days: int = 45, interval: str = "5m") -> Optional[dict]:
