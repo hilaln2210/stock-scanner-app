@@ -27,6 +27,12 @@ _NY = pytz.timezone("America/New_York")
 
 # ── Window definitions ─────────────────────────────────────────────────────────
 WINDOWS = [
+    # Pre-market
+    ("04:00", "04:30"), ("04:30", "05:00"), ("05:00", "05:30"),
+    ("05:30", "06:00"), ("06:00", "06:30"), ("06:30", "07:00"),
+    ("07:00", "07:30"), ("07:30", "08:00"), ("08:00", "08:30"),
+    ("08:30", "09:00"), ("09:00", "09:30"),
+    # Regular hours
     ("09:30", "10:00"), ("10:00", "10:30"), ("10:30", "11:00"),
     ("11:00", "11:30"), ("11:30", "12:00"), ("12:00", "12:30"),
     ("12:30", "13:00"), ("13:00", "13:30"), ("13:30", "14:00"),
@@ -203,8 +209,8 @@ async def _tick():
     h, m = now.hour, now.minute
     total_min = h * 60 + m
 
-    # Market hours only: 9:25 – 16:05
-    if not (9 * 60 + 25 <= total_min <= 16 * 60 + 5):
+    # Pre-market + regular hours: 3:55 AM – 16:05 PM ET
+    if not (3 * 60 + 55 <= total_min <= 16 * 60 + 5):
         return
 
     picks_by_window: Dict[str, list] = {}
@@ -325,10 +331,10 @@ async def _loop():
             now = _ny_now()
             today = date.today().isoformat()
 
-            # Daily scan at 9:20 AM ET
+            # Daily scan at 3:55 AM ET (before pre-market opens at 4:00)
             if (_state["enabled"]
                     and _state["last_scan_date"] != today
-                    and now.hour == 9 and now.minute == 20):
+                    and now.hour == 3 and now.minute == 55):
                 await _run_daily_scan()
 
             await _tick()
