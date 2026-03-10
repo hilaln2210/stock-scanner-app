@@ -1,7 +1,7 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { RefreshCw, Search, TrendingUp, TrendingDown, Target, Shield, Zap, Clock, BarChart3, Wallet, Bot, Power, PowerOff, Send } from 'lucide-react';
+import { RefreshCw, Search, TrendingUp, TrendingDown, Target, Shield, Zap, Clock, BarChart3, Wallet, Bot, Power, PowerOff, Send, ArrowUp, ArrowDown, ChevronsUpDown, Star, Activity, Info } from 'lucide-react';
 
 const api = axios.create({ baseURL: '/api', timeout: 120000 });
 
@@ -708,9 +708,10 @@ export default function PatternScanner() {
   const [interval, setInterval_] = useState('5m');
   const [days, setDays] = useState(45);
   const [expandedTicker, setExpandedTicker] = useState(null);
-  const [activeTab, setActiveTab] = useState('analyze'); // pool | analyze
+  const [activeTab, setActiveTab] = useState('analyze'); // pool | analyze | autobot
   const [poolRequested, setPoolRequested] = useState(false);
   const [investment, setInvestment] = useState(700);
+  const [poolSort, setPoolSort] = useState({ by: 'atr_pct', dir: 'desc' });
   const qc = useQueryClient();
 
   // Portfolio
@@ -753,12 +754,30 @@ export default function PatternScanner() {
     refetchPortfolio();
   }, [investment, refetchPortfolio]);
 
+  // IB positions — for marking open positions in pool
+  const { data: ibPositions } = useQuery({
+    queryKey: ['ibPositionsForPool'],
+    queryFn: async () => { try { return (await api.get('/ib/positions')).data; } catch { return []; } },
+    staleTime: 15000,
+    refetchInterval: activeTab === 'pool' ? 30000 : false,
+    enabled: activeTab === 'pool',
+  });
+
+  // Autotrader status — for marking bot picks in pool
+  const { data: botStatus } = useQuery({
+    queryKey: ['autoBotStatusForPool'],
+    queryFn: async () => (await api.get('/pattern/autotrader/status')).data,
+    staleTime: 15000,
+    refetchInterval: activeTab === 'pool' ? 30000 : false,
+    enabled: activeTab === 'pool',
+  });
+
   // Step 1: Pool — only fetch when explicitly requested
-  const { data: poolData, isLoading: poolLoading, refetch: refetchPool } = useQuery({
+  const { data: poolData, isLoading: poolLoading, refetch: refetchPool, dataUpdatedAt } = useQuery({
     queryKey: ['patternPool'],
     queryFn: async () => (await api.get('/pattern/pool')).data,
     staleTime: 60 * 60 * 1000,
-    refetchInterval: 0,
+    refetchInterval: activeTab === 'pool' ? 30000 : 0,
     enabled: poolRequested,
   });
 
@@ -778,6 +797,36 @@ export default function PatternScanner() {
       setActiveTab('analyze');
     }
   }, [manualTicker]);
+
+  // Derived: open IB position tickers
+  const ibOpenTickers = useMemo(() => {
+    if (!ibPositions) return new Set();
+    const arr = Array.isArray(ibPositions) ? ibPositions : (ibPositions.positions || []);
+    return new Set(arr.map(p => (p.ticker || p.symbol || '').toUpperCase()));
+  }, [ibPositions]);
+
+  // Derived: bot picks map { ticker → pick }
+  const botPicksMap = useMemo(() => {
+    const picks = botStatus?.today_picks || [];
+    return Object.fromEntries(picks.map(p => [p.ticker, p]));
+  }, [botStatus]);
+
+  // Sorted + annotated pool
+  const sortedPool = useMemo(() => {
+    if (!poolData?.pool) return [];
+    const arr = [...poolData.pool];
+    const { by, dir } = poolSort;
+    arr.sort((a, b) => {
+      const va = a[by] ?? 0, vb = b[by] ?? 0;
+      if (typeof va === 'string') return dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+      return dir === 'asc' ? va - vb : vb - va;
+    });
+    return arr;
+  }, [poolData, poolSort]);
+
+  const handlePoolSort = useCallback((col) => {
+    setPoolSort(prev => prev.by === col ? { by: col, dir: prev.dir === 'desc' ? 'asc' : 'desc' } : { by: col, dir: 'desc' });
+  }, []);
 
   const handlePoolTickerClick = useCallback((ticker) => {
     setManualTicker(ticker);
@@ -871,15 +920,55 @@ export default function PatternScanner() {
       {/* ── Pool Tab ── */}
       {activeTab === 'pool' && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500">
-              שלב 1: סינון מניות — שווי שוק &gt;$2B | ATR &gt;$2 או &gt;3% | מחזור &gt;5M
+
+          {/* Header bar */}
+          <div className="flex flex-wrap items-center gap-3 justify-between">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-slate-500">
+                ATR &gt;$2 | ATR% &gt;3% | מחזור &gt;5M
+              </span>
+              {poolData?.pool && (
+                <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{
+                  background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.2)', color: '#c4b5fd'
+                }}>{poolData.pool.length} מניות</span>
+              )}
+              {ibOpenTickers.size > 0 && (
+                <span className="text-xs px-2 py-0.5 rounded-full font-bold flex items-center gap-1" style={{
+                  background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.3)', color: '#fbbf24'
+                }}>
+                  <Activity size={10} /> {ibOpenTickers.size} פוזיציות פתוחות
+                </span>
+              )}
+              {Object.keys(botPicksMap).length > 0 && (
+                <span className="text-xs px-2 py-0.5 rounded-full font-bold flex items-center gap-1" style={{
+                  background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.25)', color: '#4ade80'
+                }}>
+                  <Star size={10} /> {Object.keys(botPicksMap).length} בחירות Bot
+                </span>
+              )}
+              {dataUpdatedAt > 0 && (
+                <span className="text-xs text-slate-600">
+                  עדכון: {new Date(dataUpdatedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {poolLoading && <RefreshCw size={12} className="animate-spin text-purple-400" />}
+              <button onClick={() => refetchPool()} className="text-xs px-3 py-1 rounded-lg flex items-center gap-1"
+                style={{ background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.3)', color: '#c4b5fd' }}>
+                <RefreshCw size={11} className={poolLoading ? 'animate-spin' : ''} />
+                רענן
+              </button>
+            </div>
+          </div>
+
+          {/* Legend */}
+          <div className="flex flex-wrap gap-3 text-xs text-slate-500">
+            <span className="flex items-center gap-1"><span style={{ color: '#fbbf24' }}>●</span> פוזיציה פתוחה ב-IB</span>
+            <span className="flex items-center gap-1"><span style={{ color: '#4ade80' }}>★</span> נבחר ע"י Bot היום</span>
+            <span className="flex items-center gap-1 cursor-help" title="ספרד = הפרש bid/ask חלקי המחיר — עלות הכניסה/יציאה. נמוך = טוב יותר. מעל 0.1% = פחות אטרקטיבי.">
+              <Info size={11} /> ספרד = פרש Bid/Ask %
             </span>
-            <button onClick={() => refetchPool()} className="text-xs px-3 py-1 rounded-lg flex items-center gap-1"
-              style={{ background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.3)', color: '#c4b5fd' }}>
-              <RefreshCw size={11} className={poolLoading ? 'animate-spin' : ''} />
-              רענן
-            </button>
           </div>
 
           {poolLoading && !poolData && (
@@ -889,66 +978,156 @@ export default function PatternScanner() {
             </div>
           )}
 
-          {poolData?.pool && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-slate-500 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-                    <th className="text-right py-2 px-2">טיקר</th>
-                    <th className="text-right py-2 px-2">חברה</th>
-                    <th className="text-right py-2 px-2">מחיר</th>
-                    <th className="text-right py-2 px-2">שווי שוק</th>
-                    <th className="text-right py-2 px-2">ATR ($)</th>
-                    <th className="text-right py-2 px-2">ATR %</th>
-                    <th className="text-right py-2 px-2">מחזור</th>
-                    <th className="text-right py-2 px-2">ספרד</th>
-                    <th className="text-right py-2 px-2">סקטור</th>
-                    <th className="text-center py-2 px-2">פעולה</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {poolData.pool.map((s, i) => (
-                    <tr key={s.ticker} className="border-b transition-colors hover:bg-slate-800/30"
-                      style={{ borderColor: 'rgba(255,255,255,0.03)' }}>
-                      <td className="py-2 px-2 font-black text-white">{s.ticker}</td>
-                      <td className="py-2 px-2 text-slate-400 truncate" style={{ maxWidth: 140 }}>{s.company}</td>
-                      <td className="py-2 px-2 font-mono text-white">${s.price}</td>
-                      <td className="py-2 px-2 font-mono text-slate-300">
-                        {s.market_cap >= 1e12 ? `$${(s.market_cap / 1e12).toFixed(1)}T`
-                          : `$${(s.market_cap / 1e9).toFixed(1)}B`}
-                      </td>
-                      <td className="py-2 px-2 font-mono font-bold" style={{ color: s.atr >= 3 ? '#4ade80' : '#fbbf24' }}>
-                        ${s.atr}
-                      </td>
-                      <td className="py-2 px-2">
-                        <span className="px-1.5 py-0.5 rounded font-bold" style={{
-                          background: s.atr_pct >= 4 ? 'rgba(74,222,128,0.12)' : 'rgba(251,191,36,0.12)',
-                          color: s.atr_pct >= 4 ? '#4ade80' : '#fbbf24',
-                        }}>
-                          {s.atr_pct}%
-                        </span>
-                      </td>
-                      <td className="py-2 px-2 font-mono text-slate-300">
-                        {s.avg_volume >= 1e6 ? `${(s.avg_volume / 1e6).toFixed(1)}M` : `${(s.avg_volume / 1e3).toFixed(0)}K`}
-                      </td>
-                      <td className="py-2 px-2 font-mono text-slate-400">{s.spread_pct}%</td>
-                      <td className="py-2 px-2 text-slate-500 truncate" style={{ maxWidth: 100 }}>{s.sector}</td>
-                      <td className="py-2 px-2 text-center">
-                        <button onClick={() => handlePoolTickerClick(s.ticker)}
-                          className="px-2.5 py-1 rounded text-xs font-bold transition-all"
-                          style={{
-                            background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)',
-                            color: '#c4b5fd',
-                          }}>
-                          נתח →
-                        </button>
-                      </td>
+          {sortedPool.length > 0 && (() => {
+            const SortTh = ({ col, label, className = '' }) => {
+              const active = poolSort.by === col;
+              return (
+                <th className={`py-2 px-2 cursor-pointer select-none whitespace-nowrap ${className}`}
+                  onClick={() => handlePoolSort(col)}>
+                  <span className="flex items-center gap-0.5 justify-end">
+                    {label}
+                    {active
+                      ? (poolSort.dir === 'desc' ? <ArrowDown size={10} style={{ color: '#8b5cf6' }} /> : <ArrowUp size={10} style={{ color: '#8b5cf6' }} />)
+                      : <ChevronsUpDown size={10} className="opacity-30" />}
+                  </span>
+                </th>
+              );
+            };
+
+            return (
+              <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid rgba(255,255,255,0.05)' }}>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-slate-500 border-b" style={{
+                      borderColor: 'rgba(255,255,255,0.06)',
+                      background: 'rgba(15,20,30,0.6)',
+                    }}>
+                      <th className="text-right py-2.5 px-3 font-semibold">טיקר</th>
+                      <SortTh col="price" label="מחיר" className="text-right font-semibold" />
+                      <SortTh col="change_pct" label="שינוי%" className="text-right font-semibold" />
+                      <SortTh col="market_cap" label="שווי שוק" className="text-right font-semibold" />
+                      <SortTh col="atr" label="ATR $" className="text-right font-semibold" />
+                      <SortTh col="atr_pct" label="ATR %" className="text-right font-semibold" />
+                      <SortTh col="avg_volume" label="מחזור" className="text-right font-semibold" />
+                      <th className="text-right py-2.5 px-2 font-semibold cursor-help whitespace-nowrap"
+                        title="ספרד = הפרש Bid/Ask חלקי המחיר. ככל שנמוך יותר, עלות הכניסה/יציאה זולה יותר.">
+                        ספרד%
+                      </th>
+                      <th className="text-right py-2.5 px-2 font-semibold">Bot</th>
+                      <th className="text-center py-2.5 px-2 font-semibold">פעולה</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+                  <tbody>
+                    {sortedPool.map((s) => {
+                      const hasIB = ibOpenTickers.has(s.ticker);
+                      const botPick = botPicksMap[s.ticker];
+                      const rowBg = hasIB
+                        ? 'rgba(251,191,36,0.04)'
+                        : botPick
+                        ? 'rgba(74,222,128,0.03)'
+                        : 'transparent';
+                      const borderColor = hasIB
+                        ? 'rgba(251,191,36,0.15)'
+                        : botPick
+                        ? 'rgba(74,222,128,0.1)'
+                        : 'rgba(255,255,255,0.03)';
+
+                      return (
+                        <tr key={s.ticker} className="border-b transition-colors hover:bg-slate-800/40"
+                          style={{ borderColor, background: rowBg }}>
+
+                          {/* Ticker + badges */}
+                          <td className="py-2.5 px-3">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-black text-white">{s.ticker}</span>
+                              {hasIB && (
+                                <span className="text-xs px-1 rounded font-bold" title="פוזיציה פתוחה ב-IB"
+                                  style={{ background: 'rgba(251,191,36,0.2)', color: '#fbbf24' }}>IB</span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Price */}
+                          <td className="py-2.5 px-2 font-mono font-bold text-white">${s.price}</td>
+
+                          {/* Change % */}
+                          <td className="py-2.5 px-2 font-mono font-bold" style={{ color: s.change_pct > 0 ? '#4ade80' : s.change_pct < 0 ? '#f87171' : '#94a3b8' }}>
+                            {s.change_pct != null ? `${s.change_pct > 0 ? '+' : ''}${s.change_pct}%` : '—'}
+                          </td>
+
+                          {/* Market cap */}
+                          <td className="py-2.5 px-2 font-mono text-slate-300">
+                            {s.market_cap >= 1e12 ? `$${(s.market_cap / 1e12).toFixed(1)}T`
+                              : s.market_cap >= 1e9 ? `$${(s.market_cap / 1e9).toFixed(1)}B`
+                              : s.market_cap > 0 ? `$${(s.market_cap / 1e6).toFixed(0)}M`
+                              : '—'}
+                          </td>
+
+                          {/* ATR $ */}
+                          <td className="py-2.5 px-2 font-mono font-bold" style={{ color: s.atr >= 3 ? '#4ade80' : '#fbbf24' }}>
+                            ${s.atr}
+                          </td>
+
+                          {/* ATR % */}
+                          <td className="py-2.5 px-2">
+                            <span className="px-1.5 py-0.5 rounded font-bold" style={{
+                              background: s.atr_pct >= 5 ? 'rgba(74,222,128,0.15)' : s.atr_pct >= 3.5 ? 'rgba(163,230,53,0.12)' : 'rgba(251,191,36,0.12)',
+                              color: s.atr_pct >= 5 ? '#4ade80' : s.atr_pct >= 3.5 ? '#a3e635' : '#fbbf24',
+                            }}>
+                              {s.atr_pct}%
+                            </span>
+                          </td>
+
+                          {/* Volume */}
+                          <td className="py-2.5 px-2 font-mono text-slate-300">
+                            {s.avg_volume >= 1e9 ? `${(s.avg_volume / 1e9).toFixed(1)}B`
+                              : s.avg_volume >= 1e6 ? `${(s.avg_volume / 1e6).toFixed(1)}M`
+                              : `${(s.avg_volume / 1e3).toFixed(0)}K`}
+                          </td>
+
+                          {/* Spread */}
+                          <td className="py-2.5 px-2 font-mono"
+                            title={`ספרד Bid/Ask: ${s.spread_pct}% — ${s.spread_pct <= 0.05 ? 'מצוין' : s.spread_pct <= 0.1 ? 'טוב' : s.spread_pct <= 0.2 ? 'בינוני' : 'גבוה'}`}
+                            style={{ color: s.spread_pct <= 0.05 ? '#4ade80' : s.spread_pct <= 0.1 ? '#a3e635' : s.spread_pct <= 0.2 ? '#fbbf24' : '#f87171' }}>
+                            {s.spread_pct > 0 ? `${s.spread_pct}%` : '—'}
+                          </td>
+
+                          {/* Bot pick */}
+                          <td className="py-2.5 px-2">
+                            {botPick ? (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="flex items-center gap-0.5 font-bold text-xs" style={{ color: '#4ade80' }}>
+                                  <Star size={10} fill="#4ade80" /> {botPick.direction}
+                                </span>
+                                <span className="text-slate-500" style={{ fontSize: 10 }}>
+                                  WR {botPick.win_rate}% | {botPick.window}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-700">—</span>
+                            )}
+                          </td>
+
+                          {/* Action */}
+                          <td className="py-2.5 px-2 text-center">
+                            <button onClick={() => handlePoolTickerClick(s.ticker)}
+                              className="px-2.5 py-1 rounded text-xs font-bold transition-all hover:scale-105"
+                              style={{
+                                background: botPick ? 'rgba(74,222,128,0.15)' : 'rgba(139,92,246,0.15)',
+                                border: `1px solid ${botPick ? 'rgba(74,222,128,0.3)' : 'rgba(139,92,246,0.3)'}`,
+                                color: botPick ? '#4ade80' : '#c4b5fd',
+                              }}>
+                              נתח →
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
         </div>
       )}
 

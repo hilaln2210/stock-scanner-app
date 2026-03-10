@@ -121,6 +121,28 @@ def _bulk_filter_pool(tickers: List[str], min_atr: float, min_atr_pct: float,
     return results
 
 
+def _fetch_fast_info(ticker: str) -> dict:
+    """Fetch market cap, today's change%, and 52w change% via fast_info."""
+    try:
+        fi = yf.Ticker(ticker).fast_info
+        mc = fi.market_cap
+        pc = fi.previous_close or 0
+        pr = fi.last_price or 0
+        chg = round((pr - pc) / pc * 100, 2) if pc > 0 else 0
+        try:
+            yr_chg = round(float(fi.year_change) * 100, 1)
+        except Exception:
+            yr_chg = 0.0
+        return {
+            "ticker": ticker,
+            "market_cap": int(mc) if mc and not math.isnan(float(mc)) else 0,
+            "change_pct": chg,
+            "year_change_pct": yr_chg,
+        }
+    except Exception:
+        return {"ticker": ticker, "market_cap": 0, "change_pct": 0.0, "year_change_pct": 0.0}
+
+
 async def filter_stock_pool(
     min_market_cap: float = 2e9,
     min_atr: float = 2.0,
@@ -142,6 +164,22 @@ async def filter_stock_pool(
     )
 
     pool.sort(key=lambda x: x["atr_pct"], reverse=True)
+
+    # Enrich with market cap + today's change% in parallel
+    with ThreadPoolExecutor(max_workers=5) as tpe:
+        fi_tasks = [loop.run_in_executor(tpe, _fetch_fast_info, s["ticker"]) for s in pool]
+        fi_results = await asyncio.gather(*fi_tasks, return_exceptions=True)
+
+    fi_map = {}
+    for r in fi_results:
+        if isinstance(r, dict):
+            fi_map[r["ticker"]] = r
+
+    for s in pool:
+        fi = fi_map.get(s["ticker"], {})
+        s["market_cap"] = fi.get("market_cap", 0)
+        s["change_pct"] = fi.get("change_pct", 0.0)
+        s["year_change_pct"] = fi.get("year_change_pct", 0.0)
 
     _pool_cache[cache_key] = pool
     _pool_cache_time = now
