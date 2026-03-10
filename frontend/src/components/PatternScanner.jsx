@@ -263,24 +263,34 @@ function PatternHeatmap({ windows, height = 580, investment = 700, price = 0 }) 
 function AutoBotPanel({ investment }) {
   const qc = useQueryClient();
 
+  const [scanning, setScanning] = useState(false);
+
   const { data: bot, isLoading } = useQuery({
     queryKey: ['autoBotStatus'],
     queryFn: async () => (await api.get('/pattern/autotrader/status')).data,
-    refetchInterval: 15000,
-    staleTime: 10000,
+    // poll every 3s while scanning, 15s otherwise
+    refetchInterval: (data) => data?.status_msg?.includes('סורק') ? 3000 : 15000,
+    staleTime: 2000,
   });
+
+  // clear scanning flag when picks arrive
+  useState(() => {
+    if (bot?.today_picks?.length > 0) setScanning(false);
+  }, [bot?.today_picks?.length]);
 
   const toggle = useCallback(async () => {
     if (!bot) return;
     if (bot.enabled) {
       await api.post('/pattern/autotrader/disable');
     } else {
+      setScanning(true);
       await api.post('/pattern/autotrader/enable', { amount: investment, top_n: 5 });
     }
     qc.invalidateQueries({ queryKey: ['autoBotStatus'] });
   }, [bot, investment, qc]);
 
   const scan = useCallback(async () => {
+    setScanning(true);
     await api.post('/pattern/autotrader/scan', { amount: investment, top_n: 5 });
     qc.invalidateQueries({ queryKey: ['autoBotStatus'] });
   }, [investment, qc]);
@@ -323,10 +333,12 @@ function AutoBotPanel({ investment }) {
           )}
 
           <div className="mr-auto flex gap-2">
-            <button onClick={scan}
+            <button onClick={scan} disabled={scanning}
               className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"
-              style={{ background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.3)', color: '#c4b5fd' }}>
-              <RefreshCw size={12} /> סרוק עכשיו
+              style={{ background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.3)', color: '#c4b5fd',
+                opacity: scanning ? 0.6 : 1 }}>
+              <RefreshCw size={12} className={scanning ? 'animate-spin' : ''} />
+              {scanning ? 'סורק...' : 'סרוק עכשיו'}
             </button>
             <button onClick={toggle}
               className="px-4 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all"
@@ -444,12 +456,22 @@ function AutoBotPanel({ investment }) {
         </div>
       )}
 
-      {/* Empty state */}
+      {/* Empty state / scanning state */}
       {(!bot.today_picks || bot.today_picks.length === 0) && (
         <div className="text-center py-10">
-          <Bot size={36} className="mx-auto mb-3 text-slate-700" />
-          <div className="text-sm text-slate-500 mb-1">לא בוצעה סריקה היום עדיין</div>
-          <div className="text-xs text-slate-600">לחץ "סרוק עכשיו" כדי לבחור את 5 המניות הכי חזקות להיום</div>
+          {scanning || bot.status_msg?.includes('סורק') ? (
+            <>
+              <RefreshCw size={32} className="animate-spin mx-auto mb-3" style={{ color: '#a78bfa' }} />
+              <div className="text-sm text-slate-300 mb-1">סורק מניות...</div>
+              <div className="text-xs text-slate-500">מוריד ומנתח דפוסים ל-15 מניות — עד דקה</div>
+            </>
+          ) : (
+            <>
+              <Bot size={36} className="mx-auto mb-3 text-slate-700" />
+              <div className="text-sm text-slate-500 mb-1">לא בוצעה סריקה היום עדיין</div>
+              <div className="text-xs text-slate-600">לחץ "סרוק עכשיו" כדי לבחור את 5 המניות הכי חזקות להיום</div>
+            </>
+          )}
         </div>
       )}
     </div>

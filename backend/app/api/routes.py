@@ -3204,4 +3204,4 @@ async def autotrader_scan(payload: dict = Body({})):
     """Force an immediate re-scan to refresh today's top picks."""
     amount = float(payload.get("amount", 700))
     top_n  = int(payload.get("top_n", 5))
-    return await pattern_autotrader.manual_scan(amount=amount, top_n=top_n)
+    return pattern_autotrader.manual_scan(amount=amount, top_n=top_n)

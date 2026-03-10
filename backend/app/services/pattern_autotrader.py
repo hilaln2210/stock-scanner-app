@@ -137,7 +137,7 @@ async def _run_daily_scan():
             min_market_cap=2_000_000_000,
             min_atr=2.0, min_atr_pct=2.5, min_volume=5_000_000
         )
-        tickers = [s["ticker"] for s in pool[:25]]  # analyze top 25 from pool
+        tickers = [s["ticker"] for s in pool[:15]]  # analyze top 15 from pool
     except Exception as e:
         _state["status_msg"] = f"שגיאה בסריקה: {e}"
         return
@@ -386,11 +386,14 @@ def disable() -> dict:
     return get_state()
 
 
-async def manual_scan(amount: float = 700, top_n: int = 5) -> dict:
-    """Force re-scan immediately (for manual trigger from UI)."""
+def manual_scan(amount: float = 700, top_n: int = 5) -> dict:
+    """Fire-and-forget: start scan in background, return immediately."""
     _state["amount_per_trade"] = amount
     _state["top_n"] = top_n
-    _state["last_scan_date"] = None  # force re-scan
+    _state["last_scan_date"] = None   # force re-scan
     _state["daily_pnl"] = 0.0
-    await _run_daily_scan()
+    _state["today_picks"] = []
+    _state["status_msg"] = "סורק מניות... (עד דקה)"
+    # launch as background task — do NOT await
+    asyncio.get_event_loop().create_task(_run_daily_scan())
     return get_state()
