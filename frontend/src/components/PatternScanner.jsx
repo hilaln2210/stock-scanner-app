@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { RefreshCw, Search, TrendingUp, TrendingDown, Target, Shield, Zap, ChevronDown, ChevronUp, Clock, BarChart3, DollarSign, Wallet, CandlestickChart } from 'lucide-react';
+import { RefreshCw, Search, TrendingUp, TrendingDown, Target, Shield, Zap, ChevronDown, ChevronUp, Clock, BarChart3, DollarSign, Wallet } from 'lucide-react';
 
 const api = axios.create({ baseURL: '/api', timeout: 120000 });
 
@@ -256,155 +256,6 @@ function PatternHeatmap({ windows, height = 580, investment = 700, price = 0 }) 
         <text x="210" y="3" fill="#64748b" fontSize="8">| ${investment} השקעה</text>
       </g>
     </svg>
-  );
-}
-
-// ── Finviz Candlestick Chart with Pattern Annotations ────────────────────────
-// Finviz intraday chart: the chart area starts ~5.5% from left, ends ~97% from left.
-// RTH session is 9:30–16:00 = 390 min = 13 half-hour windows.
-// Each window width = (97 - 5.5) / 13 ≈ 7.04% of image width.
-const CHART_LEFT_PCT  = 5.5;   // % from image left where 9:30 starts
-const CHART_RIGHT_PCT = 97;    // % from image left where 16:00 ends
-const CHART_TOP_PCT   = 5;     // % from top where candles begin (below header/price row)
-const CHART_BOT_PCT   = 62;    // % from top where candles end (above volume / RSI)
-
-function windowXPct(windowStr) {
-  const [h, m] = windowStr.split('-')[0].split(':').map(Number);
-  const minFromOpen = (h * 60 + m) - (9 * 60 + 30);
-  const totalMin = 390;
-  return CHART_LEFT_PCT + (minFromOpen / totalMin) * (CHART_RIGHT_PCT - CHART_LEFT_PCT);
-}
-
-function CandlestickPatternChart({ ticker, windows, days }) {
-  const [imgError, setImgError] = useState(false);
-  const [imgLoaded, setImgLoaded] = useState(false);
-  const ts = useMemo(() => Date.now(), [ticker]);
-
-  if (!windows || windows.length === 0) return null;
-
-  const currentWindow = getCurrentNYWindow();
-
-  const classified = windows.map(w => {
-    const isUp   = w.avg_change > 0 && w.win_rate  >= 55;
-    const isDown = w.avg_change < 0 && w.loss_rate >= 55;
-    return { ...w, direction: isUp ? 'up' : isDown ? 'down' : 'neutral' };
-  });
-
-  const chartUrl = `https://finviz.com/chart.ashx?t=${ticker}&ty=c&ta=1&p=i5&_=${ts}`;
-  const windowW = (CHART_RIGHT_PCT - CHART_LEFT_PCT) / 13; // ~7.04% per window
-
-  return (
-    <div className="rounded-xl overflow-hidden" style={{
-      background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)',
-    }}>
-      {/* Chart image + overlay */}
-      <div className="relative w-full" style={{ direction: 'ltr' }}>
-        {!imgLoaded && !imgError && (
-          <div className="flex items-center justify-center py-10 text-slate-600 text-xs gap-2">
-            <RefreshCw size={14} className="animate-spin" /> טוען גרף...
-          </div>
-        )}
-        {imgError ? (
-          <div className="flex items-center justify-center py-8 text-slate-600 text-xs gap-2">
-            <CandlestickChart size={14} /> גרף לא זמין —{' '}
-            <a href={`https://finviz.com/quote.ashx?t=${ticker}`} target="_blank" rel="noreferrer"
-              className="underline text-slate-500">פתח ב-Finviz</a>
-          </div>
-        ) : (
-          <>
-            <img
-              src={chartUrl}
-              alt={ticker}
-              className="w-full block rounded-xl"
-              style={{ opacity: imgLoaded ? 1 : 0, transition: 'opacity 0.4s' }}
-              onLoad={() => setImgLoaded(true)}
-              onError={() => { setImgError(true); setImgLoaded(true); }}
-            />
-
-            {imgLoaded && (
-              <div className="absolute inset-0 pointer-events-none rounded-xl overflow-hidden">
-                {classified.map((w, i) => {
-                  const xPct = windowXPct(w.window);
-                  const isCurrent = w.window === currentWindow;
-                  const rate = w.direction === 'up' ? w.win_rate : w.loss_rate;
-                  const isStrong = w.direction !== 'neutral' && rate >= 60;
-
-                  const bandBg = isCurrent
-                    ? 'rgba(251,191,36,0.09)'
-                    : w.direction === 'up' ? 'rgba(74,222,128,0.09)'
-                    : w.direction === 'down' ? 'rgba(248,113,113,0.09)'
-                    : 'transparent';
-                  const borderCol = isCurrent ? 'rgba(251,191,36,0.55)'
-                    : w.direction === 'up' ? 'rgba(74,222,128,0.4)'
-                    : w.direction === 'down' ? 'rgba(248,113,113,0.4)'
-                    : 'rgba(100,116,139,0.12)';
-                  const labelBg = isCurrent ? '#fbbf24'
-                    : w.direction === 'up' ? '#166534' : '#7f1d1d';
-                  const labelBorder = isCurrent ? '#fbbf24'
-                    : w.direction === 'up' ? '#4ade80' : '#f87171';
-                  const labelColor = isCurrent ? '#0f172a'
-                    : w.direction === 'up' ? '#86efac' : '#fca5a5';
-
-                  return (
-                    <div key={i}>
-                      {/* Colored band */}
-                      <div style={{
-                        position: 'absolute',
-                        left: `${xPct}%`, width: `${windowW}%`,
-                        top: `${CHART_TOP_PCT}%`,
-                        height: `${CHART_BOT_PCT - CHART_TOP_PCT}%`,
-                        background: bandBg,
-                        borderLeft: `1.5px dashed ${borderCol}`,
-                        boxShadow: isCurrent ? 'inset 0 0 12px rgba(251,191,36,0.08)' : 'none',
-                      }} />
-
-                      {/* Bottom tick line */}
-                      <div style={{
-                        position: 'absolute',
-                        left: `${xPct + windowW / 2 - 0.3}%`,
-                        width: '0.6%',
-                        top: `${CHART_BOT_PCT}%`,
-                        height: '3%',
-                        background: borderCol,
-                      }} />
-
-                      {/* Label — strong patterns + current */}
-                      {(isStrong || isCurrent) && (
-                        <div style={{
-                          position: 'absolute',
-                          left: `${xPct + windowW / 2}%`,
-                          top: `${CHART_TOP_PCT + 1}%`,
-                          transform: 'translateX(-50%)',
-                          background: labelBg,
-                          border: `1px solid ${labelBorder}`,
-                          borderRadius: 4,
-                          padding: '2px 6px',
-                          whiteSpace: 'nowrap',
-                          fontSize: 10,
-                          fontWeight: 800,
-                          color: labelColor,
-                          lineHeight: 1.45,
-                          textAlign: 'center',
-                          zIndex: 20,
-                          boxShadow: '0 1px 6px rgba(0,0,0,0.7)',
-                        }}>
-                          <div style={{ fontSize: 11 }}>
-                            {isCurrent ? '▶ עכשיו' : w.direction === 'up' ? '▲' : '▼'}
-                          </div>
-                          <div style={{ fontSize: 9, opacity: 0.85 }}>
-                            {rate}%
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -1013,9 +864,6 @@ export default function PatternScanner() {
                 </div>
                 <PatternHeatmap windows={tickerAnalysis.windows} height={720} investment={investment} price={tickerAnalysis.price} />
               </div>
-
-              {/* ── Candlestick Chart with Pattern Annotations ── */}
-              <CandlestickPatternChart ticker={tickerAnalysis.ticker} windows={tickerAnalysis.windows} days={tickerAnalysis.trading_days_analyzed} />
 
               {/* ── Windows Table ── */}
               <div className="rounded-xl overflow-hidden" style={{
