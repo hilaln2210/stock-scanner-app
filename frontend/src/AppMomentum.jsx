@@ -11,6 +11,7 @@ const TechnicalSignalsScanner = lazy(() => import('./components/TechnicalSignals
 const DailyAnalysisScanner = lazy(() => import('./components/DailyAnalysisScanner'));
 const NewsPanel = lazy(() => import('./components/NewsPanel'));
 const IBPortfolio = lazy(() => import('./components/IBPortfolio'));
+const PatternScanner = lazy(() => import('./components/PatternScanner'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,6 +35,7 @@ const TABS = [
   { key: 'tech-signals',    label: '📈 סיגנלים',             accent: '#6366f1' },
   { key: 'daily-analysis',  label: '🎯 ניתוח יומי',           accent: '#8b5cf6' },
   { key: 'ib',              label: '🏦 IB חשבון',             accent: '#3b82f6' },
+  { key: 'pattern-bot',     label: '🤖 Pattern Bot',           accent: '#a78bfa' },
   { key: 'finviz-table',    label: '📋 סורק בסיסי',           accent: '#14b8a6' },
   { key: 'news',            label: '📰 חדשות',               accent: '#3b82f6' },
 ];
@@ -643,6 +645,8 @@ function MomentumDashboard() {
                     <DailyAnalysisScanner data={dailyAnalysisData} loading={dailyAnalysisLoading} onRefetch={refetchDailyAnalysis} crossScannerMap={crossScannerMap} />
                   ) : viewMode === 'ib' ? (
                     <IBPortfolio />
+                  ) : viewMode === 'pattern-bot' ? (
+                    <PatternScanner />
                   ) : viewMode === 'finviz-table' ? (
                     <FinvizTableScanner ensureTickers={searchTicker?.trim().toUpperCase() || undefined} refreshSec={autoRefresh} />
                   ) : viewMode === 'news' ? (

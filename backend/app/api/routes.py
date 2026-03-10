@@ -3055,3 +3055,84 @@ async def test_telegram():
     """Send a test message to Telegram."""
     ok = await send_telegram("🧪 <b>Test</b> — Stock Scanner connected!")
     return {'success': ok}
+
+
+# ── Pattern Scanner Bot ───────────────────────────────────────────────────────
+
+from app.services.pattern_scanner import (
+    filter_stock_pool, analyze_single_ticker,
+    analyze_pool_patterns, generate_trade_signals
+)
+
+_pattern_lock = None
+def _get_pattern_lock():
+    global _pattern_lock
+    if _pattern_lock is None:
+        _pattern_lock = asyncio.Lock()
+    return _pattern_lock
+
+
+@router.get("/pattern/pool")
+async def pattern_pool(
+    min_mcap: float = Query(2e9, description="Min market cap"),
+    min_atr: float = Query(2.0, description="Min ATR ($)"),
+    min_atr_pct: float = Query(3.0, description="Min ATR %"),
+    min_vol: int = Query(5_000_000, description="Min avg volume"),
+):
+    """Step 1: Get filtered stock pool."""
+    pool = await filter_stock_pool(
+        min_market_cap=min_mcap,
+        min_atr=min_atr,
+        min_atr_pct=min_atr_pct,
+        min_volume=min_vol,
+    )
+    return {"count": len(pool), "pool": pool}
+
+
+@router.get("/pattern/analyze/{ticker}")
+async def pattern_analyze_ticker(
+    ticker: str,
+    days: int = Query(45, ge=10, le=59),
+    interval: str = Query("5m", regex="^(5m|15m)$"),
+):
+    """Step 2: Analyze intraday patterns for a single ticker."""
+    ticker = ticker.upper()
+    result = await analyze_single_ticker(ticker, days=days, interval=interval)
+    if not result:
+        return {"error": f"No data for {ticker}"}
+    if "error" in result:
+        return result
+
+    # Also generate signals (Step 3)
+    signals = generate_trade_signals(result)
+    result["signals"] = signals
+    return result
+
+
+@router.get("/pattern/scan")
+async def pattern_full_scan(
+    days: int = Query(45, ge=10, le=59),
+    interval: str = Query("5m", regex="^(5m|15m)$"),
+    limit: int = Query(10, ge=1, le=30),
+):
+    """Steps 1+2+3: Full scan — filter pool, analyze patterns, generate signals."""
+    lock = _get_pattern_lock()
+    if lock.locked():
+        return {"loading": True, "message": "Pattern scan in progress..."}
+
+    async with lock:
+        pool = await filter_stock_pool()
+        # Limit to top N by ATR% for speed
+        top_pool = pool[:limit]
+        patterns = await analyze_pool_patterns(top_pool, days=days, interval=interval)
+
+        # Generate signals for each
+        for p in patterns:
+            p["signals"] = generate_trade_signals(p)
+
+        return {
+            "count": len(patterns),
+            "pool_size": len(pool),
+            "analyzed": len(patterns),
+            "stocks": patterns,
+        }
