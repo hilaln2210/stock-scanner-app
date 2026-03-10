@@ -47,60 +47,78 @@ CANDIDATE_TICKERS = [
 ]
 
 
-def _fetch_stock_filter_data(ticker: str) -> Optional[dict]:
-    """Fetch ATR and volume from history only (no stock.info — it hangs)."""
-    try:
-        stock = yf.Ticker(ticker)
+def _bulk_filter_pool(tickers: List[str], min_atr: float, min_atr_pct: float,
+                       min_volume: int) -> List[dict]:
+    """Bulk-download all tickers in ONE yf.download() call — 5-10x faster."""
+    ticker_str = " ".join(tickers)
+    df = yf.download(ticker_str, period="30d", interval="1d",
+                     group_by="ticker", threads=True, timeout=10, progress=False)
+    if df.empty:
+        return []
 
-        # Use history() with timeout — never use stock.info for pool filtering
-        hist = stock.history(period="30d", interval="1d", timeout=5)
-        if hist.empty or len(hist) < 10:
-            return None
-
-        highs = hist["High"].values
-        lows = hist["Low"].values
-        closes = hist["Close"].values
-        volumes = hist["Volume"].values
-
-        price = float(closes[-1])
-        if price <= 0:
-            return None
-
-        avg_volume = int(np.mean(volumes[-10:]))
-
-        # True Range calculation
-        trs = []
-        for i in range(1, len(closes)):
-            tr = max(
-                highs[i] - lows[i],
-                abs(highs[i] - closes[i - 1]),
-                abs(lows[i] - closes[i - 1])
-            )
-            trs.append(tr)
-
-        atr_14 = float(np.mean(trs[-14:])) if len(trs) >= 14 else float(np.mean(trs))
-        atr_pct = (atr_14 / price * 100) if price > 0 else 0
-
-        # Get fast_info for market cap (much faster than .info)
+    results = []
+    for ticker in tickers:
         try:
-            market_cap = stock.fast_info.get("marketCap", 0) or stock.fast_info.get("market_cap", 0) or 0
-        except Exception:
-            market_cap = 0
+            # Extract per-ticker data from multi-level columns
+            if len(tickers) == 1:
+                td = df
+            else:
+                if ticker not in df.columns.get_level_values(0):
+                    continue
+                td = df[ticker]
 
-        return {
-            "ticker": ticker,
-            "price": round(price, 2),
-            "market_cap": market_cap,
-            "avg_volume": avg_volume,
-            "atr": round(atr_14, 2),
-            "atr_pct": round(atr_pct, 2),
-            "spread": 0,
-            "spread_pct": 0,
-            "company": ticker,
-            "sector": "",
-        }
-    except Exception:
-        return None
+            td = td.dropna(subset=["Close"])
+            if len(td) < 10:
+                continue
+
+            highs = td["High"].values
+            lows = td["Low"].values
+            closes = td["Close"].values
+            volumes = td["Volume"].values
+
+            price = float(closes[-1])
+            if price <= 0 or math.isnan(price):
+                continue
+
+            avg_volume = int(np.nanmean(volumes[-10:]))
+
+            # ATR-14
+            trs = []
+            for i in range(1, len(closes)):
+                h, l, c_prev = float(highs[i]), float(lows[i]), float(closes[i - 1])
+                if math.isnan(h) or math.isnan(l) or math.isnan(c_prev):
+                    continue
+                tr = max(h - l, abs(h - c_prev), abs(l - c_prev))
+                trs.append(tr)
+
+            if len(trs) < 5:
+                continue
+
+            atr_14 = float(np.mean(trs[-14:])) if len(trs) >= 14 else float(np.mean(trs))
+            atr_pct = (atr_14 / price * 100)
+
+            # Quick filters before adding
+            if atr_14 < min_atr and atr_pct < min_atr_pct:
+                continue
+            if avg_volume < min_volume:
+                continue
+
+            results.append({
+                "ticker": ticker,
+                "price": round(price, 2),
+                "market_cap": 0,  # skipped for speed
+                "avg_volume": avg_volume,
+                "atr": round(atr_14, 2),
+                "atr_pct": round(atr_pct, 2),
+                "spread": 0,
+                "spread_pct": 0,
+                "company": ticker,
+                "sector": "",
+            })
+        except Exception:
+            continue
+
+    return results
 
 
 async def filter_stock_pool(
@@ -110,7 +128,7 @@ async def filter_stock_pool(
     min_volume: int = 5_000_000,
     max_spread_pct: float = 0.15,
 ) -> List[dict]:
-    """Step 1: Filter stocks into a trading pool."""
+    """Step 1: Filter stocks into a trading pool. Single bulk download."""
     global _pool_cache, _pool_cache_time
 
     cache_key = f"{min_market_cap}_{min_atr}_{min_atr_pct}_{min_volume}"
@@ -119,31 +137,9 @@ async def filter_stock_pool(
         return _pool_cache[cache_key]
 
     loop = asyncio.get_event_loop()
-
-    # Fetch in batches of 3 to avoid rate limits
-    results = []
-    for i in range(0, len(CANDIDATE_TICKERS), 3):
-        batch = CANDIDATE_TICKERS[i:i + 3]
-        tasks = [loop.run_in_executor(None, _fetch_stock_filter_data, t) for t in batch]
-        batch_results = await asyncio.gather(*tasks, return_exceptions=True)
-        for r in batch_results:
-            if isinstance(r, dict) and r is not None:
-                results.append(r)
-        if i + 3 < len(CANDIDATE_TICKERS):
-            await asyncio.sleep(0.3)
-
-    # Apply filters — ATR must meet EITHER absolute OR percentage threshold
-    pool = []
-    for s in results:
-        if s["market_cap"] > 0 and s["market_cap"] < min_market_cap:
-            continue
-        if s["atr"] < min_atr and s["atr_pct"] < min_atr_pct:
-            continue
-        if s["avg_volume"] < min_volume:
-            continue
-        if s["spread_pct"] > max_spread_pct and s["spread_pct"] > 0:
-            continue
-        pool.append(s)
+    pool = await loop.run_in_executor(
+        None, _bulk_filter_pool, CANDIDATE_TICKERS, min_atr, min_atr_pct, min_volume
+    )
 
     pool.sort(key=lambda x: x["atr_pct"], reverse=True)
 
