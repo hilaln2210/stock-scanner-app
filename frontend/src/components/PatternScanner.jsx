@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { RefreshCw, Search, TrendingUp, TrendingDown, Target, Shield, Zap, ChevronDown, ChevronUp, Clock, BarChart3, DollarSign, Wallet, CandlestickChart } from 'lucide-react';
@@ -259,168 +259,170 @@ function PatternHeatmap({ windows, height = 580, investment = 700, price = 0 }) 
   );
 }
 
-// ── Candlestick Chart with Pattern Annotations ──────────────────────────────
+// ── Finviz Candlestick Chart with Pattern Annotations ────────────────────────
+// Finviz intraday chart: the chart area starts ~5.5% from left, ends ~97% from left.
+// RTH session is 9:30–16:00 = 390 min = 13 half-hour windows.
+// Each window width = (97 - 5.5) / 13 ≈ 7.04% of image width.
+const CHART_LEFT_PCT  = 5.5;   // % from image left where 9:30 starts
+const CHART_RIGHT_PCT = 97;    // % from image left where 16:00 ends
+const CHART_TOP_PCT   = 5;     // % from top where candles begin (below header/price row)
+const CHART_BOT_PCT   = 62;    // % from top where candles end (above volume / RSI)
+
+function windowXPct(windowStr) {
+  const [h, m] = windowStr.split('-')[0].split(':').map(Number);
+  const minFromOpen = (h * 60 + m) - (9 * 60 + 30);
+  const totalMin = 390;
+  return CHART_LEFT_PCT + (minFromOpen / totalMin) * (CHART_RIGHT_PCT - CHART_LEFT_PCT);
+}
+
 function CandlestickPatternChart({ ticker, windows, days }) {
-  const containerRef = useRef(null);
-  const [isVisible, setIsVisible] = useState(false);
-
-  // Lazy-load with IntersectionObserver
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) { setIsVisible(true); observer.disconnect(); } },
-      { threshold: 0.1 }
-    );
-    observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, []);
-
-  // Load TradingView widget
-  useEffect(() => {
-    if (!isVisible || !containerRef.current) return;
-    const widgetArea = containerRef.current.querySelector('.tv-widget-area');
-    if (!widgetArea) return;
-    widgetArea.innerHTML = '';
-
-    const widgetDiv = document.createElement('div');
-    widgetDiv.className = 'tradingview-widget-container__widget';
-    widgetDiv.style.height = '100%';
-    widgetDiv.style.width = '100%';
-    widgetArea.appendChild(widgetDiv);
-
-    const script = document.createElement('script');
-    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
-    script.async = true;
-    script.type = 'text/javascript';
-    script.textContent = JSON.stringify({
-      autosize: false,
-      symbol: ticker,
-      width: '100%',
-      height: 340,
-      interval: '5',
-      timezone: 'America/New_York',
-      theme: 'dark',
-      style: '1',
-      locale: 'he_IL',
-      allow_symbol_change: false,
-      hide_top_toolbar: true,
-      hide_side_toolbar: true,
-      save_image: false,
-      calendar: false,
-      studies: ['Volume@tv-basicstudies'],
-      support_host: 'https://www.tradingview.com',
-    });
-    widgetArea.appendChild(script);
-  }, [isVisible, ticker]);
+  const [imgError, setImgError] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const ts = useMemo(() => Date.now(), [ticker]);
 
   if (!windows || windows.length === 0) return null;
 
   const currentWindow = getCurrentNYWindow();
 
-  // Classify windows: up (win_rate >= 55 & avg_change > 0), down (win_rate >= 55 & avg_change < 0), neutral
   const classified = windows.map(w => {
-    const isUp = w.avg_change > 0 && w.win_rate >= 55;
+    const isUp   = w.avg_change > 0 && w.win_rate  >= 55;
     const isDown = w.avg_change < 0 && w.loss_rate >= 55;
     return { ...w, direction: isUp ? 'up' : isDown ? 'down' : 'neutral' };
   });
 
+  const chartUrl = `https://finviz.com/chart.ashx?t=${ticker}&ty=c&ta=1&p=i5&_=${ts}`;
+  const windowW = (CHART_RIGHT_PCT - CHART_LEFT_PCT) / 13; // ~7.04% per window
+
   return (
-    <div ref={containerRef} className="rounded-xl overflow-hidden" style={{
+    <div className="rounded-xl overflow-hidden" style={{
       background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)',
     }}>
       {/* Header */}
       <div className="p-3 flex items-center gap-2 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
         <CandlestickChart size={16} color="#fbbf24" />
-        <span className="text-sm font-bold text-white">גרף נרות + דפוסי זמן</span>
+        <span className="text-sm font-bold text-white">גרף נרות Finviz + דפוסי זמן</span>
         <span className="text-xs text-slate-500">בהתבסס על ניתוח של {days} ימים</span>
+        <a href={`https://finviz.com/quote.ashx?t=${ticker}`} target="_blank" rel="noreferrer"
+          className="mr-auto text-xs px-2 py-0.5 rounded" style={{
+            background: 'rgba(255,255,255,0.05)', color: '#64748b', border: '1px solid rgba(255,255,255,0.06)',
+          }}>
+          פתח ב-Finviz ↗
+        </a>
       </div>
 
-      {/* TradingView Chart */}
-      <div className="tv-widget-area" style={{ height: 340, minHeight: 340 }}>
-        {!isVisible && (
-          <div className="flex items-center justify-center h-full bg-slate-900/50 text-slate-500 text-sm">
-            טוען גרף...
+      {/* ── Chart image + overlay ── */}
+      <div className="relative w-full" style={{ direction: 'ltr', background: '#111' }}>
+        {!imgLoaded && !imgError && (
+          <div className="absolute inset-0 flex items-center justify-center text-slate-500 text-sm z-10" style={{ minHeight: 200 }}>
+            <RefreshCw size={18} className="animate-spin ml-2" /> טוען גרף...
           </div>
+        )}
+        {imgError ? (
+          <div className="flex items-center justify-center py-10 text-slate-500 text-sm">
+            גרף לא זמין — Finviz חסם את הבקשה
+          </div>
+        ) : (
+          <>
+            <img
+              src={chartUrl}
+              alt={`${ticker} intraday chart`}
+              className="w-full block"
+              style={{ opacity: imgLoaded ? 1 : 0, transition: 'opacity 0.3s' }}
+              onLoad={() => setImgLoaded(true)}
+              onError={() => { setImgError(true); setImgLoaded(true); }}
+            />
+
+            {/* ── Overlay bands + labels ── */}
+            {imgLoaded && (
+              <div className="absolute inset-0 pointer-events-none">
+                {classified.map((w, i) => {
+                  const xPct = windowXPct(w.window);
+                  const isCurrent = w.window === currentWindow;
+                  const isStrong = w.direction !== 'neutral' &&
+                    (w.direction === 'up' ? w.win_rate : w.loss_rate) >= 60;
+
+                  const bandColor = w.direction === 'up'
+                    ? 'rgba(74,222,128,0.13)'
+                    : w.direction === 'down'
+                      ? 'rgba(248,113,113,0.13)'
+                      : 'transparent';
+                  const lineColor = w.direction === 'up' ? '#4ade80'
+                    : w.direction === 'down' ? '#f87171' : 'rgba(100,116,139,0.3)';
+                  const textColor = w.direction === 'up' ? '#4ade80'
+                    : w.direction === 'down' ? '#f87171' : '#475569';
+
+                  return (
+                    <div key={i}>
+                      {/* Vertical colored band over chart candles area */}
+                      <div style={{
+                        position: 'absolute',
+                        left: `${xPct}%`,
+                        width: `${windowW}%`,
+                        top: `${CHART_TOP_PCT}%`,
+                        height: `${CHART_BOT_PCT - CHART_TOP_PCT}%`,
+                        background: isCurrent ? 'rgba(251,191,36,0.12)' : bandColor,
+                        borderLeft: `1px dashed ${isCurrent ? 'rgba(251,191,36,0.6)' : lineColor}`,
+                        borderRight: i === classified.length - 1 ? `1px dashed ${lineColor}` : 'none',
+                      }} />
+
+                      {/* Label box — only for strong patterns or current window */}
+                      {(isStrong || isCurrent) && (
+                        <div style={{
+                          position: 'absolute',
+                          left: `${xPct + windowW / 2}%`,
+                          top: `${CHART_TOP_PCT + 1}%`,
+                          transform: 'translateX(-50%)',
+                          background: isCurrent
+                            ? 'rgba(251,191,36,0.95)'
+                            : w.direction === 'up' ? 'rgba(20,83,45,0.93)' : 'rgba(127,29,29,0.93)',
+                          border: `1px solid ${isCurrent ? '#fbbf24' : lineColor}`,
+                          borderRadius: 4,
+                          padding: '2px 5px',
+                          whiteSpace: 'nowrap',
+                          fontSize: 10,
+                          fontWeight: 900,
+                          color: isCurrent ? '#0f172a' : textColor,
+                          lineHeight: 1.3,
+                          textAlign: 'center',
+                          zIndex: 10,
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.6)',
+                        }}>
+                          <div>{isCurrent ? '▶ עכשיו' : w.direction === 'up' ? '▲ עולה' : '▼ יורדת'}</div>
+                          <div style={{ fontSize: 9, opacity: 0.9 }}>
+                            {w.direction === 'up' ? w.win_rate : w.loss_rate}% | {w.avg_change > 0 ? '+' : ''}{w.avg_change}%
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* ── Pattern Annotation Timeline ── */}
-      <div className="px-3 py-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <div className="text-xs text-slate-500 mb-2 text-center">
-          🕐 ניתוח דפוסי זמן — מבוסס על {days} ימי מסחר | ירוק = עולה | אדום = יורדת | אפור = ניטרלי
+      {/* ── Verbal summary of strong patterns ── */}
+      <div className="px-3 py-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        <div className="text-[10px] text-slate-600 mb-1.5 text-center">
+          בהתבסס על {days} ימי מסחר — ירוק = עולה | אדום = יורדת | צהוב = עכשיו (חלון נוכחי)
         </div>
-
-        {/* Timeline strip */}
-        <div className="flex gap-0.5 mb-2" style={{ direction: 'ltr' }}>
-          {classified.map((w, i) => {
-            const isCurrent = w.window === currentWindow;
-            const bg = w.direction === 'up'
-              ? 'rgba(74,222,128,0.2)'
-              : w.direction === 'down'
-                ? 'rgba(248,113,113,0.2)'
-                : 'rgba(100,116,139,0.1)';
-            const border = w.direction === 'up'
-              ? 'rgba(74,222,128,0.4)'
-              : w.direction === 'down'
-                ? 'rgba(248,113,113,0.4)'
-                : 'rgba(100,116,139,0.15)';
-            const textColor = w.direction === 'up' ? '#4ade80' : w.direction === 'down' ? '#f87171' : '#64748b';
-
-            return (
-              <div key={i} className="flex-1 rounded-md text-center py-1.5 px-0.5 relative transition-all" style={{
-                background: bg,
-                border: `1px solid ${border}`,
-                boxShadow: isCurrent ? `0 0 10px ${w.direction === 'up' ? 'rgba(74,222,128,0.4)' : w.direction === 'down' ? 'rgba(248,113,113,0.4)' : 'rgba(251,191,36,0.3)'}` : 'none',
-                outline: isCurrent ? '2px solid #fbbf24' : 'none',
-                minWidth: 0,
-              }}>
-                {/* Time */}
-                <div className="text-[9px] font-bold truncate" style={{ color: isCurrent ? '#fbbf24' : '#94a3b8' }}>
-                  {w.window.split('-')[0]}
-                </div>
-                {/* Direction arrow + change */}
-                <div className="text-[10px] font-black" style={{ color: textColor }}>
-                  {w.direction === 'up' ? '▲' : w.direction === 'down' ? '▼' : '—'}
-                </div>
-                <div className="text-[8px] font-mono font-bold truncate" style={{ color: textColor }}>
-                  {w.avg_change > 0 ? '+' : ''}{w.avg_change.toFixed(2)}%
-                </div>
-                {/* Win rate */}
-                <div className="text-[8px] font-bold truncate" style={{ color: textColor }}>
-                  {w.direction !== 'neutral'
-                    ? `${w.direction === 'up' ? w.win_rate : w.loss_rate}%`
-                    : ''}
-                </div>
-                {/* Current marker */}
-                {isCurrent && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-[7px] font-bold px-1 rounded"
-                    style={{ background: '#fbbf24', color: '#0f172a' }}>
-                    עכשיו
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Verbal summary of strong patterns */}
-        <div className="flex flex-wrap gap-2 justify-center mt-2">
+        <div className="flex flex-wrap gap-1.5 justify-center">
           {classified.filter(w => w.direction === 'up' && w.win_rate >= 60).map((w, i) => (
-            <span key={`up-${i}`} className="text-xs px-2 py-1 rounded-lg" style={{
+            <span key={`up-${i}`} className="text-xs px-2 py-0.5 rounded" style={{
               background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)', color: '#4ade80',
             }}>
-              ▲ עולה ב-{w.window} — {w.win_rate}% מהימים | ממוצע {w.avg_change > 0 ? '+' : ''}{w.avg_change}%
+              ▲ {w.window} — {w.win_rate}% ימים עולה | ממוצע {w.avg_change > 0 ? '+' : ''}{w.avg_change}%
             </span>
           ))}
           {classified.filter(w => w.direction === 'down' && w.loss_rate >= 60).map((w, i) => (
-            <span key={`dn-${i}`} className="text-xs px-2 py-1 rounded-lg" style={{
+            <span key={`dn-${i}`} className="text-xs px-2 py-0.5 rounded" style={{
               background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', color: '#f87171',
             }}>
-              ▼ יורדת ב-{w.window} — {w.loss_rate}% מהימים | ממוצע {w.avg_change}%
+              ▼ {w.window} — {w.loss_rate}% ימים יורדת | ממוצע {w.avg_change}%
             </span>
           ))}
-          {classified.filter(w => w.direction === 'up' && w.win_rate >= 60).length === 0 &&
-           classified.filter(w => w.direction === 'down' && w.loss_rate >= 60).length === 0 && (
+          {classified.every(w => w.direction === 'neutral' || (w.direction === 'up' ? w.win_rate : w.loss_rate) < 60) && (
             <span className="text-xs text-slate-600">אין דפוסי זמן חזקים מספיק (נדרש 60%+)</span>
           )}
         </div>
