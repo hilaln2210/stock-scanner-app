@@ -1,0 +1,52 @@
+{
+  "markets": [
+    {
+      "market_id": "bin-001",
+      "question": "Will it rain in London on 2025-06-01?",
+      "yes_price": 0.42,
+      "no_price": 0.55,
+      "liquidity": 5000,
+      "spread_bps": 200
+    },
+    {
+      "market_id": "bin-002",
+      "question": "Will BTC be above 100k on 2025-12-31?",
+      "yes_price": 0.48,
+      "no_price": 0.48,
+      "liquidity": 20000,
+      "spread_bps": 100
+    },
+    {
+      "market_id": "bin-003",
+      "question": "Arbitrage example: YES+NO < 1",
+      "yes_price": 0.45,
+      "no_price": 0.52,
+      "liquidity": 3000,
+      "spread_bps": 150
+    },
+    {
+      "market_id": "bin-004",
+      "question": "Another arbitrage: sum 0.97",
+      "yes_price": 0.50,
+      "no_price": 0.47,
+      "liquidity": 8000,
+      "spread_bps": 80
+    },
+    {
+      "market_id": "bin-005",
+      "question": "No arbitrage: YES+NO > 1",
+      "yes_price": 0.55,
+      "no_price": 0.50,
+      "liquidity": 10000,
+      "spread_bps": 120
+    },
+    {
+      "market_id": "bin-006",
+      "question": "Low liquidity arbitrage (filtered out if min_liquidity high)",
+      "yes_price": 0.44,
+      "no_price": 0.53,
+      "liquidity": 50,
+      "spread_bps": 100
+    }
+  ]
+}

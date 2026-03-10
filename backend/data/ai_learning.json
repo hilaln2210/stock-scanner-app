@@ -18,8 +18,8 @@
     "regime_weight": 1.0,
     "trend_alignment_weight": 1.2,
     "short_squeeze_weight": 2.2,
-    "max_position_pct": 30,
-    "stop_loss_pct": 7.9,
+    "max_position_pct": 29.6,
+    "stop_loss_pct": 7.705,
     "target_pct": 20,
     "max_positions": 5
   },
@@ -43,7 +43,38 @@
         "stop_loss_pct": 7.5
       },
       "date": "2026-03-06T12:53:23.613542"
+    },
+    {
+      "trade": "NU",
+      "pnl": -28.13,
+      "pnl_pct": -6.39,
+      "lesson": "Stop loss triggered, consider tightening stop loss percentage",
+      "adjustments": {
+        "stop_loss_pct": 7.5
+      },
+      "date": "2026-03-09T10:39:34.987542"
+    },
+    {
+      "trade": "ALAB",
+      "pnl": -27.99,
+      "pnl_pct": -7.66,
+      "lesson": "Stop loss triggered, consider tightening stop loss percentage",
+      "adjustments": {
+        "stop_loss_pct": 7.5
+      },
+      "date": "2026-03-09T15:42:24.779658"
+    },
+    {
+      "trade": "DYN",
+      "pnl": 11.6,
+      "pnl_pct": 7.22,
+      "lesson": "Partial TP at +7.2% suggests strategy is working, but max position size and stop loss could be optimized for better risk management",
+      "adjustments": {
+        "max_position_pct": 28,
+        "stop_loss_pct": 7.5
+      },
+      "date": "2026-03-09T18:44:00.963454"
     }
   ],
-  "updated": "2026-03-06T12:53:23.613617"
+  "updated": "2026-03-09T18:44:00.963521"
 }

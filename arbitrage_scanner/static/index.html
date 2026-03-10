@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arbitrage Scanner | Paper Trading</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <h1 class="logo">Arbitrage Scanner</h1>
+      <p class="tagline">בוט פעיל תמיד – סורק, נכנס לארביטראז' ויוצא אוטומטית · דמו</p>
+      <div class="actions">
+        <button type="button" class="btn btn-secondary" id="btn-scan">סרוק שווקים</button>
+        <button type="button" class="btn btn-ghost" id="btn-reset">איפוס סימולטור</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <section class="kpi-grid">
+      <div class="kpi-card">
+        <span class="kpi-label">הזדמנויות</span>
+        <span class="kpi-value" id="kpi-opportunities">–</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">יתרה נוכחית</span>
+        <span class="kpi-value" id="kpi-balance">–</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">PnL כולל</span>
+        <span class="kpi-value" id="kpi-pnl">–</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">PnL ממומש</span>
+        <span class="kpi-value" id="kpi-realized">–</span>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">שווקים</h2>
+      <p class="section-desc">סה"כ שנסרקו: <span id="markets-count">0</span> · סריקה אוטומטית: <span id="last-scan">–</span></p>
+      <p class="demo-notice hidden" id="demo-notice">נתוני הדגמה – לא שאלות אמיתיות. בחר Polymarket או הכל (וטען מחדש) לנתונים מהשוק.</p>
+      <div class="filters-bar">
+        <label for="data-source">מקור נתונים:</label>
+        <select id="data-source" class="filter-select" aria-label="מקור שווקים">
+          <option value="all">הכל (Polymarket + Kalshi + Manifold)</option>
+          <option value="polymarket">Polymarket</option>
+          <option value="kalshi">Kalshi</option>
+          <option value="manifold">Manifold</option>
+          <option value="mock">הדגמה (mock)</option>
+        </select>
+        <label for="filter-arb">סינון ארביטראז':</label>
+        <select id="filter-arb" class="filter-select" aria-label="סינון לפי ארביטראז'">
+          <option value="all">הכל</option>
+          <option value="yes">כן (יש ארביטראז')</option>
+          <option value="no">לא</option>
+        </select>
+        <span class="filter-summary" id="markets-filter-summary"></span>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="table-markets">
+          <thead>
+            <tr>
+              <th>מקור</th>
+              <th>מזהה</th>
+              <th>שאלה</th>
+              <th>YES</th>
+              <th>NO</th>
+              <th>סכום</th>
+              <th>נזילות</th>
+              <th>ארביטראז'?</th>
+              <th>אחוז רווח</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="empty-state" id="empty-markets">טוען שווקים...</p>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">הזדמנויות שזוהו</h2>
+      <div class="filters-bar">
+        <label for="filter-opp-type">סינון סוג:</label>
+        <select id="filter-opp-type" class="filter-select" aria-label="סינון לפי סוג שוק">
+          <option value="all">הכל</option>
+          <option value="binary">בינארי</option>
+          <option value="multi_outcome">רב־תוצאות</option>
+        </select>
+        <span class="filter-summary" id="opp-filter-summary"></span>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="table-opportunities">
+          <thead>
+            <tr>
+              <th>מקור</th>
+              <th>מזהה</th>
+              <th>סוג</th>
+              <th>שאלה</th>
+              <th>אחוז רווח</th>
+              <th>עלות</th>
+              <th>נזילות</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="empty-state" id="empty-opportunities">טען סריקה כדי לראות הזדמנויות.</p>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">היסטוריית עסקאות</h2>
+      <p class="section-desc">כניסות ויציאות שביצע הבוט (טובות ופחות טובות) · רווח ממומש = רווח אמיתי מהעסקה</p>
+      <div class="table-wrap">
+        <table class="table" id="table-history">
+          <thead>
+            <tr>
+              <th>תאריך</th>
+              <th>סוג</th>
+              <th>מזהה</th>
+              <th>הון</th>
+              <th>רווח</th>
+              <th>אחוז</th>
+              <th>עמלות (משוער)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="empty-state" id="empty-history">אין עדיין עסקאות. הבוט יחפש ארביטראז' וייכנס אוטומטית.</p>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">פוזיציות פתוחות</h2>
+      <div class="table-wrap">
+        <table class="table" id="table-positions">
+          <thead>
+            <tr>
+              <th>מזהה</th>
+              <th>הון</th>
+              <th>תאריך כניסה</th>
+              <th>אחוז רווח צפוי</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="empty-state" id="empty-positions">אין פוזיציות פתוחות.</p>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>לימוד בלבד · כסף דמו וירטואלי · עסקאות ארביטראז' סימולציה אוטומטית</p>
+  </footer>
+
+  <div class="toast" id="toast" aria-live="polite"></div>
+  <script src="/static/app.js?v=3"></script>
+</body>
+</html>

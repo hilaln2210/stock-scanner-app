@@ -1,0 +1,52 @@
+{
+  "balance": 719.36,
+  "initial": 700.0,
+  "trades": [
+    {
+      "ticker": "AAOI",
+      "direction": "LONG",
+      "entry_price": 110.62,
+      "stop_price": 109.72,
+      "target_price": 112.15,
+      "shares": 6.328,
+      "amount": 700.0,
+      "window": "11:00-11:30",
+      "win_rate": 64.4,
+      "opened_at": "2026-03-10T14:38:06.415525",
+      "exit_price": 112.15,
+      "pnl": 9.68,
+      "pnl_pct": 1.38,
+      "reason": "target",
+      "closed_at": "2026-03-10T14:38:14.535209"
+    },
+    {
+      "ticker": "AAOI",
+      "direction": "LONG",
+      "entry_price": 110.62,
+      "stop_price": 109.72,
+      "target_price": 112.15,
+      "shares": 6.328,
+      "amount": 700.0,
+      "window": "11:00-11:30",
+      "win_rate": 64.4,
+      "opened_at": "2026-03-10T14:38:21.357668",
+      "exit_price": 112.15,
+      "pnl": 9.68,
+      "pnl_pct": 1.38,
+      "reason": "target",
+      "closed_at": "2026-03-10T14:38:27.230017"
+    }
+  ],
+  "open_position": {
+    "ticker": "AAOI",
+    "direction": "LONG",
+    "entry_price": 110.62,
+    "stop_price": 109.72,
+    "target_price": 112.15,
+    "shares": 6.328,
+    "amount": 700.0,
+    "window": "11:00-11:30",
+    "win_rate": 64.4,
+    "opened_at": "2026-03-10T14:39:11.982107"
+  }
+}

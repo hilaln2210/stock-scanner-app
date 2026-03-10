@@ -1,0 +1,31 @@
+{
+  "markets": [
+    {
+      "market_id": "multi-001",
+      "question": "Who wins the election? (A/B/C)",
+      "outcomes": [
+        { "outcome_id": "A", "name": "Candidate A", "price": 0.35, "liquidity": 4000 },
+        { "outcome_id": "B", "name": "Candidate B", "price": 0.32, "liquidity": 3500 },
+        { "outcome_id": "C", "name": "Candidate C", "price": 0.28, "liquidity": 3000 }
+      ]
+    },
+    {
+      "market_id": "multi-002",
+      "question": "Structural arbitrage: sum < 1",
+      "outcomes": [
+        { "outcome_id": "X", "name": "X", "price": 0.32, "liquidity": 2000 },
+        { "outcome_id": "Y", "name": "Y", "price": 0.33, "liquidity": 2000 },
+        { "outcome_id": "Z", "name": "Z", "price": 0.30, "liquidity": 2000 }
+      ]
+    },
+    {
+      "market_id": "multi-003",
+      "question": "No arbitrage: sum = 1",
+      "outcomes": [
+        { "outcome_id": "P", "name": "P", "price": 0.34, "liquidity": 5000 },
+        { "outcome_id": "Q", "name": "Q", "price": 0.33, "liquidity": 5000 },
+        { "outcome_id": "R", "name": "R", "price": 0.33, "liquidity": 5000 }
+      ]
+    }
+  ]
+}

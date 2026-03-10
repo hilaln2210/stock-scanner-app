@@ -8,8 +8,8 @@ Step 3: Generate trade signals for strong patterns (win rate > 60%)
 
 import asyncio
 import math
+import multiprocessing
 import time as _time
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 import yfinance as yf
@@ -393,15 +393,46 @@ def _analyze_ticker_patterns(ticker: str, days: int = 45, interval: str = "5m") 
         return {"ticker": ticker, "error": str(e)}
 
 
+def _subprocess_worker(ticker: str, days: int, interval: str, result_q: multiprocessing.Queue):
+    """Runs inside a subprocess — can be hard-killed if it hangs."""
+    try:
+        result = _analyze_ticker_patterns(ticker, days, interval)
+        result_q.put(result)
+    except Exception as e:
+        result_q.put({"ticker": ticker, "error": str(e)})
+
+
+def _run_with_hard_timeout(ticker: str, days: int, interval: str, timeout: int) -> Optional[dict]:
+    """
+    Run analysis in a subprocess with a hard wall-clock timeout.
+    Unlike run_in_executor(thread), a subprocess can be terminate()/kill()ed.
+    Uses 'fork' context on Linux — fast, no re-import overhead.
+    """
+    ctx = multiprocessing.get_context("fork")
+    q = ctx.Queue()
+    p = ctx.Process(target=_subprocess_worker, args=(ticker, days, interval, q), daemon=True)
+    p.start()
+    p.join(timeout=timeout)
+    if p.is_alive():
+        p.terminate()
+        p.join(2)
+        if p.is_alive():
+            p.kill()
+            p.join()
+        return {"ticker": ticker, "error": f"Timeout ({timeout}s) — נסה שוב עם פחות ימים"}
+    return q.get_nowait() if not q.empty() else None
+
+
 async def analyze_single_ticker(ticker: str, days: int = 45, interval: str = "5m") -> Optional[dict]:
-    """Analyze patterns for a single ticker (manual mode)."""
+    """Analyze patterns for a single ticker (manual mode) with hard-kill timeout."""
     now = _time.time()
     cache_key = f"{ticker}_{days}_{interval}"
     if cache_key in _pattern_cache and now - _pattern_cache_time.get(cache_key, 0) < _PATTERN_CACHE_TTL:
         return _pattern_cache[cache_key]
 
+    timeout = 90 if interval == "1h" else 45
     loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, _analyze_ticker_patterns, ticker, days, interval)
+    result = await loop.run_in_executor(None, _run_with_hard_timeout, ticker, days, interval, timeout)
 
     if result and "error" not in result:
         _pattern_cache[cache_key] = result
@@ -412,14 +443,15 @@ async def analyze_single_ticker(ticker: str, days: int = 45, interval: str = "5m
 
 async def analyze_pool_patterns(pool: List[dict], days: int = 45, interval: str = "5m") -> List[dict]:
     """Step 2: Analyze patterns for all stocks in the pool."""
-    loop = asyncio.get_event_loop()
     results = []
+    timeout = 45  # per-ticker hard timeout
+    tickers = [s["ticker"] for s in pool]
 
     # Process in batches of 2 (heavy operation)
-    tickers = [s["ticker"] for s in pool]
+    loop = asyncio.get_event_loop()
     for i in range(0, len(tickers), 2):
         batch = tickers[i:i + 2]
-        tasks = [loop.run_in_executor(None, _analyze_ticker_patterns, t, days, interval) for t in batch]
+        tasks = [loop.run_in_executor(None, _run_with_hard_timeout, t, days, interval, timeout) for t in batch]
         batch_results = await asyncio.gather(*tasks, return_exceptions=True)
         for r in batch_results:
             if isinstance(r, dict) and r is not None and "error" not in r:
@@ -427,7 +459,6 @@ async def analyze_pool_patterns(pool: List[dict], days: int = 45, interval: str 
         if i + 2 < len(tickers):
             await asyncio.sleep(0.5)
 
-    # Sort by number of tradeable windows
     results.sort(key=lambda x: len(x.get("tradeable_windows", [])), reverse=True)
     return results
 

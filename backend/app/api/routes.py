@@ -3102,8 +3102,10 @@ async def pattern_analyze_ticker(
     # Cap days per interval limits
     if interval in ("5m", "15m"):
         days = min(days, 59)
+    # asyncio timeout = subprocess hard-timeout + 10s buffer
+    asyncio_timeout = 100 if interval == "1h" else 55
     try:
-        result = await asyncio.wait_for(analyze_single_ticker(ticker, days=days, interval=interval), timeout=60)
+        result = await asyncio.wait_for(analyze_single_ticker(ticker, days=days, interval=interval), timeout=asyncio_timeout)
     except asyncio.TimeoutError:
         return {"error": f"Timeout analyzing {ticker} — נסה שוב או הפחת ימים"}
     if not result:

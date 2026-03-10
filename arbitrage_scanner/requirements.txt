@@ -1,0 +1,6 @@
+# Prediction-market arbitrage scanner (educational, paper trading only)
+# Python 3.10+
+
+pytest>=7.0.0
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
