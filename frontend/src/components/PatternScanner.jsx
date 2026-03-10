@@ -270,6 +270,88 @@ const fmtWindow = (w) => {
 };
 const fmtTime = (t) => t ? `${t} NY / ${etToIL(t)} IL` : t;
 
+// ── Static sector map for common tickers ────────────────────────────────────
+const SECTOR_MAP = {
+  // Tech
+  NVDA:'טכנולוגיה (מוליכים)', AMD:'טכנולוגיה (מוליכים)', INTC:'טכנולוגיה (מוליכים)',
+  AAPL:'טכנולוגיה (צרכן)', MSFT:'תוכנה/ענן', GOOGL:'פרסום/ענן', META:'רשתות חברתיות',
+  AMZN:'ריטייל/ענן', TSLA:'רכב חשמלי', NFLX:'בידור דיגיטלי',
+  CRM:'תוכנה ארגונית', ADBE:'תוכנה ארגונית', NOW:'תוכנה ארגונית',
+  PLTR:'ניתוח נתונים/ממשל', SNOW:'ענן/נתונים', DDOG:'ניטור ענן',
+  // Finance
+  JPM:'בנקאות', GS:'השקעות', MS:'השקעות', BAC:'בנקאות', C:'בנקאות',
+  V:'תשלומים דיגיטליים', MA:'תשלומים דיגיטליים', PYPL:'פינטק', SQ:'פינטק',
+  // Biotech/Pharma
+  MRNA:'ביוטק (mRNA)', BNTX:'ביוטק (mRNA)', REGN:'ביוטק', BIIB:'ביוטק',
+  PFE:'פארמה', JNJ:'פארמה/בריאות', ABBV:'פארמה',
+  // Energy
+  XOM:'אנרגיה (נפט)', CVX:'אנרגיה (נפט)', OXY:'אנרגיה (נפט)',
+  // ETFs/Indices
+  SPY:'ETF S&P500', QQQ:'ETF נאסד"ק', IWM:'ETF Small Cap', ARKK:'ETF צמיחה',
+  // Other
+  DIS:'בידור/מדיה', BABA:'טכנולוגיה סינית', NIO:'רכב חשמלי סיני',
+  GME:'ריטייל (ממים)', AMC:'בידור (ממים)',
+};
+
+// ── Textual stock insight generator ─────────────────────────────────────────
+function generateStockInsight(s, botPick, isTop, ibOpen) {
+  const lines = [];
+
+  // Cap + sector
+  const capLabel = s.market_cap >= 200e9 ? 'Mega Cap'
+    : s.market_cap >= 10e9 ? 'Large Cap'
+    : s.market_cap >= 2e9 ? 'Mid Cap' : 'Small Cap';
+  const sector = SECTOR_MAP[s.ticker];
+  lines.push(`📌 ${capLabel}${sector ? ` — ${sector}` : ''}`);
+
+  // Volatility
+  const atrText = s.atr_pct >= 7 ? `תנודתיות גבוהה מאוד (ATR ${s.atr_pct}%) — מתאים לסוחרים מנוסים`
+    : s.atr_pct >= 5 ? `תנודתיות גבוהה (ATR ${s.atr_pct}%) — פוטנציאל רווח גדול אך גם סיכון`
+    : s.atr_pct >= 3 ? `תנודתיות טובה (ATR ${s.atr_pct}%) — אידיאלי לאינטרה-דיי`
+    : `תנודתיות בינונית (ATR ${s.atr_pct}%)`;
+  lines.push(`📊 ${atrText}`);
+
+  // Liquidity + spread
+  const volM = (s.avg_volume / 1e6).toFixed(0);
+  const volText = s.avg_volume >= 50e6 ? `נפח ${volM}M — נזילות מצוינת, קל להיכנס ולצאת`
+    : s.avg_volume >= 20e6 ? `נפח ${volM}M — נזילות טובה`
+    : `נפח ${volM}M — נזילות סבירה`;
+  const spreadText = s.spread_pct <= 0.05 ? 'עלות כניסה/יציאה זולה מאוד'
+    : s.spread_pct <= 0.1 ? 'עלות כניסה/יציאה זולה'
+    : s.spread_pct <= 0.2 ? 'עלות כניסה/יציאה בינונית'
+    : 'עלות כניסה/יציאה גבוהה — שים לב';
+  lines.push(`💧 ${volText} | ${spreadText} (Bid/Ask ${s.spread_pct}%)`);
+
+  // Today's movement
+  if (s.change_pct != null && Math.abs(s.change_pct) > 0.5) {
+    const dir = s.change_pct > 0 ? '▲ עולה' : '▼ יורדת';
+    const strength = Math.abs(s.change_pct) > 5 ? 'תנועה חזקה מאוד'
+      : Math.abs(s.change_pct) > 3 ? 'תנועה חזקה'
+      : Math.abs(s.change_pct) > 1.5 ? 'תנועה בולטת'
+      : 'תנועה קלה';
+    lines.push(`📅 היום: ${dir} ${Math.abs(s.change_pct)}% — ${strength}`);
+  }
+
+  // Bot pick details
+  if (botPick) {
+    const [ws, we] = botPick.window.split('-');
+    const ilWindow = `${etToIL(ws)}–${etToIL(we)}`;
+    const nyWindow = `${ws}–${we}`;
+    const dirText = botPick.direction === 'Long' ? '📈 Long (עלייה)' : '📉 Short (ירידה)';
+    const strengthText = botPick.score > 75 ? 'חוזק גבוה' : botPick.score > 55 ? 'חוזק בינוני' : 'חוזק חלש';
+    lines.push(`🤖 בוט: ${dirText} | חלון ${ilWindow} IL (${nyWindow} NY) | Win Rate ${botPick.win_rate}% | ${strengthText}`);
+  } else if (isTop) {
+    lines.push(`⭐ ציון מאגר גבוה — ATR%+נפח+Bid/Ask בטופ 5 | מומלץ לנתח לפני פתיחת שוק`);
+  }
+
+  // IB open
+  if (ibOpen) {
+    lines.push(`🔴 פוזיציה פתוחה ב-Interactive Brokers`);
+  }
+
+  return lines;
+}
+
 // ── Auto Bot Panel ───────────────────────────────────────────────────────────
 function AutoBotPanel({ investment }) {
   const qc = useQueryClient();
@@ -719,6 +801,7 @@ export default function PatternScanner() {
   const [interval, setInterval_] = useState('5m');
   const [days, setDays] = useState(45);
   const [expandedTicker, setExpandedTicker] = useState(null);
+  const [expandedInsights, setExpandedInsights] = useState(new Set());
   const [activeTab, setActiveTab] = useState('analyze'); // pool | analyze | autobot
   const [poolRequested, setPoolRequested] = useState(false);
   const [investment, setInvestment] = useState(700);
@@ -835,6 +918,16 @@ export default function PatternScanner() {
     scored.sort((a, b) => b.score - a.score);
     return new Set(scored.slice(0, 5).map(x => x.ticker));
   }, [poolData]);
+
+  // Auto-expand bot picks + TOP tickers when pool data loads
+  useEffect(() => {
+    if (!poolData?.pool) return;
+    const autoExpand = new Set();
+    poolData.pool.forEach(s => {
+      if (topTickers.has(s.ticker) || botPicksMap[s.ticker]) autoExpand.add(s.ticker);
+    });
+    setExpandedInsights(autoExpand);
+  }, [poolData, topTickers, botPicksMap]);
 
   const sortedPool = useMemo(() => {
     if (!poolData?.pool) return [];
@@ -1071,12 +1164,18 @@ export default function PatternScanner() {
                         : 'rgba(255,255,255,0.03)';
 
                       return (
-                        <tr key={s.ticker} className="border-b transition-colors hover:bg-slate-800/40"
+                        <React.Fragment key={s.ticker}>
+                        <tr className="border-b transition-colors hover:bg-slate-800/40"
                           style={{ borderColor, background: rowBg,
                             boxShadow: botPick ? 'inset 3px 0 0 #4ade80' : hasIB ? 'inset 3px 0 0 #fbbf24' : 'none' }}>
 
-                          {/* Ticker + badges */}
-                          <td className="py-2.5 px-3">
+                          {/* Ticker + badges + insight toggle */}
+                          <td className="py-2.5 px-3 cursor-pointer"
+                            onClick={() => setExpandedInsights(prev => {
+                              const n = new Set(prev);
+                              n.has(s.ticker) ? n.delete(s.ticker) : n.add(s.ticker);
+                              return n;
+                            })}>
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-black text-white">{s.ticker}</span>
                               {isTop && (
@@ -1087,6 +1186,9 @@ export default function PatternScanner() {
                                 <span className="text-xs px-1 rounded font-bold" title="פוזיציה פתוחה ב-IB"
                                   style={{ background: 'rgba(251,191,36,0.2)', color: '#fbbf24' }}>IB</span>
                               )}
+                              <span style={{ color: expandedInsights.has(s.ticker) ? '#a78bfa' : '#334155', fontSize: 10 }}>
+                                {expandedInsights.has(s.ticker) ? '▲' : '▼'}
+                              </span>
                             </div>
                           </td>
 
@@ -1164,7 +1266,29 @@ export default function PatternScanner() {
                             </button>
                           </td>
                         </tr>
-                      );
+                        {/* ── Insight row ── */}
+                        {expandedInsights.has(s.ticker) && (() => {
+                          const insightLines = generateStockInsight(s, botPick, isTop, hasIB);
+                          return (
+                            <tr style={{ background: 'rgba(139,92,246,0.04)', borderBottom: '1px solid rgba(139,92,246,0.1)' }}>
+                              <td colSpan={10} className="px-4 py-3">
+                                <div className="flex flex-col gap-1.5">
+                                  <div className="flex items-center gap-1.5 mb-0.5">
+                                    <span style={{ color: '#a78bfa', fontSize: 11, fontWeight: 'bold' }}>💡 ניתוח מילולי — {s.ticker}</span>
+                                    <span className="text-slate-600" style={{ fontSize: 10 }}>לחץ על הטיקר לסגירה</span>
+                                  </div>
+                                  {insightLines.map((line, i) => (
+                                    <div key={i} className="text-xs text-slate-300 leading-relaxed">
+                                      {line}
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })()}
+                      </React.Fragment>
+                    );
                     })}
                   </tbody>
                 </table>
