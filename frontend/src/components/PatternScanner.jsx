@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { RefreshCw, Search, TrendingUp, TrendingDown, Target, Shield, Zap, Clock, BarChart3, Wallet, Bot, Power, PowerOff, Send, ArrowUp, ArrowDown, ChevronsUpDown, Star, Activity, Info } from 'lucide-react';
