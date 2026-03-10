@@ -297,42 +297,35 @@ function CandlestickPatternChart({ ticker, windows, days }) {
     <div className="rounded-xl overflow-hidden" style={{
       background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)',
     }}>
-      {/* Header */}
-      <div className="p-3 flex items-center gap-2 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <CandlestickChart size={16} color="#fbbf24" />
-        <span className="text-sm font-bold text-white">גרף נרות Finviz + דפוסי זמן</span>
-        <span className="text-xs text-slate-500">בהתבסס על ניתוח של {days} ימים</span>
+      {/* Header — minimal */}
+      <div className="px-3 py-2 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+        <CandlestickChart size={13} color="#fbbf24" />
+        <span className="text-xs font-bold text-slate-300">גרף Finviz — בהתבסס על {days} ימים</span>
         <a href={`https://finviz.com/quote.ashx?t=${ticker}`} target="_blank" rel="noreferrer"
-          className="mr-auto text-xs px-2 py-0.5 rounded" style={{
-            background: 'rgba(255,255,255,0.05)', color: '#64748b', border: '1px solid rgba(255,255,255,0.06)',
-          }}>
-          פתח ב-Finviz ↗
-        </a>
+          className="mr-auto text-[10px] text-slate-600 hover:text-slate-400">↗ Finviz</a>
       </div>
 
-      {/* ── Chart image + overlay ── */}
-      <div className="relative w-full" style={{ direction: 'ltr', background: '#111' }}>
+      {/* Chart image + overlay */}
+      <div className="relative w-full" style={{ direction: 'ltr' }}>
         {!imgLoaded && !imgError && (
-          <div className="absolute inset-0 flex items-center justify-center text-slate-500 text-sm z-10" style={{ minHeight: 200 }}>
-            <RefreshCw size={18} className="animate-spin ml-2" /> טוען גרף...
+          <div className="flex items-center justify-center py-8 text-slate-600 text-xs gap-2">
+            <RefreshCw size={14} className="animate-spin" /> טוען...
           </div>
         )}
         {imgError ? (
-          <div className="flex items-center justify-center py-10 text-slate-500 text-sm">
-            גרף לא זמין — Finviz חסם את הבקשה
+          <div className="flex items-center justify-center py-6 text-slate-600 text-xs">
+            גרף לא זמין
           </div>
         ) : (
           <>
             <img
               src={chartUrl}
-              alt={`${ticker} intraday chart`}
+              alt={`${ticker}`}
               className="w-full block"
               style={{ opacity: imgLoaded ? 1 : 0, transition: 'opacity 0.3s' }}
               onLoad={() => setImgLoaded(true)}
               onError={() => { setImgError(true); setImgLoaded(true); }}
             />
-
-            {/* ── Overlay bands + labels ── */}
             {imgLoaded && (
               <div className="absolute inset-0 pointer-events-none">
                 {classified.map((w, i) => {
@@ -340,57 +333,42 @@ function CandlestickPatternChart({ ticker, windows, days }) {
                   const isCurrent = w.window === currentWindow;
                   const isStrong = w.direction !== 'neutral' &&
                     (w.direction === 'up' ? w.win_rate : w.loss_rate) >= 60;
-
-                  const bandColor = w.direction === 'up'
-                    ? 'rgba(74,222,128,0.13)'
-                    : w.direction === 'down'
-                      ? 'rgba(248,113,113,0.13)'
-                      : 'transparent';
-                  const lineColor = w.direction === 'up' ? '#4ade80'
-                    : w.direction === 'down' ? '#f87171' : 'rgba(100,116,139,0.3)';
-                  const textColor = w.direction === 'up' ? '#4ade80'
-                    : w.direction === 'down' ? '#f87171' : '#475569';
+                  const bandColor = w.direction === 'up' ? 'rgba(74,222,128,0.12)'
+                    : w.direction === 'down' ? 'rgba(248,113,113,0.12)' : 'transparent';
+                  const lineColor = w.direction === 'up' ? 'rgba(74,222,128,0.5)'
+                    : w.direction === 'down' ? 'rgba(248,113,113,0.5)' : 'rgba(100,116,139,0.15)';
+                  const textColor = w.direction === 'up' ? '#4ade80' : '#f87171';
 
                   return (
                     <div key={i}>
-                      {/* Vertical colored band over chart candles area */}
                       <div style={{
                         position: 'absolute',
-                        left: `${xPct}%`,
-                        width: `${windowW}%`,
-                        top: `${CHART_TOP_PCT}%`,
-                        height: `${CHART_BOT_PCT - CHART_TOP_PCT}%`,
-                        background: isCurrent ? 'rgba(251,191,36,0.12)' : bandColor,
-                        borderLeft: `1px dashed ${isCurrent ? 'rgba(251,191,36,0.6)' : lineColor}`,
-                        borderRight: i === classified.length - 1 ? `1px dashed ${lineColor}` : 'none',
+                        left: `${xPct}%`, width: `${windowW}%`,
+                        top: `${CHART_TOP_PCT}%`, height: `${CHART_BOT_PCT - CHART_TOP_PCT}%`,
+                        background: isCurrent ? 'rgba(251,191,36,0.1)' : bandColor,
+                        borderLeft: `1px dashed ${isCurrent ? 'rgba(251,191,36,0.5)' : lineColor}`,
                       }} />
-
-                      {/* Label box — only for strong patterns or current window */}
                       {(isStrong || isCurrent) && (
                         <div style={{
                           position: 'absolute',
                           left: `${xPct + windowW / 2}%`,
-                          top: `${CHART_TOP_PCT + 1}%`,
+                          top: `${CHART_TOP_PCT + 0.5}%`,
                           transform: 'translateX(-50%)',
-                          background: isCurrent
-                            ? 'rgba(251,191,36,0.95)'
-                            : w.direction === 'up' ? 'rgba(20,83,45,0.93)' : 'rgba(127,29,29,0.93)',
+                          background: isCurrent ? 'rgba(251,191,36,0.9)'
+                            : w.direction === 'up' ? 'rgba(15,60,35,0.9)' : 'rgba(80,20,20,0.9)',
                           border: `1px solid ${isCurrent ? '#fbbf24' : lineColor}`,
-                          borderRadius: 4,
-                          padding: '2px 5px',
+                          borderRadius: 3,
+                          padding: '1px 4px',
                           whiteSpace: 'nowrap',
-                          fontSize: 10,
-                          fontWeight: 900,
+                          fontSize: 9,
+                          fontWeight: 700,
                           color: isCurrent ? '#0f172a' : textColor,
-                          lineHeight: 1.3,
+                          lineHeight: 1.4,
                           textAlign: 'center',
                           zIndex: 10,
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.6)',
                         }}>
-                          <div>{isCurrent ? '▶ עכשיו' : w.direction === 'up' ? '▲ עולה' : '▼ יורדת'}</div>
-                          <div style={{ fontSize: 9, opacity: 0.9 }}>
-                            {w.direction === 'up' ? w.win_rate : w.loss_rate}% | {w.avg_change > 0 ? '+' : ''}{w.avg_change}%
-                          </div>
+                          {isCurrent ? '▶ עכשיו' : w.direction === 'up' ? '▲' : '▼'}
+                          {' '}{w.direction === 'up' ? w.win_rate : w.loss_rate}%
                         </div>
                       )}
                     </div>
@@ -400,32 +378,6 @@ function CandlestickPatternChart({ ticker, windows, days }) {
             )}
           </>
         )}
-      </div>
-
-      {/* ── Verbal summary of strong patterns ── */}
-      <div className="px-3 py-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <div className="text-[10px] text-slate-600 mb-1.5 text-center">
-          בהתבסס על {days} ימי מסחר — ירוק = עולה | אדום = יורדת | צהוב = עכשיו (חלון נוכחי)
-        </div>
-        <div className="flex flex-wrap gap-1.5 justify-center">
-          {classified.filter(w => w.direction === 'up' && w.win_rate >= 60).map((w, i) => (
-            <span key={`up-${i}`} className="text-xs px-2 py-0.5 rounded" style={{
-              background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)', color: '#4ade80',
-            }}>
-              ▲ {w.window} — {w.win_rate}% ימים עולה | ממוצע {w.avg_change > 0 ? '+' : ''}{w.avg_change}%
-            </span>
-          ))}
-          {classified.filter(w => w.direction === 'down' && w.loss_rate >= 60).map((w, i) => (
-            <span key={`dn-${i}`} className="text-xs px-2 py-0.5 rounded" style={{
-              background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', color: '#f87171',
-            }}>
-              ▼ {w.window} — {w.loss_rate}% ימים יורדת | ממוצע {w.avg_change}%
-            </span>
-          ))}
-          {classified.every(w => w.direction === 'neutral' || (w.direction === 'up' ? w.win_rate : w.loss_rate) < 60) && (
-            <span className="text-xs text-slate-600">אין דפוסי זמן חזקים מספיק (נדרש 60%+)</span>
-          )}
-        </div>
       </div>
     </div>
   );
@@ -1034,7 +986,7 @@ export default function PatternScanner() {
                     />
                   </div>
                 </div>
-                <PatternHeatmap windows={tickerAnalysis.windows} height={580} investment={investment} price={tickerAnalysis.price} />
+                <PatternHeatmap windows={tickerAnalysis.windows} height={720} investment={investment} price={tickerAnalysis.price} />
               </div>
 
               {/* ── Candlestick Chart with Pattern Annotations ── */}
