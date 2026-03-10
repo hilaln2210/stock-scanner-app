@@ -28,6 +28,26 @@ const queryClient = new QueryClient({
 const API_BASE = '/api';
 const api = axios.create({ baseURL: API_BASE, timeout: 45000 });
 
+// Derive a short Hebrew reason label from a news headline
+function getReasonFromTitle(title) {
+  if (!title) return null;
+  const t = title.toLowerCase();
+  if (/\bearnings?\b|beat.*eps|eps.*beat|\bq[1-4]\b.*result|revenue.*beat|profit.*rise|\bsurpas/.test(t)) return { label: 'רווחים טובים', color: '#4ade80' };
+  if (/\bfda\b.*approv|approv.*\bfda\b|\bpdufa\b|\bnda\b.*approv|drug.*approv|clearance.*fda/.test(t)) return { label: 'אישור FDA', color: '#a78bfa' };
+  if (/\bupgrad\b|price target.*rais|rais.*price target|outperform|overweight|buy rating|strong buy/.test(t)) return { label: 'שדרוג אנליסט', color: '#60a5fa' };
+  if (/\bdowngrad\b|price target.*cut|cut.*price target|underperform|underweight|sell rating/.test(t)) return { label: 'הורדת דירוג', color: '#f87171' };
+  if (/\bacquisition\b|\bmerger\b|\bbuyout\b|\bto acquire\b|\bto buy\b.*\b(company|corp|inc)\b|\btakeover\b/.test(t)) return { label: 'רכישה/מיזוג', color: '#fbbf24' };
+  if (/\bguidance\b.*rais|raise.*\bguidance\b|\boutlook\b.*raised|forecast.*upgrad/.test(t)) return { label: 'שיפור תחזית', color: '#34d399' };
+  if (/\bguidance\b.*low|lower.*\bguidance\b|\boutlook\b.*cut|warns.*miss|guidance.*cut/.test(t)) return { label: 'תחזית נמוכה', color: '#f87171' };
+  if (/\bcontract\b|\bdeal\b.*\$|\bpartnership\b|\bagreement\b.*\$|\bawarded\b/.test(t)) return { label: 'עסקה/חוזה', color: '#fbbf24' };
+  if (/short sell|short interest|fraud|manipulat|accounting irregularit/.test(t)) return { label: 'ספקולציה שורט', color: '#fb923c' };
+  if (/\bbuyback\b|share repurchase|dividend|special dividend/.test(t)) return { label: 'ריבאק/דיבידנד', color: '#4ade80' };
+  if (/clinical trial|phase [123]|data read|topline|top.line|positive data/.test(t)) return { label: 'נתוני ניסוי', color: '#a78bfa' };
+  if (/layoff|restructur|job cut|workforce reduction/.test(t)) return { label: 'פיטורים', color: '#f87171' };
+  if (/ipo|initial public offering|debut/.test(t)) return { label: 'IPO', color: '#60a5fa' };
+  return null;
+}
+
 // Tab definitions with accent hex colors for the active underline
 const TABS = [
   { key: 'briefing',        label: '☀️ בריפינג',            accent: '#f59e0b' },
@@ -425,6 +445,7 @@ function MomentumDashboard() {
                     if (diff < 1440) return `${Math.floor(diff / 60)}h`;
                     return d.toLocaleDateString();
                   })();
+                  const moveReason = getReasonFromTitle(item.title);
                   return (
                     <a key={item.id || idx} href={item.url} target="_blank" rel="noopener noreferrer"
                       className="flex-shrink-0 rounded-lg p-3 transition-all hover:scale-[1.02]"
@@ -479,6 +500,19 @@ function MomentumDashboard() {
                           </div>
                         );
                       })()}
+                      {/* Move reason badge */}
+                      {moveReason && (
+                        <div style={{
+                          marginTop: 5, display: 'inline-flex', alignItems: 'center',
+                          padding: '2px 7px', borderRadius: 4,
+                          background: `${moveReason.color}18`,
+                          border: `1px solid ${moveReason.color}40`,
+                        }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: moveReason.color, direction: 'rtl' }}>
+                            💡 {moveReason.label}
+                          </span>
+                        </div>
+                      )}
                     </a>
                   );
                 })}
