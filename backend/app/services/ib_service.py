@@ -10,6 +10,8 @@ import logging
 import threading
 import itertools
 import time
+import json
+from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 
@@ -93,6 +95,34 @@ class IBService:
         self._orders_cache: List[Dict] = []
         self._orders_cache_time: float = 0
         self._CACHE_TTL = 20  # seconds
+        # Local trade history (persists across reconnections)
+        self._trade_history_file = Path(__file__).parent.parent.parent / "data" / "ib_trade_history.json"
+        self._trade_history: List[Dict] = self._load_trade_history()
+
+    def _load_trade_history(self) -> List[Dict]:
+        try:
+            if self._trade_history_file.exists():
+                return json.loads(self._trade_history_file.read_text())
+        except Exception as e:
+            log.warning(f"[IB] Failed to load trade history: {e}")
+        return []
+
+    def _save_trade_log(self, entry: Dict):
+        """Append a trade to local history and persist."""
+        self._trade_history.append(entry)
+        # Keep last 500 entries
+        self._trade_history = self._trade_history[-500:]
+        try:
+            self._trade_history_file.parent.mkdir(exist_ok=True)
+            self._trade_history_file.write_text(
+                json.dumps(self._trade_history, indent=2, default=str)
+            )
+        except Exception as e:
+            log.warning(f"[IB] Failed to save trade history: {e}")
+
+    def get_trade_history(self, limit: int = 50) -> List[Dict]:
+        """Return local trade history (most recent first)."""
+        return list(reversed(self._trade_history[-limit:]))
 
     # ── helpers ──────────────────────────────────────────────────────────
 
@@ -343,6 +373,8 @@ class IBService:
             since = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d %H:%M:%S")
             ef = _ib.ExecutionFilter(time=since)
             fills = ib.reqExecutions(ef)
+            ib.sleep(2)  # wait for execution reports to arrive
+            fills = ib.fills()  # get all fills after sleep
             result = []
             _MAX = 1.7976931348623157e+308
             for fill in fills:
@@ -409,6 +441,18 @@ class IBService:
         if result and "order_id" in result:
             self._orders_cache_time = 0
             self._positions_cache_time = 0
+            # Log to local trade history
+            self._save_trade_log({
+                "time": datetime.now().isoformat(),
+                "order_id": result.get("order_id"),
+                "ticker": result.get("ticker"),
+                "action": result.get("action"),
+                "qty": result.get("qty"),
+                "order_type": result.get("order_type"),
+                "limit_price": result.get("limit_price"),
+                "status": result.get("status"),
+                "tif": result.get("tif"),
+            })
         return result or {"error": "timeout"}
 
     # ── Cancel Order ──────────────────────────────────────────────────────

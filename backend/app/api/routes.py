@@ -1376,7 +1376,13 @@ async def ib_orders():
 
 @router.get("/ib/executions")
 async def ib_executions(days: int = Query(7, le=90)):
-    return await ib_service.get_executions(days=days)
+    # Return local persistent trade history (reliable, survives reconnections)
+    return ib_service.get_trade_history(limit=100)
+
+@router.get("/ib/trade-history")
+async def ib_trade_history(limit: int = Query(50, le=500)):
+    """Local persistent trade history (survives IB reconnections)."""
+    return ib_service.get_trade_history(limit=limit)
 
 
 @router.post("/ib/order")
