@@ -248,22 +248,24 @@ async def lifespan(app: FastAPI):
 
     async def _ib_auto_reconnect():
         from app.services.ib_service import ib_service
-        from app.services.arena_ib_trader import arena_ib_trader
-        if not arena_ib_trader.enabled:
-            return
         if ib_service.is_connected():
             _ib_reconnect_failures[0] = 0
             return
-        # Back off after repeated failures: skip if too many consecutive fails
-        if _ib_reconnect_failures[0] >= 10:
-            # Reset every 10 min (10 failures × 60s = 10min) to retry
-            if _ib_reconnect_failures[0] % 10 == 0:
-                print("[IB Reconnect] Resetting backoff, retrying...")
+        # Only reconnect if IB was previously connected (user initiated at least once)
+        if not ib_service._ever_connected:
+            return
+        # Back off after repeated failures: retry every 5 attempts (~5 min)
+        if _ib_reconnect_failures[0] >= 5:
+            if _ib_reconnect_failures[0] % 5 == 0:
+                print("[IB Reconnect] Retrying after backoff...")
             else:
+                _ib_reconnect_failures[0] += 1
                 return
         try:
-            print("[IB Reconnect] Arena trader enabled but IB disconnected — reconnecting...")
-            result = await ib_service.connect(host="127.0.0.1", port=4002, client_id=20)
+            print(f"[IB Reconnect] IB disconnected — reconnecting to {ib_service._host}:{ib_service._port}...")
+            result = await ib_service.connect(
+                host=ib_service._host, port=ib_service._port, client_id=20
+            )
             if result.get("connected"):
                 _ib_reconnect_failures[0] = 0
                 print(f"[IB Reconnect] ✓ Connected to {result.get('account', '?')}")

@@ -82,6 +82,7 @@ def _run_in_ib_thread(fn, timeout=12, priority=False):
 class IBService:
     def __init__(self):
         self._connected = False
+        self._ever_connected = False  # True after first successful connect
         self._account = ""
         self._host = "127.0.0.1"
         self._port = 4002
@@ -215,12 +216,15 @@ class IBService:
             self._host = host
             self._port = port
             self._connected = True
+            self._ever_connected = True
         return {"connected": True, "account": self._account, "host": host, "port": port}
 
     # ── Account Summary ───────────────────────────────────────────────────
 
     async def get_account_summary(self) -> Dict:
         if not self.is_connected():
+            if self._account_cache:
+                return self._account_cache
             return {"error": "לא מחובר ל-IB"}
 
         # Serve from cache if fresh
@@ -263,6 +267,9 @@ class IBService:
 
     async def get_positions(self) -> List[Dict]:
         if not self.is_connected():
+            # Return stale cache if available (keeps UI populated during disconnect)
+            if self._positions_cache:
+                return self._positions_cache
             return []
 
         # Serve from cache if fresh (avoid new IB connection on every refresh)
@@ -393,6 +400,8 @@ class IBService:
 
     async def get_open_orders(self) -> List[Dict]:
         if not self.is_connected():
+            if self._orders_cache:
+                return self._orders_cache
             return []
 
         if time.time() - self._orders_cache_time < self._CACHE_TTL:
