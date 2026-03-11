@@ -12,6 +12,7 @@ const DailyAnalysisScanner = lazy(() => import('./components/DailyAnalysisScanne
 const NewsPanel = lazy(() => import('./components/NewsPanel'));
 const IBPortfolio = lazy(() => import('./components/IBPortfolio'));
 const PatternScanner = lazy(() => import('./components/PatternScanner'));
+const SeasonalityScanner = lazy(() => import('./components/SeasonalityScanner'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -56,6 +57,7 @@ const TABS = [
   { key: 'daily-analysis',  label: '🎯 ניתוח יומי',           accent: '#8b5cf6' },
   { key: 'ib',              label: '🏦 IB חשבון',             accent: '#3b82f6' },
   { key: 'pattern-bot',     label: '🤖 Pattern Bot',           accent: '#a78bfa' },
+  { key: 'seasonality',     label: '📅 עונתיות',               accent: '#06b6d4' },
   { key: 'finviz-table',    label: '📋 סורק בסיסי',           accent: '#14b8a6' },
   { key: 'news',            label: '📰 חדשות',               accent: '#3b82f6' },
 ];
@@ -681,6 +683,8 @@ function MomentumDashboard() {
                     <IBPortfolio />
                   ) : viewMode === 'pattern-bot' ? (
                     <PatternScanner />
+                  ) : viewMode === 'seasonality' ? (
+                    <SeasonalityScanner />
                   ) : viewMode === 'finviz-table' ? (
                     <FinvizTableScanner ensureTickers={searchTicker?.trim().toUpperCase() || undefined} refreshSec={autoRefresh} />
                   ) : viewMode === 'news' ? (

@@ -3362,3 +3362,209 @@ async def autotrader_scan(payload: dict = Body({})):
     amount = float(payload.get("amount", 700))
     top_n  = int(payload.get("top_n", 5))
     return pattern_autotrader.manual_scan(amount=amount, top_n=top_n)
+
+
+# ── Seasonality Scanner ────────────────────────────────────────────────────────
+
+_MARKET_TICKERS = {
+    'ndx100': [
+        'AAPL','MSFT','NVDA','AMZN','META','GOOGL','TSLA','AVGO','COST','ASML',
+        'NFLX','AMD','TMUS','ADBE','CSCO','PEP','INTU','TXN','QCOM','ISRG',
+        'CMCSA','BKNG','AMGN','HON','PANW','VRTX','ADP','SBUX','GILD','MDLZ',
+        'ADI','INTC','REGN','LRCX','MU','KLAC','SNPS','CDNS','AMAT','MRVL',
+        'NXPI','PAYX','ORLY','CTAS','ROST','MNST','PCAR','KDP','IDXX','BIIB',
+        'FAST','ODFL','CEG','DXCM','ON','CRWD','ZS','FTNT','ANSS','MCHP',
+        'CPRT','DLTR','WDAY','TEAM','VRSK','CHTR','ILMN','EBAY','ALGN','SWKS',
+        'GEHC','GFS','LULU','MAR','MELI','MRNA','PYPL','SIRI','ABNB',
+        'COIN','DDOG','SMCI','TTD','UBER','WING','APP','FANG','EA','ZM',
+    ],
+    'djia': [
+        'AAPL','MSFT','JPM','V','UNH','HD','MCD','GS','CAT','BA',
+        'DIS','IBM','MMM','HON','AXP','CVX','NKE','PG','MRK','TRV',
+        'WMT','VZ','INTC','CSCO','KO','DOW','AMGN','CRM','JNJ','WBA',
+    ],
+    'sp500': [
+        'AAPL','MSFT','NVDA','AMZN','META','GOOGL','BRK-B','LLY','AVGO',
+        'JPM','TSLA','V','UNH','XOM','MA','COST','JNJ','PG','HD',
+        'MRK','ABBV','AMD','NFLX','CRM','BAC','CVX','ACN','PEP','TMO',
+        'ORCL','ADBE','MCD','GE','CSCO','IBM','WMT','CAT','GS','NOW',
+        'INTU','ISRG','UBER','AXP','BKNG','SPGI','AMGN','ETN','BLK','TXN',
+        'HON','PM','VRTX','ADP','SYK','SCHW','CME','LRCX','LOW','DE',
+        'TJX','BMY','ADI','GILD','C','MDLZ','MMC','CI','CB','FI',
+        'REGN','MU','KLAC','PANW','EOG','SNPS','PLD','ICE','CDNS','ZTS',
+        'MCO','HCA','DUK','AMAT','USB','WM','APH','NOC','CL','SO',
+        'EQIX','TGT','COF','FCX','CEG','MMM','ORLY','CARR','GD','ROP',
+        'MPC','NXPI','PSA','PSX','EW','ROST','AIG','PCAR','PAYX','OKE',
+        'AFL','MET','SLB','CPRT','MSCI','DHI','WDAY','STZ','IDXX','KMB',
+    ],
+}
+
+_seasonality_cache: dict = {}
+_SEASONALITY_CACHE_TTL = 7200  # 2 hours
+
+
+def _calc_seasonality_ticker(ticker, hist, start_month, start_day, years_back, days_min, days_max, direction):
+    """Find the best calendar window [days_min..days_max] for a ticker and return stats."""
+    import statistics as _stats
+    import math as _math
+
+    if hist is None or len(hist) < 100:
+        return None
+
+    best_window = None
+    best_win_rate = -1
+
+    for d in range(days_min, days_max + 1):
+        year_returns = []
+        for y_ago in range(1, years_back + 2):
+            year = datetime.now().year - y_ago
+            try:
+                start_dt = datetime(year, start_month, start_day)
+            except ValueError:
+                continue
+
+            # Closest trading day >= start_dt
+            mask_s = hist.index >= start_dt.date() if hasattr(hist.index[0], 'date') else hist.index >= start_dt
+            if not mask_s.any():
+                continue
+            start_idx = hist[mask_s].index[0]
+            start_price = float(hist.loc[start_idx, 'Close'])
+            if _math.isnan(start_price) or start_price == 0:
+                continue
+
+            end_dt = start_dt + timedelta(days=d)
+            end_dt_cmp = end_dt.date() if hasattr(hist.index[0], 'date') else end_dt
+            start_idx_cmp = start_idx.date() if hasattr(start_idx, 'date') else start_idx
+            buf_dt = (end_dt + timedelta(days=4)).date() if hasattr(hist.index[0], 'date') else end_dt + timedelta(days=4)
+
+            mask_e = (hist.index > start_idx) & (hist.index <= buf_dt)
+            if not mask_e.any():
+                continue
+            cands = hist[mask_e]
+            # pick trading day closest to target end
+            diffs = abs(cands.index - end_dt_cmp) if hasattr(cands.index[0], 'date') else abs(cands.index - end_dt)
+            end_idx = cands.index[diffs.argmin()]
+            end_price = float(hist.loc[end_idx, 'Close'])
+            if _math.isnan(end_price) or end_price == 0:
+                continue
+
+            ret = (end_price - start_price) / start_price * 100
+            year_returns.append(ret)
+
+        if len(year_returns) < max(3, years_back // 2):
+            continue
+
+        if direction == 'long':
+            winners = [r for r in year_returns if r > 0]
+            calc_rets = year_returns
+        else:
+            winners = [r for r in year_returns if r < 0]
+            calc_rets = [-r for r in year_returns]
+
+        win_rate = len(winners) / len(year_returns) * 100
+        if win_rate > best_win_rate:
+            best_win_rate = win_rate
+            avg_ret = _stats.mean(calc_rets)
+            med_ret = _stats.median(calc_rets)
+            max_p   = max(calc_rets)
+            max_l   = min(year_returns)  # raw, can be negative
+            std_dev = _stats.stdev(calc_rets) if len(calc_rets) > 1 else 0
+            sharpe  = round(avg_ret / std_dev, 2) if std_dev > 0 else 0
+            ann_ret = round(((1 + avg_ret / 100) ** (252 / d) - 1) * 100, 2) if d > 0 else 0
+            best_window = {
+                'cal_days':         d,
+                'num_trades':       len(year_returns),
+                'num_winners':      len(winners),
+                'win_ratio':        round(win_rate, 1),
+                'avg_return':       round(avg_ret, 2),
+                'median_return':    round(med_ret, 2),
+                'max_profit':       round(max_p, 2),
+                'max_loss':         round(max_l, 2),
+                'std_dev':          round(std_dev, 2),
+                'sharpe_ratio':     sharpe,
+                'annualized_return': ann_ret,
+            }
+
+    return best_window
+
+
+@router.get("/seasonality")
+async def seasonality_scanner(
+    market:       str   = Query('ndx100'),
+    start_date:   str   = Query(...),       # YYYY-MM-DD
+    years:        int   = Query(10, ge=3, le=15),
+    days_min:     int   = Query(5, ge=1, le=90),
+    days_max:     int   = Query(30, ge=5, le=90),
+    min_win_pct:  float = Query(75.0, ge=0, le=100),
+    direction:    str   = Query('long'),
+):
+    """Seasonality screener — finds recurring calendar-based price patterns."""
+    import pandas as _pd
+    import yfinance as _yf2
+
+    global _seasonality_cache
+
+    cache_key = f"{market}_{start_date}_{years}_{days_min}_{days_max}_{direction}"
+    now = _time.time()
+
+    if cache_key in _seasonality_cache:
+        cached_patterns, ts = _seasonality_cache[cache_key]
+        if now - ts < _SEASONALITY_CACHE_TTL:
+            filtered = [p for p in cached_patterns if p['win_ratio'] >= min_win_pct]
+            return {'patterns': filtered, 'total': len(filtered), 'cached': True}
+
+    try:
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        start_month, start_day = start_dt.month, start_dt.day
+    except ValueError:
+        return {'patterns': [], 'total': 0, 'error': 'Invalid date'}
+
+    tickers = _MARKET_TICKERS.get(market, _MARKET_TICKERS['ndx100'])
+    period_str = f"{years + 2}y"
+
+    def _download():
+        return _yf2.download(tickers, period=period_str, auto_adjust=True,
+                             progress=False, threads=True, group_by='ticker')
+
+    loop = asyncio.get_event_loop()
+    with _TPE(max_workers=1) as ex:
+        df_all = await loop.run_in_executor(ex, _download)
+
+    if df_all is None or df_all.empty:
+        return {'patterns': [], 'total': 0, 'error': 'No data'}
+
+    patterns = []
+    for ticker in tickers:
+        try:
+            if isinstance(df_all.columns, _pd.MultiIndex):
+                if ticker not in df_all.columns.get_level_values(0):
+                    continue
+                hist = df_all[ticker][['Close']].copy()
+            else:
+                hist = df_all[['Close']].copy()
+
+            hist = hist.dropna(subset=['Close'])
+            if len(hist) < 100:
+                continue
+
+            result = _calc_seasonality_ticker(
+                ticker, hist, start_month, start_day,
+                years, days_min, days_max, direction
+            )
+            if result:
+                result['ticker'] = ticker
+                end_dt = start_dt + timedelta(days=result['cal_days'])
+                result['pattern_start'] = f"{start_dt.day} {start_dt.strftime('%b')}"
+                result['pattern_end']   = f"{end_dt.day} {end_dt.strftime('%b')}"
+                patterns.append(result)
+        except Exception:
+            continue
+
+    patterns.sort(key=lambda x: (-x['win_ratio'], -x['avg_return']))
+    for i, p in enumerate(patterns, 1):
+        p['rank'] = i
+
+    _seasonality_cache[cache_key] = (patterns, now)
+
+    filtered = [p for p in patterns if p['win_ratio'] >= min_win_pct]
+    return {'patterns': filtered, 'total': len(filtered), 'cached': False}
