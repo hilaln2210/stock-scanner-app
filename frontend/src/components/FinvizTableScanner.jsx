@@ -651,11 +651,22 @@ const COL_FILTER_OPTS = {
     { label: '🔻 <-1%', value: 'mom_neg' },
   ],
   atr: [
-    { label: 'הכל', value: '' },
-    { label: '🔥 ATR% >5% (נפיץ)', value: 'atr_explosive' },
-    { label: '📈 ATR% 3–5%', value: 'atr_high' },
-    { label: '📊 ATR% 1.5–3%', value: 'atr_mid' },
-    { label: '📉 ATR% <1.5% (שקט)', value: 'atr_low' },
+    { label: 'Any',        value: '' },
+    { label: 'Over 0.25',  value: 'o0.25' },
+    { label: 'Over 0.5',   value: 'o0.5' },
+    { label: 'Over 0.75',  value: 'o0.75' },
+    { label: 'Over 1',     value: 'o1' },
+    { label: 'Over 1.5',   value: 'o1.5' },
+    { label: 'Over 2',     value: 'o2' },
+    { label: 'Over 2.5',   value: 'o2.5' },
+    { label: 'Over 3',     value: 'o3' },
+    { label: 'Over 4',     value: 'o4' },
+    { label: 'Over 5',     value: 'o5' },
+    { label: 'Under 0.5',  value: 'u0.5' },
+    { label: 'Under 1',    value: 'u1' },
+    { label: 'Under 1.5',  value: 'u1.5' },
+    { label: 'Under 2',    value: 'u2' },
+    { label: 'Under 2.5',  value: 'u2.5' },
   ],
 };
 
@@ -3223,14 +3234,10 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
     if (atrArr.length > 0) {
       list = list.filter(s => {
         const atrVal = parseFloat(s.atr);
-        const priceVal = parseFloat(s.price);
-        if (isNaN(atrVal) || atrVal === 0 || isNaN(priceVal) || priceVal === 0) return false;
-        const atrPct = s.tech_indicators?.atr_pct_1h || (atrVal / priceVal * 100);
+        if (isNaN(atrVal) || atrVal === 0) return false;
         return atrArr.some(f => {
-          if (f === 'atr_explosive') return atrPct > 5;
-          if (f === 'atr_high')      return atrPct >= 3 && atrPct <= 5;
-          if (f === 'atr_mid')       return atrPct >= 1.5 && atrPct < 3;
-          if (f === 'atr_low')       return atrPct < 1.5;
+          if (f.startsWith('o')) return atrVal > parseFloat(f.slice(1));
+          if (f.startsWith('u')) return atrVal < parseFloat(f.slice(1));
           return false;
         });
       });
