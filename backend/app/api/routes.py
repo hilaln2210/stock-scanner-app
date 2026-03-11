@@ -3228,13 +3228,35 @@ async def get_market_regime():
 
 @router.get("/smart-portfolio/arena/status")
 async def smart_portfolio_arena_status():
-    """Live arena leaderboard — 4 strategies competing, ranked by P&L."""
+    """Live arena leaderboard — strategies competing, ranked by P&L."""
+    # Base prices from broad finviz-table scan
     cached = _FV_TABLE_CACHE.get('data', {})
     live_prices = {
         s['ticker']: _safe_float(s.get('price'))
         for s in cached.get('stocks', [])
         if s.get('ticker') and _safe_float(s.get('price')) > 0
     }
+    # Overlay with fresh per-ticker prices from live-prices cache (TTL 12s)
+    # These are fetched by the frontend every 30s for open positions
+    for ticker, data in _LIVE_PRICES_CACHE.items():
+        price = _safe_float(data.get('price') if isinstance(data, dict) else data)
+        if price > 0:
+            live_prices[ticker] = price
+    # Also fetch fresh for any position tickers not yet in cache
+    position_tickers = set()
+    for pf in arena_singleton.portfolios.values():
+        position_tickers.update(pf.positions.keys())
+    missing = [t for t in position_tickers if t not in live_prices]
+    if missing:
+        try:
+            fresh = await finviz_fundamentals.get_prices_batch(missing)
+            for t, d in fresh.items():
+                p = _safe_float(d.get('price') if isinstance(d, dict) else d)
+                if p > 0:
+                    live_prices[t] = p
+                    _LIVE_PRICES_CACHE[t] = d
+        except Exception:
+            pass
     return arena_singleton.get_status(live_prices)
 
 

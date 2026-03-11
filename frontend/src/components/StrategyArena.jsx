@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 
 /* ── CSS animations ──────────────────────────────────────────────────────── */
@@ -15,9 +15,19 @@ const STYLES = `
   from { opacity: 0; transform: translateY(-6px) scale(0.97); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
-.leader-card { animation: leaderPulse 1.8s ease-in-out infinite; }
-.session-dot { animation: sessionPulse 1.4s ease-in-out infinite; }
+@keyframes flashUp {
+  0%   { background: rgba(74,222,128,0.35); }
+  100% { background: transparent; }
+}
+@keyframes flashDown {
+  0%   { background: rgba(248,113,113,0.35); }
+  100% { background: transparent; }
+}
+.leader-card  { animation: leaderPulse 1.8s ease-in-out infinite; }
+.session-dot  { animation: sessionPulse 1.4s ease-in-out infinite; }
 .popover-enter { animation: fadeIn 0.15s ease-out; }
+.flash-up   { animation: flashUp   0.7s ease-out; }
+.flash-down { animation: flashDown 0.7s ease-out; }
 `;
 
 /* ── Constants ───────────────────────────────────────────────────────────── */
@@ -200,9 +210,9 @@ function MiniSparkline({ history = [] }) {
 }
 
 /* ── StrategyCard ────────────────────────────────────────────────────────── */
-function StrategyCard({ strategy, rank, isLeader }) {
+function StrategyCard({ strategy, rank, isLeader, livePrices = {}, flashState = {} }) {
   const [popover, setPopover] = useState(null); // 'method' | 'sizing' | null
-  const cardRef = useRef(null);
+  const cardRef  = useRef(null);
   const meta     = STRATEGY_META[strategy.name] || { emoji: '📊', color: A, bg: 'rgba(129,140,248,0.08)', border: 'rgba(129,140,248,0.25)' };
   const info     = STRATEGY_INFO[strategy.name];
   const pnlPct   = strategy.pnl_pct ?? 0;
@@ -319,26 +329,53 @@ function StrategyCard({ strategy, rank, isLeader }) {
       {posCount > 0 && (
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {Object.entries(strategy.positions || {}).map(([ticker, pos]) => {
-            const ppnl  = pos.pnl_pct ?? 0;
-            const age   = timeAgo(pos.entry_time);
-            const trail = pos.trailing;
-            const sess  = pos.session;
+            const liveData  = livePrices[ticker];
+            const livePrice = liveData?.price ?? null;
+            const entry     = pos.entry_price ?? 0;
+            const ppnl      = livePrice && entry > 0
+              ? (livePrice - entry) / entry * 100
+              : (pos.pnl_pct ?? 0);
+            const changePct = liveData?.change_pct ?? null;
+            const age       = timeAgo(pos.entry_time);
+            const trail     = pos.trailing;
+            const sess      = pos.session;
+            const flashCls  = flashState[ticker] === 'up'   ? 'flash-up'
+                            : flashState[ticker] === 'down' ? 'flash-down' : '';
             return (
-              <div key={ticker} style={{
-                fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 5,
+              <div key={ticker} className={flashCls} style={{
+                fontSize: 10, fontWeight: 700, padding: '4px 8px', borderRadius: 6,
                 background: ppnl >= 0 ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)',
                 border: `1px solid ${ppnl >= 0 ? '#166534' : '#7f1d1d'}`,
                 color: ppnl >= 0 ? W : L, fontFamily: 'monospace',
-                display: 'flex', alignItems: 'center', gap: 4,
               }}>
-                <span>{ticker} {ppnl >= 0 ? '+' : ''}{ppnl.toFixed(1)}%</span>
-                {trail && <span title="Trailing active" style={{ fontSize: 8, opacity: 0.8 }}>🔒</span>}
-                {age && <span style={{ fontSize: 8, opacity: 0.5, fontFamily: 'sans-serif' }}>{age}</span>}
-                {sess && sess !== 'regular' && (
-                  <span style={{ fontSize: 8, opacity: 0.7 }}>
-                    {sess === 'premarket' ? '🌅' : '🌙'}
-                  </span>
-                )}
+                {/* Ticker + P&L */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontWeight: 900 }}>{ticker}</span>
+                  <span>{ppnl >= 0 ? '+' : ''}{ppnl.toFixed(2)}%</span>
+                  {trail && <span title="Trailing active" style={{ fontSize: 8 }}>🔒</span>}
+                  {sess && sess !== 'regular' && (
+                    <span style={{ fontSize: 8, opacity: 0.7 }}>
+                      {sess === 'premarket' ? '🌅' : '🌙'}
+                    </span>
+                  )}
+                </div>
+                {/* Live price + change */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                  {livePrice && (
+                    <span style={{ fontSize: 11, fontWeight: 900, color: '#f8fafc' }}>
+                      ${livePrice.toFixed(2)}
+                    </span>
+                  )}
+                  {changePct !== null && (
+                    <span style={{
+                      fontSize: 9,
+                      color: String(changePct).startsWith('-') ? L : W,
+                    }}>
+                      {String(changePct).startsWith('-') ? '▼' : '▲'} {String(changePct).replace(/[+-]/, '')}
+                    </span>
+                  )}
+                  {age && <span style={{ fontSize: 8, opacity: 0.45, fontFamily: 'sans-serif' }}>{age}</span>}
+                </div>
               </div>
             );
           })}
@@ -425,13 +462,18 @@ function WeeklyHistory({ history = [], strategies = [] }) {
 
 /* ── Main Component ──────────────────────────────────────────────────────── */
 export default function StrategyArena() {
-  const [data, setData]           = useState(null);
-  const [loading, setLoading]     = useState(true);
-  const [thinking, setThinking]   = useState(false);
-  const [declaring, setDeclaring] = useState(false);
-  const [lastMsg, setLastMsg]     = useState(null);
-  const [countdown, setCountdown] = useState('');
+  const [data, setData]             = useState(null);
+  const [loading, setLoading]       = useState(true);
+  const [thinking, setThinking]     = useState(false);
+  const [declaring, setDeclaring]   = useState(false);
+  const [lastMsg, setLastMsg]       = useState(null);
+  const [countdown, setCountdown]   = useState('');
   const [sessionLabel, setSessionLabel] = useState('');
+  const [livePrices, setLivePrices]       = useState({});   // {HIMS: {price, change_pct}, ...}
+  const [flashState, setFlashState]       = useState({});   // {HIMS: 'up'|'down'}
+  const [lastPriceUpdate, setLastPriceUpdate] = useState(null);
+  const prevPricesRef = useRef({});
+  const flashTimers   = useRef({});
 
   const fetchStatus = async () => {
     try {
@@ -439,6 +481,37 @@ export default function StrategyArena() {
       setData(r.data);
     } catch { /* silent */ } finally { setLoading(false); }
   };
+
+  // Fetch live prices for all open positions every 30s
+  const fetchLivePrices = useCallback(async (currentData) => {
+    const d = currentData;
+    if (!d?.leaderboard) return;
+    const tickers = new Set();
+    d.leaderboard.forEach(s => Object.keys(s.positions || {}).forEach(t => tickers.add(t)));
+    if (!tickers.size) return;
+    try {
+      const r = await axios.get(`/api/screener/live-prices?tickers=${[...tickers].join(',')}`);
+      const fresh = r.data || {};
+      // Detect changes → trigger flash
+      const newFlash = {};
+      Object.entries(fresh).forEach(([ticker, info]) => {
+        const newP = info?.price;
+        const oldP = prevPricesRef.current[ticker]?.price;
+        if (newP && oldP && Math.abs(newP - oldP) > 0.001) {
+          newFlash[ticker] = newP > oldP ? 'up' : 'down';
+          // Auto-clear flash after 800ms
+          clearTimeout(flashTimers.current[ticker]);
+          flashTimers.current[ticker] = setTimeout(() => {
+            setFlashState(prev => { const n = { ...prev }; delete n[ticker]; return n; });
+          }, 800);
+        }
+        prevPricesRef.current[ticker] = info;
+      });
+      if (Object.keys(newFlash).length) setFlashState(prev => ({ ...prev, ...newFlash }));
+      setLivePrices(prev => ({ ...prev, ...fresh }));
+      setLastPriceUpdate(new Date());
+    } catch { /* silent */ }
+  }, []);
 
   // Countdown + session label (local ET approximation)
   useEffect(() => {
@@ -478,6 +551,14 @@ export default function StrategyArena() {
     const iv = setInterval(fetchStatus, 15000);
     return () => clearInterval(iv);
   }, []);
+
+  // Live price polling — every 30s, fetch fresh prices for open positions
+  useEffect(() => {
+    if (!data) return;
+    fetchLivePrices(data);
+    const iv = setInterval(() => fetchLivePrices(data), 30000);
+    return () => clearInterval(iv);
+  }, [data, fetchLivePrices]);
 
   const triggerThink = async () => {
     setThinking(true); setLastMsg(null);
@@ -548,6 +629,11 @@ export default function StrategyArena() {
           {countdown && (
             <div style={{ fontSize: 10, fontWeight: 600, padding: '4px 8px', borderRadius: 6, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)', color: GOLD }}>
               ⏰ {countdown}
+            </div>
+          )}
+          {lastPriceUpdate && (
+            <div style={{ fontSize: 9, padding: '4px 8px', borderRadius: 6, background: 'rgba(74,222,128,0.07)', border: '1px solid rgba(74,222,128,0.2)', color: '#4ade80', fontFamily: 'monospace' }}>
+              📡 {lastPriceUpdate.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </div>
           )}
           <button onClick={triggerThink} disabled={thinking} style={{
@@ -621,6 +707,8 @@ export default function StrategyArena() {
             strategy={strategy}
             rank={rank}
             isLeader={strategy.name === leaderName && rank === 0}
+            livePrices={livePrices}
+            flashState={flashState}
           />
         ))}
       </div>
