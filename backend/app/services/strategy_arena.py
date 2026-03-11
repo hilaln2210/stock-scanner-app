@@ -336,6 +336,7 @@ class StrategyArena:
         self.weekly_winner_at: Optional[str] = None
         self.tick_count: int          = 0
         self.last_tick: Optional[str] = None
+        self.recent_events: list      = []   # rolling buffer, max 50
         self._load()
 
     # ── Persistence ─────────────────────────────────────────────────────────
@@ -432,12 +433,18 @@ class StrategyArena:
             scored.sort(key=lambda x: -x[2])
 
             new_positions_this_tick = {name: 0 for name in self.portfolios}
+            now_iso = datetime.now().isoformat()
 
             for pf in self.portfolios.values():
                 cfg = pf.config
 
-                # 1. Check stops / stale exits
+                # 1. Check stops / stale exits — capture closed trades as events
+                positions_before = set(pf.positions.keys())
+                trades_before    = len(pf.trades)
                 pf.check_stops(live_prices)
+                for trade in pf.trades[trades_before:]:
+                    self._add_event("SELL", pf.name, trade["ticker"],
+                                    trade["exit_price"], trade["pnl_pct"], trade["reason"])
 
                 # 2. Skip new entries if at max positions
                 if len(pf.positions) >= cfg["max_positions"]:
@@ -471,6 +478,7 @@ class StrategyArena:
 
                     stop_override = cfg["stop_pct"] + extra_stop if extra_stop else None
                     if pf.open_position(ticker, price, stop_override=stop_override):
+                        self._add_event("BUY", pf.name, ticker, price, 0.0, "Entry")
                         new_positions_this_tick[pf.name] += 1
                         break
 
@@ -478,6 +486,23 @@ class StrategyArena:
             self.last_tick   = datetime.now().isoformat()
             self._save(live_prices)
             return self.get_status(live_prices)
+
+    def _add_event(self, action: str, strategy: str, ticker: str,
+                   price: float, pnl_pct: float = 0.0, reason: str = ""):
+        cfg   = STRATEGY_CONFIGS.get(strategy, {})
+        event = {
+            "action":   action,       # "BUY" | "SELL"
+            "strategy": strategy,
+            "label":    cfg.get("label", strategy),
+            "ticker":   ticker,
+            "price":    round(price, 2),
+            "pnl_pct":  round(pnl_pct, 2),
+            "reason":   reason,
+            "time":     datetime.now().isoformat(),
+        }
+        self.recent_events.append(event)
+        if len(self.recent_events) > 50:
+            self.recent_events = self.recent_events[-50:]
 
     def declare_daily_winner(self, live_prices: dict = None) -> dict:
         """Archive today's winner. Called at 16:05 ET each trading day."""
@@ -556,6 +581,7 @@ class StrategyArena:
                 "partial_trades": sum(1 for t in pf.trades if t.get("was_partial")),
                 "open_positions": len(pf.positions),
                 "day_wins":       day_wins,
+                "trade_log":      pf.trades[-10:],   # last 10 closed trades per strategy
                 "positions": {
                     t: {
                         "entry":   pos["entry_price"],
@@ -587,6 +613,7 @@ class StrategyArena:
             "weekly_winner":    self.weekly_winner,
             "weekly_winner_at": self.weekly_winner_at,
             "leaderboard":      leaderboard,
+            "recent_events":    self.recent_events[-20:],  # last 20 buy/sell events
         }
 
     # ── Apply winner params ──────────────────────────────────────────────────

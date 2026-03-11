@@ -28,6 +28,16 @@ const STYLES = `
 .popover-enter { animation: fadeIn 0.15s ease-out; }
 .flash-up   { animation: flashUp   0.7s ease-out; }
 .flash-down { animation: flashDown 0.7s ease-out; }
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(60px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes toastOut {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(60px); }
+}
+.toast-enter { animation: toastIn  0.25s ease-out forwards; }
+.toast-exit  { animation: toastOut 0.25s ease-in  forwards; }
 `;
 
 /* ── Constants ───────────────────────────────────────────────────────────── */
@@ -209,9 +219,90 @@ function MiniSparkline({ history = [] }) {
   );
 }
 
+/* ── ToastContainer ──────────────────────────────────────────────────────── */
+function ToastContainer({ toasts, onDismiss }) {
+  if (!toasts.length) return null;
+  return (
+    <div style={{
+      position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
+      display: 'flex', flexDirection: 'column-reverse', gap: 8, maxWidth: 320,
+    }}>
+      {toasts.map(t => {
+        const isBuy  = t.action === 'BUY';
+        const color  = isBuy ? '#4ade80' : t.pnl_pct >= 0 ? '#4ade80' : '#f87171';
+        const bg     = isBuy ? 'rgba(74,222,128,0.1)' : t.pnl_pct >= 0 ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)';
+        const border = isBuy ? '#166534' : t.pnl_pct >= 0 ? '#166534' : '#7f1d1d';
+        const meta   = STRATEGY_META[t.strategy] || { emoji: '📊', color: A };
+        return (
+          <div key={t.id} className={t.exiting ? 'toast-exit' : 'toast-enter'} style={{
+            background: '#0f172a', border: `1px solid ${border}`,
+            borderLeft: `3px solid ${color}`, borderRadius: 10,
+            padding: '10px 14px', cursor: 'pointer', boxShadow: '0 4px 20px rgba(0,0,0,0.6)',
+          }} onClick={() => onDismiss(t.id)}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 16 }}>{isBuy ? '🟢' : t.pnl_pct >= 0 ? '✅' : '🔴'}</span>
+              <span style={{ fontSize: 12, fontWeight: 900, color }}>
+                {isBuy ? 'קנייה' : 'מכירה'} {t.ticker}
+              </span>
+              <span style={{ fontSize: 10, color: meta.color, marginLeft: 'auto' }}>
+                {meta.emoji} {t.label?.replace(/^[^\s]+ /, '')}
+              </span>
+            </div>
+            <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace' }}>
+              ${t.price.toFixed(2)}
+              {!isBuy && (
+                <span style={{ color, marginLeft: 8, fontWeight: 700 }}>
+                  {t.pnl_pct >= 0 ? '+' : ''}{t.pnl_pct.toFixed(2)}%
+                </span>
+              )}
+              {!isBuy && t.reason && (
+                <span style={{ fontSize: 9, color: '#475569', marginLeft: 6 }}>· {t.reason}</span>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── TradeLog ─────────────────────────────────────────────────────────────── */
+function TradeLog({ trades = [] }) {
+  if (!trades.length) return (
+    <div style={{ padding: '8px 0', fontSize: 10, color: '#475569', textAlign: 'center' }}>
+      אין עסקאות סגורות עדיין
+    </div>
+  );
+  return (
+    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 180, overflowY: 'auto' }}>
+      {[...trades].reverse().map((t, i) => {
+        const won = t.pnl_pct >= 0;
+        return (
+          <div key={i} style={{
+            display: 'flex', alignItems: 'center', gap: 6, fontSize: 10,
+            padding: '4px 8px', borderRadius: 6,
+            background: won ? 'rgba(74,222,128,0.06)' : 'rgba(248,113,113,0.06)',
+            border: `1px solid ${won ? '#16623420' : '#7f1d1d20'}`,
+          }}>
+            <span style={{ fontWeight: 900, color: won ? '#4ade80' : '#f87171', minWidth: 36 }}>{t.ticker}</span>
+            <span style={{ fontFamily: 'monospace', fontWeight: 800, color: won ? '#4ade80' : '#f87171' }}>
+              {won ? '+' : ''}{t.pnl_pct.toFixed(1)}%
+            </span>
+            <span style={{ color: '#64748b', fontSize: 9, marginLeft: 'auto' }}>{t.reason}</span>
+            <span style={{ color: '#334155', fontSize: 8 }}>
+              {t.exit_time ? new Date(t.exit_time).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : ''}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ── StrategyCard ────────────────────────────────────────────────────────── */
 function StrategyCard({ strategy, rank, isLeader, livePrices = {}, flashState = {} }) {
-  const [popover, setPopover] = useState(null); // 'method' | 'sizing' | null
+  const [popover, setPopover]   = useState(null); // 'method' | 'sizing' | null
+  const [showLog, setShowLog]   = useState(false);
   const cardRef  = useRef(null);
   const meta     = STRATEGY_META[strategy.name] || { emoji: '📊', color: A, bg: 'rgba(129,140,248,0.08)', border: 'rgba(129,140,248,0.25)' };
   const info     = STRATEGY_INFO[strategy.name];
@@ -291,6 +382,19 @@ function StrategyCard({ strategy, rank, isLeader, livePrices = {}, flashState = 
             }}>
               1:{rr}
             </div>
+
+            {/* History toggle */}
+            <button
+              onClick={() => setShowLog(p => !p)}
+              style={{
+                fontSize: 9, padding: '2px 7px', borderRadius: 5, cursor: 'pointer', fontWeight: 700,
+                background: showLog ? 'rgba(251,191,36,0.15)' : 'rgba(255,255,255,0.05)',
+                border: `1px solid ${showLog ? 'rgba(251,191,36,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                color: showLog ? GOLD : '#94a3b8',
+              }}
+            >
+              📋 {strategy.total_trades > 0 ? strategy.total_trades : ''} היסטוריה
+            </button>
 
             {/* Popover */}
             {popover && (
@@ -388,6 +492,16 @@ function StrategyCard({ strategy, rank, isLeader, livePrices = {}, flashState = 
           {(strategy.total_pnl ?? 0) >= 0 ? '+' : ''}${(strategy.total_pnl ?? 0).toFixed(1)}
         </div>
       )}
+
+      {/* Trade history log */}
+      {showLog && (
+        <div style={{ marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 8 }}>
+          <div style={{ fontSize: 9, color: '#475569', marginBottom: 4, fontWeight: 700 }}>
+            📋 עסקאות אחרונות
+          </div>
+          <TradeLog trades={strategy.trade_log || []} />
+        </div>
+      )}
     </div>
   );
 }
@@ -468,16 +582,40 @@ export default function StrategyArena() {
   const [lastMsg, setLastMsg]       = useState(null);
   const [countdown, setCountdown]   = useState('');
   const [sessionLabel, setSessionLabel] = useState('');
-  const [livePrices, setLivePrices]       = useState({});   // {HIMS: {price, change_pct}, ...}
-  const [flashState, setFlashState]       = useState({});   // {HIMS: 'up'|'down'}
+  const [livePrices, setLivePrices]           = useState({});
+  const [flashState, setFlashState]           = useState({});
   const [lastPriceUpdate, setLastPriceUpdate] = useState(null);
-  const prevPricesRef = useRef({});
-  const flashTimers   = useRef({});
+  const [toasts, setToasts]                   = useState([]);
+  const prevPricesRef  = useRef({});
+  const flashTimers    = useRef({});
+  const seenEventsRef  = useRef(new Set());   // track event times already notified
+  const toastTimers    = useRef({});
+
+  const addToast = useCallback((event) => {
+    const id = `${event.strategy}-${event.ticker}-${event.time}`;
+    if (seenEventsRef.current.has(id)) return;
+    seenEventsRef.current.add(id);
+    const toast = { ...event, id };
+    setToasts(prev => [...prev.slice(-4), toast]);   // max 5 toasts
+    // Auto-dismiss after 6s
+    toastTimers.current[id] = setTimeout(() => {
+      setToasts(prev => prev.map(t => t.id === id ? { ...t, exiting: true } : t));
+      setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 280);
+    }, 6000);
+  }, []);
+
+  const dismissToast = useCallback((id) => {
+    clearTimeout(toastTimers.current[id]);
+    setToasts(prev => prev.map(t => t.id === id ? { ...t, exiting: true } : t));
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 280);
+  }, []);
 
   const fetchStatus = async () => {
     try {
       const r = await axios.get('/api/smart-portfolio/arena/status');
       setData(r.data);
+      // Fire toasts for new events
+      (r.data?.recent_events || []).forEach(ev => addToast(ev));
     } catch { /* silent */ } finally { setLoading(false); }
   };
 
@@ -744,6 +882,9 @@ export default function StrategyArena() {
       <div style={{ marginTop: 12, fontSize: 9, color: '#334155', textAlign: 'center' }}>
         ⚙️ אוטונומי 24/7 · Arena tick כל 30s · מחירים כל 30s · מנצחת יום: 16:05 ET · מנצחת שבוע: שישי · ללא תלות בדפדפן
       </div>
+
+      {/* ── Toast notifications ── */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }
