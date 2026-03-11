@@ -510,6 +510,21 @@ def start_background_loop():
         _bg_task = loop.create_task(_loop())
 
 
+# ── Load recent missed patterns from ai_learning.json ──────────────────────────
+def _load_recent_missed(limit: int = 5) -> list:
+    """Return last N missed_patterns from ai_learning.json (survives server restarts)."""
+    import os
+    try:
+        data_path = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "data", "ai_learning.json")
+        )
+        with open(data_path, "r") as f:
+            data = json.load(f)
+        return data.get("missed_patterns", [])[:limit]
+    except Exception:
+        return []
+
+
 # ── Public API ─────────────────────────────────────────────────────────────────
 def get_state() -> dict:
     now = _ny_now()
@@ -521,8 +536,10 @@ def get_state() -> dict:
         p for p in _state["today_picks"]
         if _parse_hhmm(p["window"].split("-")[0]) > total_min
     ]
-    # Missed today only
+    # Missed: today in-memory first, then fall back to recent history from ai_learning.json
     missed_today = [m for m in _state["missed_windows"] if m.get("date") == today_str]
+    if not missed_today:
+        missed_today = _load_recent_missed(limit=5)
     # IB demo trades today
     ib_demo_today = [t for t in _state["ib_demo_trades"] if t.get("date") == today_str]
 
