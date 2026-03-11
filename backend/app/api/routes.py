@@ -3421,6 +3421,7 @@ def _calc_seasonality_ticker(ticker, hist, start_month, start_day, years_back, d
     """Find the best calendar window [days_min..days_max] for a ticker and return stats."""
     import statistics as _stats
     import math as _math
+    import pandas as _pd
 
     if hist is None or len(hist) < 100:
         return None
@@ -3437,8 +3438,9 @@ def _calc_seasonality_ticker(ticker, hist, start_month, start_day, years_back, d
             except ValueError:
                 continue
 
-            # Closest trading day >= start_dt
-            mask_s = hist.index >= start_dt.date() if hasattr(hist.index[0], 'date') else hist.index >= start_dt
+            # Always compare as Timestamp (works with DatetimeIndex)
+            start_ts = _pd.Timestamp(start_dt)
+            mask_s = hist.index >= start_ts
             if not mask_s.any():
                 continue
             start_idx = hist[mask_s].index[0]
@@ -3447,16 +3449,15 @@ def _calc_seasonality_ticker(ticker, hist, start_month, start_day, years_back, d
                 continue
 
             end_dt = start_dt + timedelta(days=d)
-            end_dt_cmp = end_dt.date() if hasattr(hist.index[0], 'date') else end_dt
-            start_idx_cmp = start_idx.date() if hasattr(start_idx, 'date') else start_idx
-            buf_dt = (end_dt + timedelta(days=4)).date() if hasattr(hist.index[0], 'date') else end_dt + timedelta(days=4)
+            end_ts = _pd.Timestamp(end_dt)
+            buf_ts = _pd.Timestamp(end_dt + timedelta(days=4))
 
-            mask_e = (hist.index > start_idx) & (hist.index <= buf_dt)
+            mask_e = (hist.index > start_idx) & (hist.index <= buf_ts)
             if not mask_e.any():
                 continue
             cands = hist[mask_e]
             # pick trading day closest to target end
-            diffs = abs(cands.index - end_dt_cmp) if hasattr(cands.index[0], 'date') else abs(cands.index - end_dt)
+            diffs = abs(cands.index - end_ts)
             end_idx = cands.index[diffs.argmin()]
             end_price = float(hist.loc[end_idx, 'Close'])
             if _math.isnan(end_price) or end_price == 0:
@@ -3540,9 +3541,18 @@ async def seasonality_scanner(
         return _yf2.download(tickers, period=period_str, auto_adjust=True,
                              progress=False, threads=True, group_by='ticker')
 
-    loop = asyncio.get_event_loop()
-    with _TPE(max_workers=1) as ex:
-        df_all = await loop.run_in_executor(ex, _download)
+    loop = asyncio.get_running_loop()
+    ex = _TPE(max_workers=2)
+    try:
+        df_all = await asyncio.wait_for(
+            loop.run_in_executor(ex, _download),
+            timeout=90
+        )
+    except asyncio.TimeoutError:
+        ex.shutdown(wait=False)
+        return {'patterns': [], 'total': 0, 'error': 'Download timeout — try again'}
+    finally:
+        ex.shutdown(wait=False)
 
     if df_all is None or df_all.empty:
         return {'patterns': [], 'total': 0, 'error': 'No data'}
