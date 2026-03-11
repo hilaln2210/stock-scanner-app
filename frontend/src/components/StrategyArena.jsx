@@ -1,59 +1,67 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
-const LEADER_PULSE_CSS = `
+/* ── CSS animations ──────────────────────────────────────────────────────── */
+const STYLES = `
 @keyframes leaderPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(251,191,36,0), 0 0 20px rgba(251,191,36,0.15); border-color: rgba(251,191,36,0.5); }
-  50%       { box-shadow: 0 0 0 4px rgba(251,191,36,0.25), 0 0 30px rgba(251,191,36,0.35); border-color: rgba(251,191,36,0.9); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251,191,36,0), 0 0 20px rgba(251,191,36,0.12); border-color: rgba(251,191,36,0.5); }
+  50%       { box-shadow: 0 0 0 5px rgba(251,191,36,0.2), 0 0 30px rgba(251,191,36,0.3);  border-color: rgba(251,191,36,0.95); }
+}
+@keyframes sessionPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.55; }
 }
 .leader-card { animation: leaderPulse 1.8s ease-in-out infinite; }
+.session-dot { animation: sessionPulse 1.4s ease-in-out infinite; }
 `;
 
-const W = '#4ade80';
-const L = '#f87171';
-const A = '#818cf8';
-const GOLD = '#fbbf24';
-const SILVER = '#94a3b8';
-const BRONZE = '#f97316';
+/* ── Constants ───────────────────────────────────────────────────────────── */
+const W = '#4ade80', L = '#f87171', A = '#818cf8';
+const GOLD = '#fbbf24', SILVER = '#94a3b8', BRONZE = '#f97316';
+const RANK_COLORS = [GOLD, SILVER, BRONZE, L, '#64748b', '#64748b'];
 
-const STRATEGY_META = {
-  Balanced:         { emoji: '⚖️', color: '#60a5fa', bg: 'rgba(96,165,250,0.08)',  border: 'rgba(96,165,250,0.25)'  },
-  HighConviction:   { emoji: '🎯', color: '#a78bfa', bg: 'rgba(167,139,250,0.08)', border: 'rgba(167,139,250,0.25)' },
-  SqueezeHunter:    { emoji: '🔥', color: '#fb923c', bg: 'rgba(251,146,60,0.08)',   border: 'rgba(251,146,60,0.25)'  },
-  Scalper:          { emoji: '⚡', color: '#34d399', bg: 'rgba(52,211,153,0.08)',   border: 'rgba(52,211,153,0.25)'  },
-  MomentumBreaker:  { emoji: '🚀', color: '#f43f5e', bg: 'rgba(244,63,94,0.08)',   border: 'rgba(244,63,94,0.25)'   },
-  SwingSetup:       { emoji: '🌊', color: '#22d3ee', bg: 'rgba(34,211,238,0.08)',  border: 'rgba(34,211,238,0.25)'  },
+const SESSION_META = {
+  premarket:   { label: 'PRE-MARKET',  icon: '🌅', color: '#f59e0b', dot: '#f59e0b' },
+  regular:     { label: 'LIVE',        icon: '📈', color: '#4ade80', dot: '#4ade80' },
+  aftermarket: { label: 'AFTER-HOURS', icon: '🌙', color: '#818cf8', dot: '#818cf8' },
+  closed:      { label: 'CLOSED',      icon: '💤', color: '#475569', dot: '#475569' },
 };
 
-const RANK_COLORS = [GOLD, SILVER, BRONZE, L];
+const STRATEGY_META = {
+  Balanced:        { emoji: '⚖️', color: '#60a5fa', bg: 'rgba(96,165,250,0.08)',  border: 'rgba(96,165,250,0.25)'  },
+  HighConviction:  { emoji: '🎯', color: '#a78bfa', bg: 'rgba(167,139,250,0.08)', border: 'rgba(167,139,250,0.25)' },
+  SqueezeHunter:   { emoji: '🔥', color: '#fb923c', bg: 'rgba(251,146,60,0.08)',  border: 'rgba(251,146,60,0.25)'  },
+  Scalper:         { emoji: '⚡', color: '#34d399', bg: 'rgba(52,211,153,0.08)',  border: 'rgba(52,211,153,0.25)'  },
+  MomentumBreaker: { emoji: '🚀', color: '#f43f5e', bg: 'rgba(244,63,94,0.08)',   border: 'rgba(244,63,94,0.25)'   },
+  SwingSetup:      { emoji: '🌊', color: '#22d3ee', bg: 'rgba(34,211,238,0.08)', border: 'rgba(34,211,238,0.25)'  },
+};
 
+const DAYS_HE = { Monday: 'שני', Tuesday: 'שלישי', Wednesday: 'רביעי', Thursday: 'חמישי', Friday: 'שישי' };
+
+/* ── MiniSparkline ───────────────────────────────────────────────────────── */
 function MiniSparkline({ history = [] }) {
   if (history.length < 2) return null;
   const vals = history.map(h => h.equity);
-  const mn = Math.min(...vals), mx = Math.max(...vals);
-  const range = mx - mn || 1;
-  const W_px = 80, H_px = 28, pad = 2;
+  const mn = Math.min(...vals), mx = Math.max(...vals), range = mx - mn || 1;
+  const WW = 80, HH = 28, pad = 2;
   const pts = vals.map((v, i) =>
-    `${pad + (i / (vals.length - 1)) * (W_px - pad * 2)},${pad + (H_px - pad * 2) - ((v - mn) / range) * (H_px - pad * 2)}`
+    `${pad + (i / (vals.length - 1)) * (WW - pad * 2)},${pad + (HH - pad * 2) - ((v - mn) / range) * (HH - pad * 2)}`
   ).join(' ');
   const isUp = vals[vals.length - 1] >= vals[0];
   return (
-    <svg width={W_px} height={H_px} viewBox={`0 0 ${W_px} ${H_px}`}>
+    <svg width={WW} height={HH} viewBox={`0 0 ${WW} ${HH}`} style={{ display: 'block' }}>
       <polyline points={pts} fill="none" stroke={isUp ? W : L} strokeWidth={1.5} strokeLinejoin="round" />
-      <circle
-        cx={pad + (W_px - pad * 2)}
-        cy={pad + (H_px - pad * 2) - ((vals[vals.length - 1] - mn) / range) * (H_px - pad * 2)}
-        r={2.5} fill={isUp ? W : L}
-      />
+      <circle cx={pad + WW - pad * 2} cy={pad + (HH - pad * 2) - ((vals[vals.length - 1] - mn) / range) * (HH - pad * 2)} r={2.5} fill={isUp ? W : L} />
     </svg>
   );
 }
 
+/* ── StrategyCard ────────────────────────────────────────────────────────── */
 function StrategyCard({ strategy, rank, isLeader }) {
   const meta = STRATEGY_META[strategy.name] || { emoji: '📊', color: A, bg: 'rgba(129,140,248,0.08)', border: 'rgba(129,140,248,0.25)' };
-  const pnlPct = strategy.pnl_pct ?? 0;
+  const pnlPct   = strategy.pnl_pct ?? 0;
   const posCount = Object.keys(strategy.positions || {}).length;
-  const rankColor = RANK_COLORS[rank] || SILVER;
+  const rankColor = RANK_COLORS[rank] ?? SILVER;
 
   return (
     <div
@@ -63,70 +71,50 @@ function StrategyCard({ strategy, rank, isLeader }) {
           ? 'linear-gradient(135deg, rgba(251,191,36,0.09) 0%, rgba(30,27,75,0.95) 100%)'
           : `linear-gradient(135deg, ${meta.bg} 0%, rgba(13,17,23,0.95) 100%)`,
         border: `1px solid ${isLeader ? 'rgba(251,191,36,0.5)' : meta.border}`,
-        borderRadius: 12,
-        padding: '14px 16px',
-        position: 'relative',
-        transition: 'border-color 0.3s ease',
+        borderRadius: 12, padding: '14px 16px', position: 'relative',
       }}
     >
       {/* Rank badge */}
       <div style={{
         position: 'absolute', top: 10, right: 12,
         fontSize: 11, fontWeight: 900, color: rankColor,
-        background: `${rankColor}15`,
-        border: `1px solid ${rankColor}40`,
+        background: `${rankColor}18`, border: `1px solid ${rankColor}40`,
         borderRadius: 6, padding: '2px 8px',
       }}>
-        #{rank + 1}
-        {isLeader && <span style={{ marginLeft: 4 }}>👑</span>}
+        #{rank + 1}{isLeader && <span style={{ marginLeft: 4 }}>👑</span>}
       </div>
 
-      {/* Strategy name + emoji */}
+      {/* Name */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <span style={{ fontSize: 22 }}>{meta.emoji}</span>
         <div>
           <div style={{ fontSize: 13, fontWeight: 800, color: meta.color }}>{strategy.label}</div>
-          <div style={{ fontSize: 9, color: '#475569', marginTop: 1 }}>
-            {strategy.description || ''}
-          </div>
+          <div style={{ fontSize: 9, color: '#475569', marginTop: 1 }}>{strategy.description || ''}</div>
         </div>
       </div>
 
-      {/* Key metrics row */}
+      {/* Metrics */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 10 }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{
-            fontSize: 18, fontFamily: 'monospace', fontWeight: 900,
-            color: pnlPct >= 0 ? W : L,
-          }}>
-            {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(2)}%
+        {[
+          { v: `${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%`, l: 'שבועי', c: pnlPct >= 0 ? W : L, big: true },
+          { v: `$${(strategy.equity ?? 1000).toFixed(0)}`, l: 'הון', c: '#f8fafc' },
+          { v: strategy.total_trades > 0 ? `${strategy.win_rate?.toFixed(0)}%` : '—', l: 'הצלחה', c: strategy.win_rate >= 50 ? W : strategy.total_trades > 0 ? L : '#94a3b8' },
+        ].map((s, i) => (
+          <div key={i} style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: s.big ? 18 : 15, fontFamily: 'monospace', fontWeight: 900, color: s.c }}>{s.v}</div>
+            <div style={{ fontSize: 8, color: '#475569' }}>{s.l}</div>
           </div>
-          <div style={{ fontSize: 8, color: '#475569' }}>תשואה</div>
-        </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 16, fontFamily: 'monospace', fontWeight: 800, color: '#f8fafc' }}>
-            ${(strategy.equity ?? 1000).toFixed(0)}
-          </div>
-          <div style={{ fontSize: 8, color: '#475569' }}>הון</div>
-        </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{
-            fontSize: 16, fontFamily: 'monospace', fontWeight: 800,
-            color: strategy.win_rate >= 50 ? W : strategy.total_trades > 0 ? L : '#94a3b8',
-          }}>
-            {strategy.total_trades > 0 ? `${strategy.win_rate?.toFixed(0)}%` : '—'}
-          </div>
-          <div style={{ fontSize: 8, color: '#475569' }}>הצלחה</div>
-        </div>
+        ))}
       </div>
 
-      {/* Sparkline + trade count */}
+      {/* Sparkline + stats */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <MiniSparkline history={strategy.equity_history || []} />
-        <div style={{ textAlign: 'right' }}>
-          <span style={{ fontSize: 11, color: '#64748b' }}>
-            {strategy.total_trades} עסקאות · {posCount} פתוחות
-          </span>
+        <div style={{ textAlign: 'right', fontSize: 10, color: '#64748b' }}>
+          {strategy.total_trades} עסקאות · {posCount} פתוחות
+          {(strategy.day_wins ?? 0) > 0 && (
+            <div style={{ color: GOLD, fontWeight: 700 }}>{strategy.day_wins} ניצחון{strategy.day_wins > 1 ? 'ות' : ''} שבועיים</div>
+          )}
         </div>
       </div>
 
@@ -134,73 +122,148 @@ function StrategyCard({ strategy, rank, isLeader }) {
       {posCount > 0 && (
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {Object.entries(strategy.positions || {}).map(([ticker, pos]) => {
-            const ppnl = pos.pnl_pct ?? pos.unrealized_pnl_pct ?? 0;
+            const ppnl = pos.pnl_pct ?? 0;
+            const sess = pos.session;
             return (
               <div key={ticker} style={{
                 fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 5,
                 background: ppnl >= 0 ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)',
                 border: `1px solid ${ppnl >= 0 ? '#166534' : '#7f1d1d'}`,
-                color: ppnl >= 0 ? W : L,
-                fontFamily: 'monospace',
+                color: ppnl >= 0 ? W : L, fontFamily: 'monospace',
               }}>
                 {ticker} {ppnl >= 0 ? '+' : ''}{ppnl.toFixed(1)}%
+                {sess && sess !== 'regular' && (
+                  <span style={{ fontSize: 8, marginLeft: 3, opacity: 0.7 }}>
+                    {sess === 'premarket' ? '🌅' : '🌙'}
+                  </span>
+                )}
               </div>
             );
           })}
         </div>
       )}
 
-      {/* P&L $ */}
+      {/* Dollar P&L */}
       {(strategy.total_pnl ?? 0) !== 0 && (
-        <div style={{
-          marginTop: 8, fontSize: 10, fontFamily: 'monospace',
-          color: (strategy.total_pnl ?? 0) >= 0 ? W : L,
-        }}>
-          {(strategy.total_pnl ?? 0) >= 0 ? '+' : ''}${(strategy.total_pnl ?? 0).toFixed(1)} רווח/הפסד
+        <div style={{ marginTop: 6, fontSize: 10, fontFamily: 'monospace', color: (strategy.total_pnl ?? 0) >= 0 ? W : L }}>
+          {(strategy.total_pnl ?? 0) >= 0 ? '+' : ''}${(strategy.total_pnl ?? 0).toFixed(1)}
         </div>
       )}
     </div>
   );
 }
 
+/* ── WeeklyHistory ───────────────────────────────────────────────────────── */
+function WeeklyHistory({ history = [], strategies = [] }) {
+  if (!history.length) return null;
+  return (
+    <div style={{
+      marginTop: 16, padding: '14px 16px', borderRadius: 10,
+      background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)',
+    }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b', marginBottom: 10 }}>
+        📅 היסטוריה שבועית
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: 'left', color: '#475569', padding: '4px 8px', fontWeight: 600 }}>יום</th>
+              <th style={{ textAlign: 'left', color: '#475569', padding: '4px 8px', fontWeight: 600 }}>מנצחת</th>
+              {strategies.map(s => {
+                const meta = STRATEGY_META[s.name] || { emoji: '📊', color: A };
+                return (
+                  <th key={s.name} style={{ textAlign: 'center', color: meta.color, padding: '4px 6px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    {meta.emoji}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {history.map((day, i) => {
+              const dayHe = DAYS_HE[day.weekday] || day.weekday || day.date?.slice(5);
+              return (
+                <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                  <td style={{ padding: '5px 8px', color: '#94a3b8', fontWeight: 600 }}>{dayHe}</td>
+                  <td style={{ padding: '5px 8px' }}>
+                    <span style={{
+                      fontSize: 11, fontWeight: 800,
+                      color: STRATEGY_META[day.winner]?.color || GOLD,
+                    }}>
+                      {STRATEGY_META[day.winner]?.emoji} {day.label?.replace(/^[^\s]+ /, '') || day.winner}
+                    </span>
+                  </td>
+                  {strategies.map(s => {
+                    const pct = (day.pnl_pcts || {})[s.name] ?? null;
+                    const isWinner = day.winner === s.name;
+                    return (
+                      <td key={s.name} style={{ textAlign: 'center', padding: '5px 6px' }}>
+                        {pct !== null ? (
+                          <span style={{
+                            fontFamily: 'monospace', fontWeight: isWinner ? 900 : 600,
+                            color: pct >= 0 ? W : L,
+                            fontSize: isWinner ? 12 : 10,
+                          }}>
+                            {isWinner && '★ '}{pct >= 0 ? '+' : ''}{pct.toFixed(1)}%
+                          </span>
+                        ) : <span style={{ color: '#334155' }}>—</span>}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ── Main Component ──────────────────────────────────────────────────────── */
 export default function StrategyArena() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData]         = useState(null);
+  const [loading, setLoading]   = useState(true);
   const [thinking, setThinking] = useState(false);
   const [declaring, setDeclaring] = useState(false);
-  const [lastMsg, setLastMsg] = useState(null);
+  const [lastMsg, setLastMsg]   = useState(null);
   const [countdown, setCountdown] = useState('');
+  const [sessionLabel, setSessionLabel] = useState('');
 
   const fetchStatus = async () => {
     try {
       const r = await axios.get('/api/smart-portfolio/arena/status');
       setData(r.data);
-    } catch {
-      /* silent */
-    } finally {
-      setLoading(false);
-    }
+    } catch { /* silent */ } finally { setLoading(false); }
   };
 
-  // Countdown to 16:05 ET
+  // Countdown + session label (local ET approximation)
   useEffect(() => {
     const tick = () => {
       const now = new Date();
-      // ET offset (approximate — ignores DST edge)
-      const etOffset = -4; // EDT; use -5 for EST
-      const utcH = now.getUTCHours() + etOffset;
-      const etH = ((utcH % 24) + 24) % 24;
-      const etM = now.getUTCMinutes();
-      const closeH = 16, closeM = 5;
-      const diffM = (closeH * 60 + closeM) - (etH * 60 + etM);
-      if (diffM <= 0) {
-        setCountdown('השוק נסגר');
-      } else if (diffM > 480) {
-        setCountdown('השוק עוד לא פתוח');
+      const utcH = now.getUTCHours() + (3 <= new Date().getMonth() + 1 && new Date().getMonth() + 1 <= 11 ? -4 : -5);
+      const etH  = ((utcH % 24) + 24) % 24;
+      const etM  = now.getUTCMinutes();
+      const total = etH * 60 + etM;
+      const dow   = ((now.getUTCDay() + (utcH < 0 ? -1 : 0)) + 7) % 7; // 0=Sun
+
+      if (dow === 0 || dow === 6) { setCountdown('סוף שבוע'); setSessionLabel('closed'); return; }
+      if (total >= 4 * 60 && total < 9 * 60 + 25) {
+        setSessionLabel('premarket');
+        const diff = 9 * 60 + 25 - total;
+        setCountdown(`${Math.floor(diff / 60)}ש' ${diff % 60}ד' לפתיחה`);
+      } else if (total >= 9 * 60 + 25 && total < 16 * 60 + 5) {
+        setSessionLabel('regular');
+        const diff = 16 * 60 + 5 - total;
+        setCountdown(Math.floor(diff / 60) > 0 ? `${Math.floor(diff / 60)}ש' ${diff % 60}ד' לסגירה` : `${diff % 60} דקות לסגירה`);
+      } else if (total >= 16 * 60 + 5 && total < 20 * 60) {
+        setSessionLabel('aftermarket');
+        const diff = 20 * 60 - total;
+        setCountdown(`${diff} דקות לסיום after`);
       } else {
-        const h = Math.floor(diffM / 60);
-        const m = diffM % 60;
-        setCountdown(h > 0 ? `${h}ש' ${m}ד' לסגירה` : `${m} דקות לסגירה`);
+        setSessionLabel('closed');
+        setCountdown('השוק סגור');
       }
     };
     tick();
@@ -215,149 +278,96 @@ export default function StrategyArena() {
   }, []);
 
   const triggerThink = async () => {
-    setThinking(true);
-    setLastMsg(null);
+    setThinking(true); setLastMsg(null);
     try {
       const r = await axios.post('/api/smart-portfolio/arena/think');
-      setLastMsg({ ok: true, text: `מחשב... ${r.data?.results?.length || 0} אסטרטגיות עודכנו` });
+      setLastMsg({ ok: true, text: `✅ עדכון הצליח · ${r.data?.tick_count ?? ''} ticks` });
       fetchStatus();
-    } catch (e) {
-      setLastMsg({ ok: false, text: e.message });
-    }
+    } catch (e) { setLastMsg({ ok: false, text: e.message }); }
     setThinking(false);
   };
 
-  const declareWinner = async () => {
-    if (!confirm('להכריז על המנצח ולהחיל את האסטרטגיה הטובה ביותר?')) return;
-    setDeclaring(true);
-    setLastMsg(null);
+  const declareDaily = async () => {
+    if (!confirm('להכריז על מנצחת היום?')) return;
+    setDeclaring(true); setLastMsg(null);
     try {
-      const r = await axios.post('/api/smart-portfolio/arena/declare-winner');
+      const r = await axios.post('/api/smart-portfolio/arena/declare-daily-winner');
       const w = r.data?.winner;
-      setLastMsg({ ok: true, text: `🏆 המנצח: ${w?.label || w?.name || '?'} עם ${w?.pnl_pct?.toFixed(2)}%!` });
+      setLastMsg({ ok: true, text: `🏆 מנצחת: ${w || '?'}` });
       fetchStatus();
-    } catch (e) {
-      setLastMsg({ ok: false, text: e.message });
-    }
+    } catch (e) { setLastMsg({ ok: false, text: e.message }); }
     setDeclaring(false);
   };
 
-  if (loading) {
-    return (
-      <div style={{ padding: 60, textAlign: 'center', color: '#475569' }}>
-        טוען ארנה...
-      </div>
-    );
-  }
+  if (loading) return <div style={{ padding: 60, textAlign: 'center', color: '#475569' }}>טוען ארנה...</div>;
+  if (!data)   return <div style={{ padding: 40, textAlign: 'center', color: L }}>שגיאה בטעינת ארנה</div>;
 
-  if (!data || data.error) {
-    return (
-      <div style={{ padding: 40, textAlign: 'center' }}>
-        <div style={{ color: L, fontSize: 13, marginBottom: 12 }}>
-          {data?.error || 'שגיאה בטעינת ארנה'}
-        </div>
-        <button onClick={fetchStatus}
-          style={{ padding: '8px 18px', borderRadius: 8, background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', color: '#60a5fa', cursor: 'pointer', fontSize: 12 }}>
-          נסה שוב
-        </button>
-      </div>
-    );
-  }
-
-  // API returns leaderboard array; normalize field names
+  // Normalize API data
   const strategies = (data.leaderboard || []).map(s => ({
     ...s,
     total_trades: s.trades ?? s.total_trades ?? 0,
-    total_pnl: s.pnl ?? s.total_pnl ?? 0,
-    win_rate: s.win_rate ?? 0,
+    total_pnl:    s.pnl   ?? s.total_pnl   ?? 0,
     equity_history: s.equity_history || [],
   }));
-  const sorted = [...strategies].sort((a, b) => (b.pnl_pct ?? 0) - (a.pnl_pct ?? 0));
-  const leaderName = sorted[0]?.name;
-
-  const totalPnl = strategies.reduce((sum, s) => sum + (s.total_pnl ?? 0), 0);
-  const totalEquity = strategies.reduce((sum, s) => sum + (s.equity ?? 1000), 0);
+  const sorted      = [...strategies].sort((a, b) => (b.pnl_pct ?? 0) - (a.pnl_pct ?? 0));
+  const leaderName  = sorted[0]?.name;
   const totalInitial = strategies.length * 1000;
-  const totalReturn = totalInitial > 0 ? ((totalEquity - totalInitial) / totalInitial * 100) : 0;
+  const totalEquity  = strategies.reduce((sum, s) => sum + (s.equity ?? 1000), 0);
+  const totalReturn  = totalInitial > 0 ? ((totalEquity - totalInitial) / totalInitial * 100) : 0;
+
+  const apiSession = data.session || sessionLabel;
+  const sm = SESSION_META[apiSession] || SESSION_META.closed;
 
   return (
-    <div style={{ padding: '16px', maxWidth: 900, margin: '0 auto' }}>
-      <style>{LEADER_PULSE_CSS}</style>
+    <div style={{ padding: '16px', maxWidth: 980, margin: '0 auto' }}>
+      <style>{STYLES}</style>
 
-      {/* ─── Header ─── */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        marginBottom: 16, flexWrap: 'wrap', gap: 10,
-      }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 26 }}>🏆</span>
-            <div>
-              <h2 style={{ fontSize: 20, fontWeight: 900, color: '#f8fafc', margin: 0 }}>
-                Strategy Arena
-              </h2>
-              <div style={{ fontSize: 11, color: '#475569' }}>
-                4 אסטרטגיות מתחרות · המנצח לוקח הכל בסגירה
-              </div>
+      {/* ── Header ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 26 }}>🏆</span>
+          <div>
+            <h2 style={{ fontSize: 20, fontWeight: 900, color: '#f8fafc', margin: 0 }}>Strategy Arena</h2>
+            <div style={{ fontSize: 10, color: '#475569' }}>
+              6 אסטרטגיות מתחרות כל השבוע · מנצחת יומית 16:05 · מנצחת שבועית שישי
             </div>
           </div>
         </div>
 
-        {/* Countdown + controls */}
+        {/* Session badge + controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {/* Session */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            fontSize: 11, fontWeight: 800, padding: '5px 10px', borderRadius: 8,
+            background: `${sm.color}12`, border: `1px solid ${sm.color}40`, color: sm.color,
+          }}>
+            <span className={apiSession !== 'closed' ? 'session-dot' : ''}
+              style={{ width: 7, height: 7, borderRadius: '50%', background: sm.dot, display: 'inline-block' }} />
+            {sm.icon} {sm.label}
+          </div>
+          {/* Countdown */}
           {countdown && (
-            <div style={{
-              fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 6,
-              background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)',
-              color: GOLD,
-            }}>
+            <div style={{ fontSize: 10, fontWeight: 600, padding: '4px 8px', borderRadius: 6, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)', color: GOLD }}>
               ⏰ {countdown}
             </div>
           )}
-          <button onClick={triggerThink} disabled={thinking}
-            style={{
-              fontSize: 11, padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700,
-              background: thinking ? '#1e1b4b' : 'linear-gradient(135deg, #4338ca, #6366f1)',
-              color: '#fff', opacity: thinking ? 0.6 : 1,
-            }}>
-            {thinking ? '⏳ חושב...' : '🧠 עדכן עכשיו'}
+          <button onClick={triggerThink} disabled={thinking} style={{
+            fontSize: 11, padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700,
+            background: thinking ? '#1e1b4b' : 'linear-gradient(135deg,#4338ca,#6366f1)', color: '#fff', opacity: thinking ? 0.6 : 1,
+          }}>
+            {thinking ? '⏳ חושב...' : '🧠 עדכן'}
           </button>
-          <button onClick={declareWinner} disabled={declaring}
-            style={{
-              fontSize: 11, padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontWeight: 700,
-              background: declaring ? 'transparent' : 'rgba(251,191,36,0.12)',
-              border: `1px solid ${declaring ? '#334155' : 'rgba(251,191,36,0.4)'}`,
-              color: declaring ? '#64748b' : GOLD,
-              opacity: declaring ? 0.6 : 1,
-            }}>
-            {declaring ? '⏳...' : '🏆 הכרז מנצח'}
+          <button onClick={declareDaily} disabled={declaring} style={{
+            fontSize: 11, padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 700,
+            background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.35)', color: GOLD, opacity: declaring ? 0.6 : 1,
+          }}>
+            {declaring ? '⏳...' : '🏆 הכרז מנצחת יום'}
           </button>
         </div>
       </div>
 
-      {/* ─── Winner announcement (if set) ─── */}
-      {data.winner && (
-        <div style={{
-          marginBottom: 16, padding: '14px 18px', borderRadius: 12,
-          background: 'linear-gradient(135deg, rgba(251,191,36,0.12), rgba(30,27,75,0.9))',
-          border: '1px solid rgba(251,191,36,0.5)',
-          display: 'flex', alignItems: 'center', gap: 12,
-        }}>
-          <span style={{ fontSize: 32 }}>🏆</span>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 900, color: GOLD }}>
-              {data.winner.label} — מנצח היום!
-            </div>
-            <div style={{ fontSize: 11, color: '#94a3b8' }}>
-              תשואה: {data.winner.pnl_pct >= 0 ? '+' : ''}{data.winner.pnl_pct?.toFixed(2)}% ·
-              {data.winner.trades ?? 0} עסקאות ·
-              הוחל על התיק הראשי ב-{data.winner_declared_at ? new Date(data.winner_declared_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : '?'}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─── Last message ─── */}
+      {/* ── Last message ── */}
       {lastMsg && (
         <div style={{
           marginBottom: 12, padding: '8px 14px', borderRadius: 8, fontSize: 11, fontWeight: 600,
@@ -369,26 +379,44 @@ export default function StrategyArena() {
         </div>
       )}
 
-      {/* ─── Combined stats bar ─── */}
+      {/* ── Weekly winner ── */}
+      {data.weekly_winner && (
+        <div style={{
+          marginBottom: 14, padding: '12px 16px', borderRadius: 12,
+          background: 'linear-gradient(135deg,rgba(251,191,36,0.1),rgba(30,27,75,0.9))',
+          border: '1px solid rgba(251,191,36,0.5)', display: 'flex', alignItems: 'center', gap: 12,
+        }}>
+          <span style={{ fontSize: 30 }}>🏆</span>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 900, color: GOLD }}>{data.weekly_winner.label} — מנצחת השבוע!</div>
+            <div style={{ fontSize: 10, color: '#94a3b8' }}>
+              תשואה שבועית: {data.weekly_winner.pnl_pct >= 0 ? '+' : ''}{data.weekly_winner.pnl_pct?.toFixed(2)}%
+              · הוחל על התיק הראשי ✅
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Stats bar ── */}
       <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 16,
-        padding: '12px 14px', borderRadius: 10,
-        background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)',
+        display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 14,
+        padding: '10px 14px', borderRadius: 10, background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)',
       }}>
         {[
-          { label: 'סה"כ הון', value: `$${totalEquity.toFixed(0)}`, color: '#f8fafc', icon: '💰' },
-          { label: 'תשואה כוללת', value: `${totalReturn >= 0 ? '+' : ''}${totalReturn.toFixed(2)}%`, color: totalReturn >= 0 ? W : L, icon: totalReturn >= 0 ? '📈' : '📉' },
-          { label: 'מנהיג נוכחי', value: sorted[0]?.label?.split('—')[0]?.trim() || '—', color: GOLD, icon: '👑' },
+          { label: 'הון כולל',   value: `$${totalEquity.toFixed(0)}`, color: '#f8fafc', icon: '💰' },
+          { label: 'תשואה שבועית', value: `${totalReturn >= 0 ? '+' : ''}${totalReturn.toFixed(2)}%`, color: totalReturn >= 0 ? W : L, icon: totalReturn >= 0 ? '📈' : '📉' },
+          { label: 'מנהיגה כרגע', value: sorted[0]?.label?.replace(/^[^\s]+ /, '').split(' ')[0] || '—', color: GOLD, icon: '👑' },
+          { label: 'ימי ניצחון',  value: data.daily_history?.length > 0 ? `${data.daily_history.length} ימים` : 'שבוע ראשון', color: A, icon: '📅' },
         ].map((s, i) => (
           <div key={i} style={{ textAlign: 'center' }}>
             <div style={{ fontSize: 9, color: '#475569', marginBottom: 2 }}>{s.icon} {s.label}</div>
-            <div style={{ fontSize: 15, fontFamily: 'monospace', fontWeight: 900, color: s.color }}>{s.value}</div>
+            <div style={{ fontSize: 13, fontFamily: 'monospace', fontWeight: 900, color: s.color }}>{s.value}</div>
           </div>
         ))}
       </div>
 
-      {/* ─── Strategy cards ─── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+      {/* ── Strategy cards ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: 12 }}>
         {sorted.map((strategy, rank) => (
           <StrategyCard
             key={strategy.name}
@@ -399,49 +427,41 @@ export default function StrategyArena() {
         ))}
       </div>
 
-      {/* ─── Performance bar comparison ─── */}
-      {strategies.length > 0 && (
-        <div style={{
-          marginTop: 16, padding: '12px 16px', borderRadius: 10,
-          background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)',
-        }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b', marginBottom: 10 }}>
-            השוואת ביצועים
-          </div>
-          {sorted.map((s, i) => {
-            const meta = STRATEGY_META[s.name] || { color: A };
-            const pct = s.pnl_pct ?? 0;
-            const maxPct = Math.max(...strategies.map(x => Math.abs(x.pnl_pct ?? 0)), 1);
-            const barW = Math.abs(pct) / maxPct * 100;
-            return (
-              <div key={s.name} style={{ marginBottom: 6 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, marginBottom: 3 }}>
-                  <span style={{ color: meta.color, fontWeight: 700 }}>
-                    {RANK_COLORS[i] && <span style={{ color: RANK_COLORS[i] }}>#{i + 1} </span>}
-                    {s.label?.split('—')[0]?.trim()}
-                  </span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 800, color: pct >= 0 ? W : L }}>
-                    {pct >= 0 ? '+' : ''}{pct.toFixed(2)}%
-                  </span>
-                </div>
-                <div style={{ height: 6, background: '#1e293b', borderRadius: 3, overflow: 'hidden' }}>
-                  <div style={{
-                    height: '100%',
-                    width: `${barW}%`,
-                    background: pct >= 0 ? meta.color : L,
-                    borderRadius: 3,
-                    transition: 'width 0.5s ease',
-                  }} />
-                </div>
+      {/* ── Performance bars ── */}
+      <div style={{ marginTop: 14, padding: '12px 16px', borderRadius: 10, background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b', marginBottom: 10 }}>השוואת ביצועים שבועיים</div>
+        {sorted.map((s, i) => {
+          const meta   = STRATEGY_META[s.name] || { color: A };
+          const pct    = s.pnl_pct ?? 0;
+          const maxPct = Math.max(...strategies.map(x => Math.abs(x.pnl_pct ?? 0)), 0.1);
+          return (
+            <div key={s.name} style={{ marginBottom: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, marginBottom: 3 }}>
+                <span style={{ color: meta.color, fontWeight: 700 }}>
+                  <span style={{ color: RANK_COLORS[i] }}>#{i + 1} </span>
+                  {meta.emoji} {s.label?.replace(/^[^\s]+ /, '')}
+                </span>
+                <span style={{ fontFamily: 'monospace', fontWeight: 800, color: pct >= 0 ? W : L }}>
+                  {pct >= 0 ? '+' : ''}{pct.toFixed(2)}%
+                </span>
               </div>
-            );
-          })}
-        </div>
-      )}
+              <div style={{ height: 6, background: '#1e293b', borderRadius: 3, overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', width: `${Math.abs(pct) / maxPct * 100}%`,
+                  background: pct >= 0 ? meta.color : L, borderRadius: 3, transition: 'width 0.6s ease',
+                }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
-      {/* ─── Footer info ─── */}
+      {/* ── Weekly history table ── */}
+      <WeeklyHistory history={data.daily_history || []} strategies={sorted} />
+
+      {/* ── Footer ── */}
       <div style={{ marginTop: 12, fontSize: 9, color: '#334155', textAlign: 'center' }}>
-        עדכון אוטומטי כל 15 שניות · הכרזת מנצח אוטומטית ב-16:05 ET · הנבחר מוחל על התיק הראשי
+        עדכון כל 15 שניות · פועל בפרי-מרקט / מסחר / אפטר-מרקט · מנצחת יום: 16:05 · מנצחת שבוע: שישי 16:05 · פרמטרים → AI ראשי
       </div>
     </div>
   );

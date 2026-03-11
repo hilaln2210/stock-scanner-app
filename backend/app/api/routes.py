@@ -3265,30 +3265,43 @@ async def smart_portfolio_arena_think():
 
 @router.post("/smart-portfolio/arena/declare-winner")
 async def smart_portfolio_arena_declare_winner():
-    """16:05 ET — declare winner, write to ai_learning.json, send Telegram alert."""
+    """Manual: declare weekly winner (same as daily on Friday)."""
+    return await smart_portfolio_arena_declare_daily_winner()
+
+
+@router.post("/smart-portfolio/arena/declare-daily-winner")
+async def smart_portfolio_arena_declare_daily_winner():
+    """16:05 ET daily — archive day winner, write weekly winner on Friday."""
     from app.services.alerts_service import send_telegram
-    if arena_singleton.winner:
-        return {"already_declared": True, "winner": arena_singleton.winner}
     cached = _FV_TABLE_CACHE.get('data', {})
     live_prices = {
         s['ticker']: _safe_float(s.get('price'))
         for s in cached.get('stocks', [])
         if s.get('ticker') and _safe_float(s.get('price')) > 0
     }
-    result = arena_singleton.declare_winner(live_prices)
-    winner_label = _ARENA_STRATEGY_CONFIGS.get(result.get("winner", ""), {}).get("label", result.get("winner", ""))
-    pnl = result.get("pnl", 0)
-    pnl_pct = result.get("pnl_pct", 0)
-    scores = result.get("final_scores", {})
+    result = arena_singleton.declare_daily_winner(live_prices)
+    if result.get("already_declared"):
+        return result
+    winner_name  = result.get("winner", "")
+    winner_label = _ARENA_STRATEGY_CONFIGS.get(winner_name, {}).get("label", winner_name)
+    pnl_pcts     = result.get("pnl_pcts", {})
+    weekday      = result.get("weekday", "")
+    rank_emojis  = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣"]
+    sorted_pnls  = sorted(pnl_pcts.items(), key=lambda x: -x[1])
     lines = [
-        "🏆 <b>Arena Winner!</b>",
-        f"<b>{winner_label}</b> — ${pnl:+.2f} ({pnl_pct:+.1f}%)",
-        "פרמטרים הועברו ל-AI הראשי ✅\n",
+        f"🏆 <b>Arena — מנצחת {weekday}!</b>",
+        f"<b>{winner_label}</b>\n",
         "תוצאות יום:",
     ]
-    for name, score in sorted(scores.items(), key=lambda x: -x[1]):
-        label = _ARENA_STRATEGY_CONFIGS.get(name, {}).get("label", name)
-        lines.append(f"  {label}: ${score:+.2f}")
+    for i, (name, pct) in enumerate(sorted_pnls):
+        lbl   = _ARENA_STRATEGY_CONFIGS.get(name, {}).get("label", name)
+        emoji = rank_emojis[i] if i < len(rank_emojis) else "•"
+        lines.append(f"  {emoji} {lbl}: {pct:+.2f}%")
+    # Weekly winner on Fridays
+    if arena_singleton.weekly_winner:
+        ww = arena_singleton.weekly_winner
+        lines.append(f"\n🏆🏆 <b>מנצחת שבועית: {ww['label']}</b> ({ww['pnl_pct']:+.2f}%)")
+        lines.append("פרמטרים הועברו ל-AI ✅")
     await send_telegram("\n".join(lines))
     return result
 

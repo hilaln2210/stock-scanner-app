@@ -92,47 +92,51 @@ async def lifespan(app: FastAPI):
     # Smart Portfolio AI Brain — runs every 5 minutes during market hours only
     async def _smart_portfolio_tick():
         from datetime import datetime, timezone, timedelta
-        # Market hours gate: NYSE 9:30–16:00 ET (UTC-4/5). Allow 9:25–16:05.
-        et_offset = timedelta(hours=-4)  # EDT; use -5 for EST (Nov–Mar)
+        from app.services.strategy_arena import get_session_type
+        session = get_session_type()
+
+        # Main brain: regular hours only (9:25-16:05 ET, weekdays)
+        et_offset = timedelta(hours=-4)
         now_et = datetime.now(timezone.utc) + et_offset
-        is_weekday = now_et.weekday() < 5  # 0=Mon … 4=Fri
-        market_open = now_et.replace(hour=9, minute=25, second=0, microsecond=0)
-        market_close = now_et.replace(hour=16, minute=5, second=0, microsecond=0)
-        in_market_hours = is_weekday and market_open <= now_et <= market_close
-        if not in_market_hours:
-            return  # Skip — no entries on stale data outside trading hours
+        is_weekday = now_et.weekday() < 5
+        market_open  = now_et.replace(hour=9,  minute=25, second=0, microsecond=0)
+        market_close = now_et.replace(hour=16, minute=5,  second=0, microsecond=0)
+        in_regular_hours = is_weekday and market_open <= now_et <= market_close
 
         try:
             import httpx
             async with httpx.AsyncClient(timeout=60) as client:
-                r = await client.post("http://localhost:8000/api/smart-portfolio/think")
-                data = r.json()
-                d = data.get('decision', {})
-                if d and d.get('action') != 'HOLD':
-                    print(f"[Brain] {d.get('action')} {d.get('ticker')} (confidence: {d.get('confidence')}%)")
-                else:
-                    print(f"[Brain] HOLD — {d.get('reason', 'no decision') if d else 'no data'}")
+                # Main brain only during regular hours
+                if in_regular_hours:
+                    r = await client.post("http://localhost:8000/api/smart-portfolio/think")
+                    data = r.json()
+                    d = data.get('decision', {})
+                    if d and d.get('action') != 'HOLD':
+                        print(f"[Brain] {d.get('action')} {d.get('ticker')} (confidence: {d.get('confidence')}%)")
+                    else:
+                        print(f"[Brain] HOLD — {d.get('reason', 'no decision') if d else 'no data'}")
 
-                # Arena tick — same data, 4 strategies competing
-                try:
-                    ra = await client.post("http://localhost:8000/api/smart-portfolio/arena/think",
-                                           timeout=httpx.Timeout(20.0))
-                    lb = ra.json().get("leaderboard", [])
-                    if lb:
-                        leader = lb[0]
-                        print(f"[Arena] Leader: {leader['name']} "
-                              f"${leader.get('pnl', 0):+.2f} ({leader.get('pnl_pct', 0):+.1f}%)")
-                except Exception as ae:
-                    print(f"[Arena] Error: {ae}")
+                # Arena: runs in all sessions (pre/regular/after), closed = skip
+                if session != "closed":
+                    try:
+                        ra = await client.post("http://localhost:8000/api/smart-portfolio/arena/think",
+                                               timeout=httpx.Timeout(30.0))
+                        lb = ra.json().get("leaderboard", [])
+                        if lb:
+                            leader = lb[0]
+                            print(f"[Arena:{session}] Leader: {leader['name']} "
+                                  f"${leader.get('pnl', 0):+.2f} ({leader.get('pnl_pct', 0):+.1f}%)")
+                    except Exception as ae:
+                        print(f"[Arena] Error: {ae}")
         except Exception as e:
             print(f"[Brain] Error: {e}")
 
     scheduler.add_job(_smart_portfolio_tick, "interval", minutes=5, id="brain_job")
     print("Smart Portfolio Brain + Arena: scheduled every 5 minutes")
 
-    # Arena preview alert at 15:45 ET and winner declaration at 16:05 ET
+    # Arena daily winner at 16:05 ET (Mon-Fri), weekly winner on Fridays
     async def _arena_eod_check():
-        """Runs every 5 min — fires preview at 15:45 and winner at 16:05 ET."""
+        """Runs every 1 min — fires daily winner at 16:05, preview at 15:45."""
         from datetime import datetime, timezone, timedelta
         et_offset = timedelta(hours=-4)
         now_et = datetime.now(timezone.utc) + et_offset
@@ -142,12 +146,12 @@ async def lifespan(app: FastAPI):
         try:
             import httpx
             async with httpx.AsyncClient(timeout=15) as client:
-                # Preview: 15:45–15:49
+                # Preview alert: 15:45–15:49
                 if hour == 15 and 45 <= minute < 50:
                     await client.post("http://localhost:8000/api/smart-portfolio/arena/preview-alert")
-                # Declare winner: 16:05–16:09
+                # Daily winner: 16:05–16:09
                 elif hour == 16 and 5 <= minute < 10:
-                    await client.post("http://localhost:8000/api/smart-portfolio/arena/declare-winner")
+                    await client.post("http://localhost:8000/api/smart-portfolio/arena/declare-daily-winner")
         except Exception as e:
             print(f"[Arena EOD] Error: {e}")
 
