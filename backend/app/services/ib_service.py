@@ -56,8 +56,22 @@ def _run_in_ib_thread(fn, timeout=12, priority=False):
         ib = _ib.IB()
         try:
             cid = _next_client_id()
-            ib.connect("127.0.0.1", 4002, clientId=cid, readonly=False, timeout=8)
-            result_holder[0] = fn(ib)
+            ib.RequestTimeout = 2
+            # Block auto-disconnect during connect (position/account timeouts)
+            _real_disc = ib.disconnect
+            _block = [True]
+            ib.disconnect = lambda: (log.debug("[IB] blocked auto-disconnect") if _block[0] else _real_disc())
+            try:
+                ib.connect("127.0.0.1", 4002, clientId=cid, readonly=False, timeout=8)
+            except Exception:
+                pass  # may "fail" due to startup timeouts
+            _block[0] = False
+            ib.disconnect = _real_disc
+
+            if ib.client.isConnected():
+                result_holder[0] = fn(ib)
+            else:
+                error_holder[0] = Exception("IB connection not alive after connect")
         except Exception as e:
             error_holder[0] = e
             log.error(f"[IB thread] error: {e}")
@@ -77,6 +91,16 @@ def _run_in_ib_thread(fn, timeout=12, priority=False):
     if error_holder[0]:
         log.warning(f"[IB] fetch failed: {error_holder[0]}")
     return result_holder[0]
+
+
+def _ensure_event_loop():
+    """Ensure current thread has an event loop (needed for ib_insync operations)."""
+    import asyncio
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
 
 class IBService:
@@ -150,13 +174,6 @@ class IBService:
 
     def _make_persistent(self, host, port, client_id):
         """Create/replace the persistent IB connection (clientId=20)."""
-        def _worker():
-            ib = _ib.IB()
-            ib.connect(host, port, clientId=client_id, readonly=False, timeout=10)
-            accounts = ib.managedAccounts()
-            account = accounts[0] if accounts else ""
-            return ib, account
-
         done = threading.Event()
         result = [None]
 
@@ -165,7 +182,49 @@ class IBService:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
-                result[0] = _worker()
+                ib = _ib.IB()
+                ib.RequestTimeout = 2
+
+                # Prevent ib_insync from auto-disconnecting on startup timeout
+                _real_disconnect = ib.disconnect
+                _block_disconnect = [True]
+                def _guarded_disconnect():
+                    if _block_disconnect[0]:
+                        log.info("[IB connect] blocked auto-disconnect during startup")
+                        return
+                    _real_disconnect()
+                ib.disconnect = _guarded_disconnect
+
+                try:
+                    ib.connect(host, port, clientId=client_id, readonly=False, timeout=8)
+                except Exception as e:
+                    log.info(f"[IB connect] connect raised: {e} (checking if alive)")
+
+                # Restore real disconnect
+                _block_disconnect[0] = False
+                ib.disconnect = _real_disconnect
+
+                # Check if we're actually connected despite ib_insync thinking we failed
+                is_alive = False
+                try:
+                    is_alive = ib.client.isConnected() if hasattr(ib, 'client') else False
+                except Exception:
+                    pass
+
+                accounts = ib.managedAccounts() or []
+                if not accounts and hasattr(ib, 'wrapper'):
+                    accounts = getattr(ib.wrapper, 'accounts', [])
+
+                if is_alive or accounts:
+                    account = accounts[0] if accounts else ""
+                    result[0] = (ib, account)
+                    log.info(f"[IB connect] OK — account={account}, client_alive={is_alive}")
+                else:
+                    log.warning("[IB connect] connection truly failed, no accounts")
+                    try:
+                        _real_disconnect()
+                    except Exception:
+                        pass
             except Exception as e:
                 log.error(f"[IB connect] {e}")
             finally:
@@ -174,7 +233,9 @@ class IBService:
 
         t = threading.Thread(target=_run, daemon=True, name="ib-connect")
         t.start()
-        done.wait(timeout=15)
+        done.wait(timeout=20)
+        if not done.is_set():
+            log.warning("[IB connect] thread timed out")
         return result[0]
 
     # ── Connection ────────────────────────────────────────────────────────
@@ -230,7 +291,8 @@ class IBService:
         if result is None:
             return {"connected": False, "error": "חיבור נכשל (timeout)"}
         ib, account = result
-        if not ib.isConnected():
+        # Check client-level connection (ib.isConnected may be wrong after startup timeout)
+        if not (ib.isConnected() or (hasattr(ib, 'client') and ib.client.isConnected())):
             return {"connected": False, "error": "חיבור נכשל"}
         with self._lock:
             self._ib = ib
@@ -259,7 +321,11 @@ class IBService:
 
         account = self._account
 
-        def _fetch(ib: "_ib.IB"):
+        def _fetch_persistent():
+            _ensure_event_loop()
+            ib = self._ib
+            if not ib or not ib.client.isConnected():
+                return None
             ib.reqAccountUpdates(True)
             ib.sleep(2)
             vals = {}
@@ -283,7 +349,7 @@ class IBService:
 
         import asyncio
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_fetch, timeout=15))
+        result = await loop.run_in_executor(None, _fetch_persistent)
         if result:
             self._account_cache = result
             self._account_cache_time = time.time()
@@ -302,8 +368,12 @@ class IBService:
         if time.time() - self._positions_cache_time < self._CACHE_TTL and self._positions_cache:
             return self._positions_cache
 
-        def _fetch_raw(ib: "_ib.IB"):
-            """Get raw positions from IB only — fast, releases semaphore quickly."""
+        def _fetch_raw_persistent():
+            """Get raw positions from persistent IB connection."""
+            _ensure_event_loop()
+            ib = self._ib
+            if not ib or not ib.client.isConnected():
+                return None
             ib.reqPositions()
             ib.sleep(3)
             raw = ib.positions()
@@ -411,8 +481,8 @@ class IBService:
 
         import asyncio
         loop = asyncio.get_running_loop()
-        # Step 1: get raw positions from IB (fast — releases semaphore after ~5s)
-        raw = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_fetch_raw, timeout=12))
+        # Step 1: get raw positions from persistent IB connection
+        raw = await loop.run_in_executor(None, _fetch_raw_persistent)
         if raw is None:
             return self._positions_cache
         # Step 2: enrich with yfinance (no semaphore, separate thread)
@@ -433,8 +503,12 @@ class IBService:
         if time.time() - self._orders_cache_time < self._CACHE_TTL:
             return self._orders_cache
 
-        def _fetch(ib: "_ib.IB"):
-            trades = ib.reqAllOpenOrders()  # all orders across all clientIds
+        def _fetch_persistent():
+            _ensure_event_loop()
+            ib = self._ib
+            if not ib or not ib.client.isConnected():
+                return None
+            trades = ib.reqAllOpenOrders()
             ib.sleep(1)
             seen = set()
             result = []
@@ -463,7 +537,7 @@ class IBService:
 
         import asyncio
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_fetch, timeout=12))
+        result = await loop.run_in_executor(None, _fetch_persistent)
         if result is not None:
             self._orders_cache = result
             self._orders_cache_time = time.time()
@@ -511,7 +585,12 @@ class IBService:
         if not self.is_connected():
             return {"error": "לא מחובר ל-IB"}
 
-        def _do(ib: "_ib.IB"):
+        def _do_on_persistent():
+            """Use the persistent connection (clientId=20) for orders — no new connect needed."""
+            _ensure_event_loop()
+            ib = self._ib
+            if not ib or not ib.client.isConnected():
+                return {"error": "חיבור IB לא פעיל"}
             contract = _ib.Stock(ticker.upper(), "SMART", "USD")
             ib.qualifyContracts(contract)
             if order_type == "MKT":
@@ -528,7 +607,7 @@ class IBService:
                 return {"error": f"סוג הוראה לא נתמך: {order_type}"}
             order.outsideRth = True  # execute in extended hours too
             trade = ib.placeOrder(contract, order)
-            ib.sleep(1)
+            ib.sleep(2)
             return {
                 "order_id": trade.order.orderId,
                 "ticker": ticker.upper(),
@@ -542,8 +621,7 @@ class IBService:
 
         import asyncio
         loop = asyncio.get_running_loop()
-        # priority=True: bypass semaphore for user-initiated orders
-        result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_do, timeout=20, priority=True))
+        result = await loop.run_in_executor(None, _do_on_persistent)
         if result and "order_id" in result:
             self._orders_cache_time = 0
             self._positions_cache_time = 0
@@ -567,7 +645,11 @@ class IBService:
         if not self.is_connected():
             return {"error": "לא מחובר ל-IB"}
 
-        def _do(ib: "_ib.IB"):
+        def _do_persistent():
+            _ensure_event_loop()
+            ib = self._ib
+            if not ib or not ib.client.isConnected():
+                return {"error": "חיבור IB לא פעיל"}
             trades = ib.reqAllOpenOrders()
             ib.sleep(0.5)
             target = next((t for t in trades if t.order.orderId == order_id), None)
@@ -579,8 +661,7 @@ class IBService:
 
         import asyncio
         loop = asyncio.get_running_loop()
-        # priority=True: bypass semaphore for user-initiated cancels
-        result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_do, timeout=12, priority=True))
+        result = await loop.run_in_executor(None, _do_persistent)
         if result and result.get("cancelled"):
             self._orders_cache_time = 0
         return result or {"error": "timeout"}
