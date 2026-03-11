@@ -219,11 +219,11 @@ class SmartPortfolio:
                 atr_val = float(str(sd.get('atr', '0')).replace(',', ''))
             except (ValueError, TypeError):
                 pass
-            # ATR trail = 2x ATR, bounded between 3% and 12%
+            # ATR trail = 1.5x ATR, bounded between 2% and 8% — tighter trail = keep more gains
             if atr_val > 0 and price > 0:
-                atr_trail_pct = min(12, max(3, (atr_val * 2 / price) * 100))
+                atr_trail_pct = min(8, max(2, (atr_val * 1.5 / price) * 100))
             else:
-                atr_trail_pct = 5  # fallback
+                atr_trail_pct = 3  # fallback
 
             # Partial take-profit: close 40% at +5% (only once) — lock in gains
             if pnl_pct >= 5 and not pos.get('partial_taken') and pos['qty'] >= 2:

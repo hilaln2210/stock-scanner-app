@@ -1242,11 +1242,12 @@ def evaluate_exits(positions: dict, stocks: list, live_prices: dict, regime: dic
 
         stock_data = stock_map.get(ticker, {})
 
-        # Time decay: if holding > 4 hours with small P&L, exit
-        if holding_minutes > 240 and abs(pnl_pct) < 1.5:
+        # Time decay: flat position eating capital — exit fast
+        if holding_minutes > 120 and abs(pnl_pct) < 1.0:
+            urgency = 'high' if holding_minutes > 240 else 'medium'
             suggestions.append({
-                'ticker': ticker, 'reason': f'Time decay — {int(holding_minutes/60)}h ללא תזוזה משמעותית',
-                'urgency': 'medium', 'action': 'close',
+                'ticker': ticker, 'reason': f'Time decay — {int(holding_minutes/60)}h ללא תזוזה ({pnl_pct:+.1f}%)',
+                'urgency': urgency, 'action': 'close',
             })
 
         # Momentum fade: entered on momentum but RSI now overbought
@@ -1443,43 +1444,43 @@ def _rule_based_decision(stocks: list, portfolio_state: dict, trade_history: lis
             'market_regime': regime,
         }
 
-    # Aggressive position sizing
-    base_pct = min(25, max(8, int(confidence / 5)))  # was /6, max 20 → now /5, max 25
+    # AGGRESSIVE POSITION SIZING — bigger bets on conviction
+    base_pct = min(25, max(10, int(confidence / 4)))   # confidence 60→15%, 80→20%, 90→22%
     if regime['volatility'] in ('high', 'extreme'):
-        base_pct = max(8, base_pct - 3)  # was -4
+        base_pct = max(10, base_pct - 3)
     if recent_win_rate > 0.6 and len(last_10) >= 5:
-        base_pct = min(25, base_pct + 3)  # was +2
+        base_pct = min(25, base_pct + 5)   # hot streak → size up
     elif recent_win_rate < 0.3 and len(last_10) >= 5:
-        base_pct = max(8, base_pct - 2)  # was -3
-    # Squeeze plays get bigger position
+        base_pct = max(8, base_pct - 3)    # cold streak → size down
+    # Squeeze plays get biggest position
     if is_squeeze_play:
-        base_pct = min(25, base_pct + 3)
+        base_pct = min(25, base_pct + 5)
 
-    stop_pct = 6 if best['health'] >= 70 else 7 if best['health'] >= 50 else 8  # wider stops
+    # TIGHT STOPS — cut losers fast, protect capital
+    stop_pct = 3 if best['health'] >= 70 else 4 if best['health'] >= 50 else 5
     if regime['volatility'] == 'extreme':
-        stop_pct = min(12, stop_pct + 2)
+        stop_pct = min(7, stop_pct + 2)   # wider only in extreme volatility
     elif regime['volatility'] == 'high':
-        stop_pct = min(10, stop_pct + 1)
-    if best['rel_vol'] > 3:
-        stop_pct = min(12, stop_pct + 1)
-    # Squeeze plays need wider stops — these stocks are volatile
+        stop_pct = min(6, stop_pct + 1)
+    # Squeeze plays use ATR-adaptive stops (wider is ok — these moves are big)
     if is_squeeze_play and best.get('short_fl', 0) >= 20:
-        stop_pct = min(12, stop_pct + 2)
+        stop_pct = min(6, stop_pct + 2)
 
-    target_pct = max(10, int(best['chg'] * 2)) if best['chg'] > 3 else 12
+    # BIG TARGETS — let winners run
+    target_pct = max(15, int(best['chg'] * 2.5)) if best['chg'] > 3 else 15
     if best.get('cat_score', 0) > 10:
-        target_pct = min(25, target_pct + 3)
+        target_pct = min(30, target_pct + 5)
     if regime['type'] == 'bullish':
-        target_pct = min(30, target_pct + 3)
-    # Squeeze plays → bigger target, these can run 20-50%
-    if is_squeeze_play:
         target_pct = min(35, target_pct + 5)
-    # TTM Squeeze firing → let it run even further
+    # Squeeze plays → big target, these can run 20-50%
+    if is_squeeze_play:
+        target_pct = min(40, target_pct + 8)
+    # TTM Squeeze firing → maximum target
     if best.get('ttm_state') == 'firing':
-        target_pct = min(40, target_pct + 5)
-    # Accelerating momentum → slightly bigger target
+        target_pct = min(50, target_pct + 10)
+    # Accelerating momentum → bigger target
     if best.get('accel_score', 0) > 10:
-        target_pct = min(35, target_pct + 3)
+        target_pct = min(40, target_pct + 5)
 
     reason_text = ' | '.join(best['reasons'][:5]) if best['reasons'] else f"ציון {best['score']:.0f}"
 

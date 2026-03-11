@@ -3102,7 +3102,7 @@ async def smart_portfolio_think():
 
     result = {'decision': decision, 'executed': False, 'closed_trades': closed}
 
-    if decision.get('action') in ('BUY', 'SHORT') and decision.get('confidence', 0) >= 60:
+    if decision.get('action') in ('BUY', 'SHORT') and decision.get('confidence', 0) >= 55:
         ticker = decision.get('ticker', '').upper()
         # Only trade tickers in our high-liquidity universe
         if not ticker or ticker in smart_portfolio.positions or ticker not in _SMART_PORTFOLIO_UNIVERSE:
@@ -3126,13 +3126,13 @@ async def smart_portfolio_think():
             return result
 
         equity = smart_portfolio.get_total_equity(live_prices)
-        # Position size: 15% max, minimum 5%
-        position_pct = min(decision.get('position_pct', 10), 15) / 100
+        # Position size: 25% max — bigger bets on conviction
+        position_pct = min(decision.get('position_pct', 15), 25) / 100
         qty = max(1, int((equity * position_pct) / price))
-        # Stop loss: AI suggestion but cap at 5%, minimum 2%
-        sl_pct = max(0.02, min(decision.get('stop_loss_pct', 4), 5)) / 100
-        # Target: AI suggestion but at least 8%, cap at 30%
-        tgt_pct = max(0.08, min(decision.get('target_pct', 12), 30)) / 100
+        # Stop loss: AI suggestion, cap at 6% (3% minimum — tight stops)
+        sl_pct = max(0.03, min(decision.get('stop_loss_pct', 4), 6)) / 100
+        # Target: AI suggestion, at least 12%, up to 50% for squeeze plays
+        tgt_pct = max(0.12, min(decision.get('target_pct', 15), 50)) / 100
 
         if decision['action'] == 'BUY':
             stop = round(price * (1 - sl_pct), 2)
