@@ -80,10 +80,14 @@ function AccountSummary({ data }) {
 function PositionsTable({ positions, onClose }) {
   const [closing, setClosing] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const [closeOrderType, setCloseOrderType] = useState("MKT");
+  const [closeTif, setCloseTif] = useState("DAY");
+  const [closeLimitPrice, setCloseLimitPrice] = useState("");
 
   const handleClose = async (pos) => {
     setClosing(pos.ticker);
-    try { await onClose(pos); } finally { setClosing(null); setConfirm(null); }
+    try { await onClose(pos, closeOrderType, closeLimitPrice ? parseFloat(closeLimitPrice) : undefined, closeTif); }
+    finally { setClosing(null); setConfirm(null); setCloseOrderType("MKT"); setCloseLimitPrice(""); setCloseTif("DAY"); }
   };
 
   const totalValue = positions?.reduce((s, p) => s + (p.market_value ?? 0), 0) ?? 0;
@@ -96,11 +100,28 @@ function PositionsTable({ positions, onClose }) {
   return (
     <div className="bg-[#0a1520] border border-[#1e3a5f] rounded-lg overflow-hidden">
       {confirm && (
-        <div className="px-4 py-2.5 bg-[#1a0a0a] border-b border-red-800/50 flex items-center gap-3 text-sm">
+        <div className="px-4 py-3 bg-[#1a0a0a] border-b border-red-800/50 flex flex-wrap items-center gap-3 text-sm">
           <AlertTriangle size={14} className="text-red-400 shrink-0" />
-          <span className="text-red-300">Close {confirm.qty} shares of <strong>{confirm.ticker}</strong> at market?</span>
-          <button onClick={() => handleClose(confirm)}
-            className="ml-auto px-3 py-1 bg-red-600 hover:bg-red-500 text-white rounded text-xs font-bold">
+          <span className="text-red-300">Close <strong>{confirm.qty}</strong> × <strong>{confirm.ticker}</strong></span>
+          <select value={closeOrderType} onChange={e => { setCloseOrderType(e.target.value); setCloseLimitPrice(""); }}
+            className="px-2 py-1 bg-[#0a1520] border border-red-800/50 text-red-200 rounded text-xs">
+            <option value="MKT">MKT — שוק</option>
+            <option value="LMT">LMT — לימיט</option>
+          </select>
+          {closeOrderType === "LMT" && (
+            <input value={closeLimitPrice} onChange={e => setCloseLimitPrice(e.target.value)}
+              type="number" step="0.01" placeholder={confirm.market_price ? String(confirm.market_price) : "0.00"}
+              className="w-24 px-2 py-1 bg-[#0a1520] border border-red-800/50 text-red-200 rounded text-xs font-mono"
+            />
+          )}
+          <select value={closeTif} onChange={e => setCloseTif(e.target.value)}
+            className="px-2 py-1 bg-[#0a1520] border border-red-800/50 text-red-200 rounded text-xs">
+            <option value="DAY">DAY</option>
+            <option value="GTC">GTC</option>
+            <option value="GTCEXT">GTCEXT</option>
+          </select>
+          <button onClick={() => handleClose(confirm)} disabled={closeOrderType === "LMT" && !closeLimitPrice}
+            className="ml-auto px-3 py-1 bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white rounded text-xs font-bold">
             {closing === confirm.ticker ? <Loader2 size={11} className="animate-spin" /> : "Confirm"}
           </button>
           <button onClick={() => setConfirm(null)} className="text-zinc-500 hover:text-zinc-300"><X size={13} /></button>
@@ -242,6 +263,7 @@ function OrderEntry({ onPlace }) {
             className="w-full px-3 py-2 bg-zinc-900 border border-zinc-600 rounded-lg text-zinc-100 text-sm">
             <option value="DAY">DAY</option>
             <option value="GTC">GTC</option>
+            <option value="GTCEXT">GTCEXT</option>
           </select>
         </div>
       </div>
@@ -463,13 +485,14 @@ export default function IBPortfolio() {
     }
   };
 
-  const handleClosePosition = async (pos) => {
+  const handleClosePosition = async (pos, orderType = "MKT", limitPrice, tif = "DAY") => {
     return handlePlaceOrder({
       ticker: pos.ticker,
       action: "SELL",
       qty: pos.qty,
-      orderType: "MKT",
-      tif: "DAY",
+      orderType,
+      limitPrice,
+      tif,
     });
   };
 

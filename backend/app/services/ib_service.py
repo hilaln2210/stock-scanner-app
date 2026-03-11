@@ -386,6 +386,7 @@ class IBService:
                 order = _ib.StopOrder(action.upper(), quantity, stop_price, tif=tif)
             else:
                 return {"error": f"סוג הוראה לא נתמך: {order_type}"}
+            order.outsideRth = True  # execute in extended hours too
             trade = ib.placeOrder(contract, order)
             ib.sleep(1)
             return {
@@ -402,6 +403,10 @@ class IBService:
         import asyncio
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_do, timeout=15))
+        if result and "order_id" in result:
+            # Invalidate caches so next fetch reflects the new order/position
+            self._orders_cache_time = 0
+            self._positions_cache_time = 0
         return result or {"error": "timeout"}
 
     # ── Cancel Order ──────────────────────────────────────────────────────
@@ -424,6 +429,8 @@ class IBService:
         import asyncio
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_do, timeout=12))
+        if result and result.get("cancelled"):
+            self._orders_cache_time = 0
         return result or {"error": "timeout"}
 
 
