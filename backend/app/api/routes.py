@@ -3305,53 +3305,7 @@ async def smart_portfolio_arena_think():
     if not stocks:
         return {"error": "No stock data yet", "tick_count": arena_singleton.tick_count}
 
-    import time as _arena_t
-    global _ARENA_SEASONAL_TICKERS, _ARENA_SEASONAL_UPDATED, _ARENA_PATTERN_SIGNALS, _ARENA_PATTERN_UPDATED
-
-    # Refresh seasonal cache every 2h
-    if _arena_t.time() - _ARENA_SEASONAL_UPDATED > 7200:
-        try:
-            import httpx as _hx
-            today = datetime.now().strftime("%Y-%m-%d")
-            async with _hx.AsyncClient() as _c:
-                _r = await _c.get(
-                    f"http://localhost:8000/api/seasonality?market=ndx100&start_date={today}"
-                    f"&min_win_pct=70&years=10&days_min=5&days_max=30",
-                    timeout=60
-                )
-                _pats = _r.json()
-            _ARENA_SEASONAL_TICKERS = {
-                p["ticker"]: p.get("win_ratio", 0)
-                for p in (_pats if isinstance(_pats, list) else [])
-                if p.get("win_ratio", 0) >= 70
-            }
-            _ARENA_SEASONAL_UPDATED = _arena_t.time()
-            print(f"[Arena:Seasonal] {len(_ARENA_SEASONAL_TICKERS)} tickers loaded")
-        except Exception as _e:
-            print(f"[Arena:Seasonal] refresh error: {_e}")
-
-    # Refresh pattern signals every 1h
-    if _arena_t.time() - _ARENA_PATTERN_UPDATED > 3600:
-        try:
-            import httpx as _hx
-            async with _hx.AsyncClient() as _c:
-                _r = await _c.get(
-                    "http://localhost:8000/api/pattern/scan?limit=20&days=45&interval=5m",
-                    timeout=120
-                )
-                _pdata = _r.json()
-            _sigs = _pdata.get("signals", []) if isinstance(_pdata, dict) else []
-            _ARENA_PATTERN_SIGNALS = {
-                s["ticker"]: s.get("win_rate", 0)
-                for s in _sigs
-                if s.get("win_rate", 0) >= 65 and s.get("direction") == "LONG"
-            }
-            _ARENA_PATTERN_UPDATED = _arena_t.time()
-            print(f"[Arena:Pattern] {len(_ARENA_PATTERN_SIGNALS)} signals loaded")
-        except Exception as _e:
-            print(f"[Arena:Pattern] refresh error: {_e}")
-
-    # Augment stocks with seasonal/pattern flags
+    # Augment stocks with seasonal/pattern flags (caches refreshed by background job)
     for s in stocks:
         t = s.get("ticker", "")
         if t in _ARENA_SEASONAL_TICKERS:
@@ -3651,8 +3605,10 @@ _ARENA_SEASONAL_TICKERS: dict = {}   # {ticker: win_ratio}
 _ARENA_SEASONAL_UPDATED: float = 0.0
 _ARENA_PATTERN_SIGNALS: dict  = {}   # {ticker: win_rate}
 _ARENA_PATTERN_UPDATED: float  = 0.0
+_ARENA_SEASONAL_LOCK: asyncio.Lock = None   # prevent concurrent refreshes
 
 _seasonality_cache: dict = {}
+_seasonality_lock:  asyncio.Lock = None    # prevent concurrent yfinance downloads
 _SEASONALITY_CACHE_TTL = 7200  # 2 hours
 
 
@@ -3756,7 +3712,9 @@ async def seasonality_scanner(
     import pandas as _pd
     import yfinance as _yf2
 
-    global _seasonality_cache
+    global _seasonality_cache, _seasonality_lock
+    if _seasonality_lock is None:
+        _seasonality_lock = asyncio.Lock()
 
     cache_key = f"{market}_{start_date}_{years}_{days_min}_{days_max}_{direction}"
     now = _time.time()
@@ -3767,67 +3725,80 @@ async def seasonality_scanner(
             filtered = [p for p in cached_patterns if p['win_ratio'] >= min_win_pct]
             return {'patterns': filtered, 'total': len(filtered), 'cached': True}
 
-    try:
-        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-        start_month, start_day = start_dt.month, start_dt.day
-    except ValueError:
-        return {'patterns': [], 'total': 0, 'error': 'Invalid date'}
+    # Prevent concurrent yfinance downloads (race condition → "dict changed size")
+    if _seasonality_lock.locked():
+        return {'patterns': [], 'total': 0, 'cached': False, 'loading': True}
 
-    tickers = _MARKET_TICKERS.get(market, _MARKET_TICKERS['ndx100'])
-    period_str = f"{years + 2}y"
+    async with _seasonality_lock:
+        # Double-check cache after acquiring lock
+        now2 = _time.time()
+        if cache_key in _seasonality_cache:
+            cached_patterns, ts = _seasonality_cache[cache_key]
+            if now2 - ts < _SEASONALITY_CACHE_TTL:
+                filtered = [p for p in cached_patterns if p['win_ratio'] >= min_win_pct]
+                return {'patterns': filtered, 'total': len(filtered), 'cached': True}
 
-    def _download():
-        return _yf2.download(tickers, period=period_str, auto_adjust=True,
-                             progress=False, threads=True, group_by='ticker')
-
-    loop = asyncio.get_running_loop()
-    ex = _TPE(max_workers=2)
-    try:
-        df_all = await asyncio.wait_for(
-            loop.run_in_executor(ex, _download),
-            timeout=90
-        )
-    except asyncio.TimeoutError:
-        ex.shutdown(wait=False)
-        return {'patterns': [], 'total': 0, 'error': 'Download timeout — try again'}
-    finally:
-        ex.shutdown(wait=False)
-
-    if df_all is None or df_all.empty:
-        return {'patterns': [], 'total': 0, 'error': 'No data'}
-
-    patterns = []
-    for ticker in tickers:
         try:
-            if isinstance(df_all.columns, _pd.MultiIndex):
-                if ticker not in df_all.columns.get_level_values(0):
-                    continue
-                hist = df_all[ticker][['Close']].copy()
-            else:
-                hist = df_all[['Close']].copy()
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+            start_month, start_day = start_dt.month, start_dt.day
+        except ValueError:
+            return {'patterns': [], 'total': 0, 'error': 'Invalid date'}
 
-            hist = hist.dropna(subset=['Close'])
-            if len(hist) < 100:
+        tickers = _MARKET_TICKERS.get(market, _MARKET_TICKERS['ndx100'])
+        period_str = f"{years + 2}y"
+
+        def _download():
+            return _yf2.download(tickers, period=period_str, auto_adjust=True,
+                                 progress=False, threads=False, group_by='ticker')
+
+        loop = asyncio.get_running_loop()
+        ex = _TPE(max_workers=1)
+        try:
+            df_all = await asyncio.wait_for(
+                loop.run_in_executor(ex, _download),
+                timeout=90
+            )
+        except asyncio.TimeoutError:
+            ex.shutdown(wait=False)
+            return {'patterns': [], 'total': 0, 'error': 'Download timeout — try again'}
+        finally:
+            ex.shutdown(wait=False)
+
+        if df_all is None or df_all.empty:
+            return {'patterns': [], 'total': 0, 'error': 'No data'}
+
+        patterns = []
+        for ticker in tickers:
+            try:
+                if isinstance(df_all.columns, _pd.MultiIndex):
+                    if ticker not in df_all.columns.get_level_values(0):
+                        continue
+                    hist = df_all[ticker][['Close']].copy()
+                else:
+                    hist = df_all[['Close']].copy()
+
+                hist = hist.dropna(subset=['Close'])
+                if len(hist) < 100:
+                    continue
+
+                result = _calc_seasonality_ticker(
+                    ticker, hist, start_month, start_day,
+                    years, days_min, days_max, direction
+                )
+                if result:
+                    result['ticker'] = ticker
+                    end_dt = start_dt + timedelta(days=result['cal_days'])
+                    result['pattern_start'] = f"{start_dt.day} {start_dt.strftime('%b')}"
+                    result['pattern_end']   = f"{end_dt.day} {end_dt.strftime('%b')}"
+                    patterns.append(result)
+            except Exception:
                 continue
 
-            result = _calc_seasonality_ticker(
-                ticker, hist, start_month, start_day,
-                years, days_min, days_max, direction
-            )
-            if result:
-                result['ticker'] = ticker
-                end_dt = start_dt + timedelta(days=result['cal_days'])
-                result['pattern_start'] = f"{start_dt.day} {start_dt.strftime('%b')}"
-                result['pattern_end']   = f"{end_dt.day} {end_dt.strftime('%b')}"
-                patterns.append(result)
-        except Exception:
-            continue
+        patterns.sort(key=lambda x: (-x['win_ratio'], -x['avg_return']))
+        for i, p in enumerate(patterns, 1):
+            p['rank'] = i
 
-    patterns.sort(key=lambda x: (-x['win_ratio'], -x['avg_return']))
-    for i, p in enumerate(patterns, 1):
-        p['rank'] = i
+        _seasonality_cache[cache_key] = (patterns, now2)
 
-    _seasonality_cache[cache_key] = (patterns, now)
-
-    filtered = [p for p in patterns if p['win_ratio'] >= min_win_pct]
-    return {'patterns': filtered, 'total': len(filtered), 'cached': False}
+        filtered = [p for p in patterns if p['win_ratio'] >= min_win_pct]
+        return {'patterns': filtered, 'total': len(filtered), 'cached': False}

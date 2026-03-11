@@ -4,15 +4,15 @@
   "daily_history": [],
   "weekly_winner": null,
   "weekly_winner_at": null,
-  "tick_count": 29,
-  "last_tick": "2026-03-11T20:26:07.867722",
+  "tick_count": 63,
+  "last_tick": "2026-03-11T21:04:44.631656",
   "portfolios": {
     "Balanced": {
       "name": "Balanced",
       "cash": 178.71,
-      "equity": 990.97,
-      "pnl": -9.03,
-      "pnl_pct": -0.9,
+      "equity": 996.36,
+      "pnl": -3.64,
+      "pnl_pct": -0.36,
       "positions": {
         "SMCI": {
           "entry_price": 32.08,
@@ -38,7 +38,7 @@
           "stop_loss": 113.42,
           "target": 132.33,
           "entry_time": "2026-03-11T17:50:52.053104",
-          "highest_price": 119.21,
+          "highest_price": 119.91,
           "trailing_active": false,
           "session": "regular"
         }
@@ -49,9 +49,9 @@
     "HighConviction": {
       "name": "HighConviction",
       "cash": 415.01,
-      "equity": 990.59,
-      "pnl": -9.41,
-      "pnl_pct": -0.94,
+      "equity": 993.42,
+      "pnl": -6.58,
+      "pnl_pct": -0.66,
       "positions": {
         "SMCI": {
           "entry_price": 32.08,
@@ -78,9 +78,9 @@
     "SqueezeHunter": {
       "name": "SqueezeHunter",
       "cash": 204.24,
-      "equity": 1006.45,
-      "pnl": 6.45,
-      "pnl_pct": 0.65,
+      "equity": 1004.97,
+      "pnl": 4.97,
+      "pnl_pct": 0.5,
       "positions": {
         "HIMS": {
           "entry_price": 26.31,
@@ -106,7 +106,7 @@
           "stop_loss": 104.16,
           "target": 130.2,
           "entry_time": "2026-03-11T17:50:52.053181",
-          "highest_price": 110.35,
+          "highest_price": 112.07,
           "trailing_active": false,
           "session": "regular"
         }
@@ -116,10 +116,10 @@
     },
     "Scalper": {
       "name": "Scalper",
-      "cash": 257.2899990463257,
-      "equity": 1010.79,
-      "pnl": 10.79,
-      "pnl_pct": 1.08,
+      "cash": 257.29,
+      "equity": 1010.88,
+      "pnl": 10.88,
+      "pnl_pct": 1.09,
       "positions": {
         "HIMS": {
           "entry_price": 26.31,
@@ -136,7 +136,7 @@
           "stop_loss": 105.79,
           "target": 115.01,
           "entry_time": "2026-03-11T17:50:52.053222",
-          "highest_price": 110.35,
+          "highest_price": 112.07,
           "trailing_active": false,
           "session": "regular"
         },
@@ -146,7 +146,7 @@
           "stop_loss": 115.2,
           "target": 125.24,
           "entry_time": "2026-03-11T17:51:12.415714",
-          "highest_price": 119.21,
+          "highest_price": 119.91,
           "trailing_active": false,
           "session": "regular"
         }
@@ -156,10 +156,10 @@
     },
     "MomentumBreaker": {
       "name": "MomentumBreaker",
-      "cash": 50.85,
-      "equity": 1007.54,
-      "pnl": 7.54,
-      "pnl_pct": 0.75,
+      "cash": 255.09,
+      "equity": 1008.68,
+      "pnl": 8.68,
+      "pnl_pct": 0.87,
       "positions": {
         "HIMS": {
           "entry_price": 26.51,
@@ -177,7 +177,7 @@
           "stop_loss": 104.7,
           "target": 119.35,
           "entry_time": "2026-03-11T17:51:12.415753",
-          "highest_price": 110.35,
+          "highest_price": 112.07,
           "trailing_active": false,
           "session": "regular"
         },
@@ -187,17 +187,7 @@
           "stop_loss": 114.01,
           "target": 129.97,
           "entry_time": "2026-03-11T17:51:27.376893",
-          "highest_price": 119.21,
-          "trailing_active": false,
-          "session": "regular"
-        },
-        "DOCN": {
-          "entry_price": 68.08,
-          "qty": 3,
-          "stop_loss": 65.7,
-          "target": 74.89,
-          "entry_time": "2026-03-11T17:52:31.180227",
-          "highest_price": 69.09,
+          "highest_price": 119.91,
           "trailing_active": false,
           "session": "regular"
         }
@@ -208,9 +198,9 @@
     "SwingSetup": {
       "name": "SwingSetup",
       "cash": 435.54,
-      "equity": 998.99,
-      "pnl": -1.01,
-      "pnl_pct": -0.1,
+      "equity": 998.32,
+      "pnl": -1.68,
+      "pnl_pct": -0.17,
       "positions": {
         "SEI": {
           "entry_price": 55.76,
@@ -229,6 +219,68 @@
           "target": 37.45,
           "entry_time": "2026-03-11T17:51:12.415805",
           "highest_price": 31.99,
+          "trailing_active": false,
+          "session": "regular"
+        }
+      },
+      "trades": [],
+      "partial_taken": []
+    },
+    "SeasonalityTrader": {
+      "name": "SeasonalityTrader",
+      "cash": 167.36,
+      "equity": 999.4,
+      "pnl": -0.6,
+      "pnl_pct": -0.06,
+      "positions": {
+        "FANG": {
+          "entry_price": 177.37,
+          "qty": 2,
+          "stop_loss": 168.5,
+          "target": 203.98,
+          "entry_time": "2026-03-11T20:52:04.714736",
+          "highest_price": 177.74,
+          "trailing_active": false,
+          "session": "regular"
+        },
+        "SMCI": {
+          "entry_price": 31.86,
+          "qty": 15,
+          "stop_loss": 30.27,
+          "target": 36.64,
+          "entry_time": "2026-03-11T20:56:42.183608",
+          "highest_price": 31.86,
+          "trailing_active": false,
+          "session": "regular"
+        }
+      },
+      "trades": [],
+      "partial_taken": []
+    },
+    "PatternTrader": {
+      "name": "PatternTrader",
+      "cash": 27.64,
+      "equity": 1000.15,
+      "pnl": 0.15,
+      "pnl_pct": 0.01,
+      "positions": {
+        "RIOT": {
+          "entry_price": 14.5649995803833,
+          "qty": 34,
+          "stop_loss": 14.2,
+          "target": 15.58,
+          "entry_time": "2026-03-11T20:44:34.094475",
+          "highest_price": 14.5649995803833,
+          "trailing_active": false,
+          "session": "regular"
+        },
+        "SMCI": {
+          "entry_price": 31.81,
+          "qty": 15,
+          "stop_loss": 31.01,
+          "target": 34.04,
+          "entry_time": "2026-03-11T20:44:37.308743",
+          "highest_price": 31.88,
           "trailing_active": false,
           "session": "regular"
         }

@@ -137,7 +137,7 @@ async def lifespan(app: FastAPI):
                         pass  # arena/think has its own fallbacks
 
                 ra = await client.post("http://localhost:8000/api/smart-portfolio/arena/think",
-                                       timeout=httpx.Timeout(30.0))
+                                       timeout=httpx.Timeout(60.0))
                 lb = ra.json().get("leaderboard", [])
                 if lb:
                     leader = lb[0]
@@ -146,8 +146,78 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[Arena] tick error: {e}")
 
-    scheduler.add_job(_arena_tick, "interval", seconds=30, id="arena_tick_job")
-    print("Smart Portfolio Brain: every 5min | Arena: autonomous every 30s")
+    scheduler.add_job(_arena_tick, "interval", seconds=30, id="arena_tick_job",
+                      max_instances=1, coalesce=True)
+
+    # Seasonal & Pattern cache refresh (heavy — runs separately every 2h/1h)
+    async def _refresh_arena_aux_caches():
+        """Refresh seasonal & pattern caches used by SeasonalityTrader / PatternTrader."""
+        from app.services.strategy_arena import get_session_type
+        if get_session_type() == "closed":
+            return
+        import httpx, time as _t
+        from app.api.routes import (
+            _ARENA_SEASONAL_TICKERS, _ARENA_SEASONAL_UPDATED,
+            _ARENA_PATTERN_SIGNALS, _ARENA_PATTERN_UPDATED,
+        )
+        import app.api.routes as _routes
+        now = _t.time()
+
+        # Seasonal refresh every 2h
+        if now - _ARENA_SEASONAL_UPDATED > 7200:
+            try:
+                today = __import__("datetime").datetime.now().strftime("%Y-%m-%d")
+                async with httpx.AsyncClient() as c:
+                    r = await c.get(
+                        f"http://localhost:8000/api/seasonality?market=ndx100"
+                        f"&start_date={today}&min_win_pct=70&years=10&days_min=5&days_max=30",
+                        timeout=120
+                    )
+                    data = r.json()
+                if isinstance(data, dict) and not data.get("loading"):
+                    pats = data.get("patterns", [])
+                    if pats:
+                        _routes._ARENA_SEASONAL_TICKERS = {
+                            p["ticker"]: p.get("win_ratio", 0)
+                            for p in pats if p.get("win_ratio", 0) >= 70
+                        }
+                        _routes._ARENA_SEASONAL_UPDATED = _t.time()
+                        print(f"[Arena:Seasonal] {len(_routes._ARENA_SEASONAL_TICKERS)} tickers: "
+                              f"{list(_routes._ARENA_SEASONAL_TICKERS.keys())[:8]}")
+            except Exception as e:
+                print(f"[Arena:Seasonal] refresh error: {e}")
+
+        # Pattern refresh every 1h
+        if now - _ARENA_PATTERN_UPDATED > 3600:
+            try:
+                async with httpx.AsyncClient() as c:
+                    r = await c.get(
+                        "http://localhost:8000/api/pattern/scan?limit=20&days=45&interval=5m",
+                        timeout=120
+                    )
+                    pdata = r.json()
+                if isinstance(pdata, dict) and not pdata.get("loading"):
+                    pat_map = {}
+                    for st in pdata.get("stocks", []):
+                        tk = st.get("ticker", "")
+                        if not tk:
+                            continue
+                        best = max(
+                            (s.get("win_rate", 0) for s in (st.get("signals") or [])
+                             if s.get("direction") == "LONG" and s.get("win_rate", 0) >= 65),
+                            default=0.0
+                        )
+                        if best >= 65:
+                            pat_map[tk] = best
+                    _routes._ARENA_PATTERN_SIGNALS = pat_map
+                    _routes._ARENA_PATTERN_UPDATED = _t.time()
+                    print(f"[Arena:Pattern] {len(pat_map)} signals: {list(pat_map.keys())[:8]}")
+            except Exception as e:
+                print(f"[Arena:Pattern] refresh error: {e}")
+
+    scheduler.add_job(_refresh_arena_aux_caches, "interval", minutes=30, id="arena_aux_cache_job",
+                      max_instances=1, coalesce=True)
+    print("Smart Portfolio Brain: every 5min | Arena: autonomous every 30s | Seasonal/Pattern: every 30min")
 
     # Arena daily winner at 16:05 ET (Mon-Fri), weekly winner on Fridays
     async def _arena_eod_check():
@@ -228,6 +298,12 @@ async def lifespan(app: FastAPI):
             print("[Arena] Startup price warm-up complete")
         except Exception as e:
             print(f"[Arena] Startup warm-up failed: {e}")
+        # Also kick off seasonal/pattern cache refresh right away
+        await asyncio.sleep(5)
+        try:
+            await _refresh_arena_aux_caches()
+        except Exception as e:
+            print(f"[Arena] Aux cache warmup failed: {e}")
     asyncio.create_task(_warm_arena_prices())
 
     yield
