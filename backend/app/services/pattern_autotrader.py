@@ -570,7 +570,19 @@ def confirm_ib_demo(ticker: str) -> dict:
     return {"ok": True, "entry": entry}
 
 
+def enable_no_scan(amount: float = 700, top_n: int = 3) -> dict:
+    """Enable the bot instantly with no immediate scan (used on server startup).
+    Scan runs at 3:55 AM ET or when manually triggered."""
+    _state["enabled"] = True
+    _state["amount_per_trade"] = amount
+    _state["top_n"] = top_n
+    if not _state["status_msg"] or _state["status_msg"] in ("לא פעיל", "כובה"):
+        _state["status_msg"] = "פעיל — ממתין לסריקה הבאה (3:55 AM ET)"
+    return get_state()
+
+
 async def enable(amount: float = 700, top_n: int = 5) -> dict:
+    """Enable the bot and trigger an immediate scan if not done today."""
     _state["enabled"] = True
     _state["amount_per_trade"] = amount
     _state["top_n"] = top_n
