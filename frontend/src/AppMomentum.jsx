@@ -3,6 +3,7 @@ import { useQuery, QueryClient, QueryClientProvider } from '@tanstack/react-quer
 import { RefreshCw, Zap, Search } from 'lucide-react';
 import axios from 'axios';
 import FinvizTableScanner, { SmartPortfolioDashboard } from './components/FinvizTableScanner';
+const StrategyArena = lazy(() => import('./components/StrategyArena'));
 const AlertSystem = lazy(() => import('./components/AlertSystem'));
 
 const FDACatalystTracker = lazy(() => import('./components/FDACatalystTracker'));
@@ -52,6 +53,8 @@ function getReasonFromTitle(title) {
 // Tab definitions with accent hex colors for the active underline
 const TABS = [
   { key: 'briefing',        label: '☀️ בריפינג',            accent: '#f59e0b' },
+  { key: 'arena',           label: '🏆 ארנה',                accent: '#fbbf24' },
+  { key: 'smart-portfolio', label: '🧠 תיק חכם',            accent: '#818cf8' },
   { key: 'fda',             label: '💊 FDA',                  accent: '#22c55e' },
   { key: 'tech-signals',    label: '📈 סיגנלים',             accent: '#6366f1' },
   { key: 'daily-analysis',  label: '🎯 ניתוח יומי',           accent: '#8b5cf6' },
@@ -673,7 +676,11 @@ function MomentumDashboard() {
                     style={{ background: `linear-gradient(to right, ${activeTab.accent}, transparent)` }} />
                 )}
                 <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 160px)' }}>
-                  {viewMode === 'fda' ? (
+                  {viewMode === 'arena' ? (
+                    <StrategyArena />
+                  ) : viewMode === 'smart-portfolio' ? (
+                    <SmartPortfolioDashboard placement="inline" />
+                  ) : viewMode === 'fda' ? (
                     <FDACatalystTracker events={fdaData?.events || []} loading={fdaLoading} viewMode="fda" />
                   ) : viewMode === 'tech-signals' ? (
                     <TechnicalSignalsScanner data={techSignalsData} loading={techSignalsLoading} onRefetch={refetchTechSignals} crossScannerMap={crossScannerMap} />

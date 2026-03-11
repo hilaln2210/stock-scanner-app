@@ -2335,7 +2335,8 @@ function SmartPortfolioDashboard({ floating = false, placement }) {
   const [trades, setTrades] = useState([]);
   const [thinking, setThinking] = useState(false);
   const [lastDecision, setLastDecision] = useState(null);
-  const [expanded, setExpanded] = useState(false);
+  // Full-page inline mode starts expanded
+  const [expanded, setExpanded] = useState(mode === 'inline');
   const [tab, setTab] = useState('overview');
   const [regime, setRegime] = useState(null);
 
