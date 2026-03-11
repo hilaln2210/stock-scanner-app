@@ -121,8 +121,29 @@ class IBService:
             log.warning(f"[IB] Failed to save trade history: {e}")
 
     def get_trade_history(self, limit: int = 50) -> List[Dict]:
-        """Return local trade history (most recent first)."""
-        return list(reversed(self._trade_history[-limit:]))
+        """Return local trade history (most recent first), mapped to execution format."""
+        raw = list(reversed(self._trade_history[-limit:]))
+        result = []
+        for r in raw:
+            qty = r.get("shares") or r.get("qty", 0)
+            price = r.get("price") or r.get("limit_price", 0)
+            action_raw = r.get("action", "")
+            # Map BUY/SELL → BOT/SLD (IB execution format expected by frontend)
+            action = "BOT" if action_raw.upper() == "BUY" else "SLD" if action_raw.upper() == "SELL" else action_raw
+            result.append({
+                "exec_id": r.get("exec_id") or r.get("order_id"),
+                "date": r.get("date") or r.get("time"),
+                "ticker": r.get("ticker", ""),
+                "action": action,
+                "shares": qty,
+                "price": round(price, 4) if price else None,
+                "value": round(qty * price, 2) if qty and price else None,
+                "commission": r.get("commission"),
+                "account": r.get("account", ""),
+                "order_type": r.get("order_type", ""),
+                "status": r.get("status", ""),
+            })
+        return result
 
     # ── helpers ──────────────────────────────────────────────────────────
 
@@ -259,39 +280,83 @@ class IBService:
 
         def _enrich_with_yfinance(raw_positions):
             """Fetch yfinance prices outside IB thread — doesn't hold semaphore."""
+            import yfinance as yf
             tickers_needed = [sym for sym, *_ in raw_positions]
             yf_prices: Dict[str, float] = {}
             yf_prev_close: Dict[str, float] = {}
+
+            def _extract_close(data, tk, n_tickers):
+                """Extract Close series from yfinance data — handles all column formats."""
+                # Try multi-level: data[tk]["Close"]
+                if data.columns.nlevels >= 2:
+                    level0 = data.columns.get_level_values(0).unique().tolist()
+                    if tk in level0:
+                        return data[tk]["Close"]
+                    if "Close" in level0:
+                        col = data["Close"]
+                        if hasattr(col, 'columns') and tk in col.columns:
+                            return col[tk]
+                        if hasattr(col, 'columns'):
+                            return col.iloc[:, 0]
+                        return col
+                # Single-level: data["Close"]
+                if "Close" in data.columns:
+                    return data["Close"]
+                return None
+
             if tickers_needed:
                 try:
-                    import yfinance as yf
                     data = yf.download(
                         tickers_needed,
                         period="2d", interval="1m",
                         progress=False, auto_adjust=True, timeout=10,
                         group_by="ticker",
                     )
-                    for tk in tickers_needed:
-                        try:
-                            # group_by="ticker" → data[tk]["Close"] for all cases
-                            close_col = data[tk]["Close"]
-                            # Handle DataFrame (squeeze to Series) if needed
-                            if hasattr(close_col, 'columns'):
-                                close_col = close_col.iloc[:, 0]
-                            close_series = close_col.dropna()
-                            if close_series.empty:
-                                log.warning(f"[IB] yfinance: no close data for {tk}")
-                                continue
-                            yf_prices[tk] = float(close_series.iloc[-1])
-                            today = close_series.index[-1].date()
-                            prev = close_series[close_series.index.date < today]
-                            if not prev.empty:
-                                yf_prev_close[tk] = float(prev.iloc[-1])
-                        except Exception as e:
-                            log.warning(f"[IB] yfinance parse error for {tk}: {e}")
+                    if data is not None and not data.empty:
+                        log.info(f"[IB] yfinance columns: {data.columns.tolist()[:6]}, nlevels={data.columns.nlevels}")
+                        for tk in tickers_needed:
+                            try:
+                                close_col = _extract_close(data, tk, len(tickers_needed))
+                                if close_col is None:
+                                    log.warning(f"[IB] yfinance: could not find Close for {tk}")
+                                    continue
+                                # Squeeze DataFrame to Series if needed
+                                if hasattr(close_col, 'columns'):
+                                    close_col = close_col.iloc[:, 0]
+                                close_series = close_col.dropna()
+                                if close_series.empty:
+                                    log.warning(f"[IB] yfinance: no close data for {tk}")
+                                    continue
+                                yf_prices[tk] = float(close_series.iloc[-1])
+                                today = close_series.index[-1].date()
+                                prev = close_series[close_series.index.date < today]
+                                if not prev.empty:
+                                    yf_prev_close[tk] = float(prev.iloc[-1])
+                            except Exception as e:
+                                log.warning(f"[IB] yfinance parse error for {tk}: {e}")
+                    else:
+                        log.warning("[IB] yfinance returned empty data")
                 except Exception as e:
-                    log.warning(f"[IB] yfinance price fetch failed: {e}")
-                log.info(f"[IB] yfinance prices fetched: {yf_prices}")
+                    log.warning(f"[IB] yfinance download failed: {e}")
+
+                # Fallback: per-ticker fetch for any missing prices
+                missing = [tk for tk in tickers_needed if tk not in yf_prices]
+                for tk in missing:
+                    try:
+                        hist = yf.Ticker(tk).history(period="2d", interval="1m", timeout=8)
+                        if hist is not None and not hist.empty:
+                            cs = hist["Close"].dropna()
+                            if not cs.empty:
+                                yf_prices[tk] = float(cs.iloc[-1])
+                                today = cs.index[-1].date()
+                                prev = cs[cs.index.date < today]
+                                if not prev.empty:
+                                    yf_prev_close[tk] = float(prev.iloc[-1])
+                                log.info(f"[IB] yfinance fallback OK for {tk}: {yf_prices[tk]}")
+                    except Exception as e:
+                        log.warning(f"[IB] yfinance fallback failed for {tk}: {e}")
+
+                log.info(f"[IB] yfinance prices: {yf_prices}")
 
             result = []
             for sym, currency, qty, avg, acct in raw_positions:
