@@ -77,11 +77,12 @@ STRATEGY_CONFIGS = {
     },
     "Scalper": {
         "label": "⚡ Scalper",
-        "description": "ווליום גבוה + תנועה מהירה — יציאה מהירה",
-        "min_health": 35, "min_conf": 40, "min_rvol": 1.2,
-        "stop_pct": 2.5, "target_pct": 6.0,
+        "description": "כניסות אגרסיביות — סיכון גבוה, יעד רווח גבוה, 3 פוזיציות ריכוזיות",
+        "min_health": 22, "min_conf": 25, "min_rvol": 0.6,
+        "stop_pct": 4.5, "target_pct": 14.0,
         "max_day_chg": 999.0, "requires_short_float": None,
-        "requires_min_chg": 0.8, "max_positions": 4,
+        "requires_min_chg": 0.1, "max_positions": 3,
+        "partial_tp_trigger": 8.0, "trailing_trigger": 6.0, "trail_pct": 0.96,
     },
     "MomentumBreaker": {
         "label": "🚀 Momentum Breaker",
@@ -89,7 +90,7 @@ STRATEGY_CONFIGS = {
         "min_health": 30, "min_conf": 35, "min_rvol": 1.8,
         "stop_pct": 3.5, "target_pct": 10.0,
         "max_day_chg": 20.0, "requires_short_float": None,
-        "requires_min_chg": 1.0, "max_positions": 4,
+        "requires_min_chg": 1.0, "max_positions": 3,
     },
     "SwingSetup": {
         "label": "🌊 Swing Setup",
@@ -187,10 +188,11 @@ class MiniPortfolio:
                       stop_override: float = None) -> bool:
         if price <= 0 or ticker in self.positions:
             return False
-        cfg    = self.config
-        equity = self.get_equity({ticker: price})
-        qty    = max(1, int((equity * 0.30) / price))
-        cost   = price * qty
+        cfg        = self.config
+        equity     = self.get_equity({ticker: price})
+        slot_size  = equity / cfg["max_positions"]   # equal-weight slots
+        qty        = max(1, int(slot_size / price))
+        cost       = price * qty
         if cost > self.cash:
             qty  = max(1, int(self.cash / price))
             cost = price * qty
@@ -249,6 +251,9 @@ class MiniPortfolio:
     def check_stops(self, live_prices: dict) -> list:
         closed = []
         now    = datetime.now()
+        partial_tp_trigger = self.config.get("partial_tp_trigger", 5.0)
+        trailing_trigger   = self.config.get("trailing_trigger",   4.0)
+        trail_pct          = self.config.get("trail_pct",          0.97)
         for ticker in list(self.positions.keys()):
             pos   = self.positions[ticker]
             price = live_prices.get(ticker)
@@ -270,20 +275,20 @@ class MiniPortfolio:
             except Exception:
                 pass
 
-            # Partial TP at +5%
-            if pnl_pct >= 5 and ticker not in self.partial_taken and pos["qty"] >= 2:
-                t = self.close_position(ticker, price, "Partial TP +5%", partial_pct=0.4)
+            # Partial TP
+            if pnl_pct >= partial_tp_trigger and ticker not in self.partial_taken and pos["qty"] >= 2:
+                t = self.close_position(ticker, price, f"Partial TP +{partial_tp_trigger:.0f}%", partial_pct=0.4)
                 if t: closed.append(t)
                 pos = self.positions.get(ticker)
                 if not pos: continue
 
-            # Activate trailing stop at +4%
-            if pnl_pct >= 4 and not pos["trailing_active"]:
+            # Activate trailing stop
+            if pnl_pct >= trailing_trigger and not pos["trailing_active"]:
                 pos["trailing_active"] = True
                 pos["stop_loss"] = max(pos["stop_loss"], round(entry * 1.01, 2))
 
             if pos["trailing_active"]:
-                trail_sl = round(pos["highest_price"] * 0.97, 2)
+                trail_sl = round(pos["highest_price"] * trail_pct, 2)
                 if trail_sl > pos["stop_loss"]:
                     pos["stop_loss"] = trail_sl
 

@@ -203,6 +203,18 @@ async def lifespan(app: FastAPI):
     _enable_autotrader_fast(amount=700, top_n=3)
     print("Pattern Auto-Trader: enabled — scan runs at 3:55 AM ET or on manual trigger")
 
+    # Arena price cache — warm up in background so P&L shows immediately after restart
+    async def _warm_arena_prices():
+        await asyncio.sleep(15)  # let server finish startup first
+        try:
+            import httpx
+            async with httpx.AsyncClient() as client:
+                await client.get("http://localhost:8000/api/screener/finviz-table", timeout=90)
+            print("[Arena] Startup price warm-up complete")
+        except Exception as e:
+            print(f"[Arena] Startup warm-up failed: {e}")
+    asyncio.create_task(_warm_arena_prices())
+
     yield
 
     # Shutdown
