@@ -9,10 +9,10 @@ const SILVER = '#94a3b8';
 const BRONZE = '#f97316';
 
 const STRATEGY_META = {
-  balanced:        { emoji: '⚖️', color: '#60a5fa', bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.25)' },
-  high_conviction: { emoji: '🎯', color: '#a78bfa', bg: 'rgba(167,139,250,0.08)', border: 'rgba(167,139,250,0.25)' },
-  squeeze_hunter:  { emoji: '🔥', color: '#fb923c', bg: 'rgba(251,146,60,0.08)',  border: 'rgba(251,146,60,0.25)'  },
-  scalper:         { emoji: '⚡', color: '#34d399', bg: 'rgba(52,211,153,0.08)',  border: 'rgba(52,211,153,0.25)'  },
+  Balanced:        { emoji: '⚖️', color: '#60a5fa', bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.25)' },
+  HighConviction:  { emoji: '🎯', color: '#a78bfa', bg: 'rgba(167,139,250,0.08)', border: 'rgba(167,139,250,0.25)' },
+  SqueezeHunter:   { emoji: '🔥', color: '#fb923c', bg: 'rgba(251,146,60,0.08)',  border: 'rgba(251,146,60,0.25)'  },
+  Scalper:         { emoji: '⚡', color: '#34d399', bg: 'rgba(52,211,153,0.08)',  border: 'rgba(52,211,153,0.25)'  },
 };
 
 const RANK_COLORS = [GOLD, SILVER, BRONZE, L];
@@ -74,7 +74,7 @@ function StrategyCard({ strategy, rank, isLeader }) {
         <div>
           <div style={{ fontSize: 13, fontWeight: 800, color: meta.color }}>{strategy.label}</div>
           <div style={{ fontSize: 9, color: '#475569', marginTop: 1 }}>
-            Stop: {strategy.config?.stop_loss_pct}% | Target: {strategy.config?.target_pct}%
+            {strategy.description || ''}
           </div>
         </div>
       </div>
@@ -121,7 +121,7 @@ function StrategyCard({ strategy, rank, isLeader }) {
       {posCount > 0 && (
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {Object.entries(strategy.positions || {}).map(([ticker, pos]) => {
-            const ppnl = pos.unrealized_pnl_pct ?? 0;
+            const ppnl = pos.pnl_pct ?? pos.unrealized_pnl_pct ?? 0;
             return (
               <div key={ticker} style={{
                 fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 5,
@@ -251,10 +251,13 @@ export default function StrategyArena() {
     );
   }
 
-  // Sort strategies by equity descending for ranking
-  const strategies = Object.entries(data.strategies || {}).map(([name, s]) => ({
+  // API returns leaderboard array; normalize field names
+  const strategies = (data.leaderboard || []).map(s => ({
     ...s,
-    name,
+    total_trades: s.trades ?? s.total_trades ?? 0,
+    total_pnl: s.pnl ?? s.total_pnl ?? 0,
+    win_rate: s.win_rate ?? 0,
+    equity_history: s.equity_history || [],
   }));
   const sorted = [...strategies].sort((a, b) => (b.pnl_pct ?? 0) - (a.pnl_pct ?? 0));
   const leaderName = sorted[0]?.name;
@@ -332,8 +335,8 @@ export default function StrategyArena() {
             </div>
             <div style={{ fontSize: 11, color: '#94a3b8' }}>
               תשואה: {data.winner.pnl_pct >= 0 ? '+' : ''}{data.winner.pnl_pct?.toFixed(2)}% ·
-              {data.winner.total_trades} עסקאות ·
-              הוחל על התיק הראשי ב-{data.declared_at ? new Date(data.declared_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : '?'}
+              {data.winner.trades ?? 0} עסקאות ·
+              הוחל על התיק הראשי ב-{data.winner_declared_at ? new Date(data.winner_declared_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : '?'}
             </div>
           </div>
         </div>

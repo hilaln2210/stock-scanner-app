@@ -3244,6 +3244,13 @@ async def smart_portfolio_arena_think():
     cached = _FV_TABLE_CACHE.get('data', {})
     stocks = cached.get('stocks', [])
     if not stocks:
+        # Auto-fetch if cache empty
+        try:
+            result = await _finviz_table_inner({}, None, _time.time(), "arena_auto")
+            stocks = result.get('stocks', [])
+        except Exception:
+            pass
+    if not stocks:
         return {"error": "No stock data yet", "tick_count": arena_singleton.tick_count}
     live_prices = {
         s['ticker']: _safe_float(s.get('price'))
