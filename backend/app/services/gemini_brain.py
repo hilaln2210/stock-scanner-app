@@ -70,11 +70,13 @@ MARKET REGIME: {market_regime}
 HOT SECTORS: {hot_sectors}
 
 RISK RULES:
-- Max 25% of portfolio per position (increase for monster setups)
-- Stop loss: ATR-based, typically 6-12% depending on volatility
-- Max 4 open positions at a time
+- Max 15% of portfolio per position — focused, disciplined sizing
+- Stop loss: 3-5% TIGHT — cut losses fast, protect capital
+- Max 5 open positions at a time
 - No trading if daily loss exceeds 8%
-- Target: 15% default, 25-40% for squeeze/TTM setups
+- Target: 10-15% default, up to 25% for high-conviction squeeze setups
+- ONLY trade high-liquidity stocks: NVDA, AMD, TSLA, META, MSTR, COIN, PLTR, IONQ, RGTI, RKLB, HIMS, SOFI, HOOD, SOUN, UPST etc.
+- NEVER recommend low-volume or obscure tickers (DYN, GTM, ARR, LEVI, etc.)
 
 SCORING PRIORITIES:
 1. TTM Squeeze Firing + Short Float combo (MONSTER SETUP)
@@ -119,10 +121,10 @@ AGGRESSIVE_STRATEGY = {
     'regime_weight': 0.5,            # was 0.8 — less scared of regime
     'trend_alignment_weight': 0.8,   # was 1.1 — squeeze stocks fight trends
     'short_squeeze_weight': 2.2,     # was 1.8 — max squeeze priority
-    'max_position_pct': 30,          # was 25 — bigger bets
-    'stop_loss_pct': 8,              # was 7 — wider stops
-    'target_pct': 20,                # was 15 — bigger targets
-    'max_positions': 5,              # was 4 — more exposure
+    'max_position_pct': 15,          # capped at 15% — focused bets
+    'stop_loss_pct': 4,              # tight 4% stops — cut losses fast
+    'target_pct': 12,                # 12% target — realistic
+    'max_positions': 5,              # 5 positions max
 }
 
 CONSERVATIVE_STRATEGY = {

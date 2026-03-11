@@ -26,8 +26,8 @@ LEARNING_FILE = DATA_DIR / "ai_learning.json"
 INITIAL_CAPITAL = 3000.0
 MAX_POSITION_PCT = 0.30          # 30% per position — big bets on conviction
 DAILY_LOSS_LIMIT_PCT = 0.10      # 10% daily loss limit — room for volatile plays
-DEFAULT_STOP_LOSS_PCT = 0.08     # 8% stop loss — wider stops
-DEFAULT_TARGET_PCT = 0.20        # 20% target — let winners run big
+DEFAULT_STOP_LOSS_PCT = 0.04     # 4% stop loss — cut losses fast
+DEFAULT_TARGET_PCT = 0.12        # 12% target — realistic, achievable gains
 MAX_POSITIONS = 5                # 5 positions — maximum exposure
 
 
@@ -225,8 +225,8 @@ class SmartPortfolio:
             else:
                 atr_trail_pct = 5  # fallback
 
-            # Partial take-profit: close 40% at +7% (only once) — let more ride
-            if pnl_pct >= 7 and not pos.get('partial_taken') and pos['qty'] >= 2:
+            # Partial take-profit: close 40% at +5% (only once) — lock in gains
+            if pnl_pct >= 5 and not pos.get('partial_taken') and pos['qty'] >= 2:
                 r = self.close_position(ticker, price, f'Partial TP at +{pnl_pct:.1f}%', partial_pct=0.4)
                 if r.get('success'):
                     closed.append(r['trade'])

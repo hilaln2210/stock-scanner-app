@@ -2849,6 +2849,52 @@ from app.services.smart_portfolio import smart_portfolio
 from app.services.alerts_service import send_signal_alert, send_telegram, get_signal_log
 from app.services.gemini_brain import get_ai_decision, post_mortem, _load_strategy, detect_market_regime, evaluate_exits, _load_regime, _safe_float
 
+# High-liquidity tickers the brain is allowed to trade — all have live price feeds
+_SMART_PORTFOLIO_UNIVERSE = {
+    'NVDA', 'AMD', 'TSLA', 'META', 'AMZN', 'GOOGL', 'MSFT', 'AAPL', 'SMCI',
+    'PLTR', 'MSTR', 'COIN', 'IONQ', 'RGTI', 'RKLB', 'AAOI', 'SOUN', 'HOOD',
+    'SOFI', 'HIMS', 'UPST', 'AFRM', 'CLOV', 'GME', 'AMC', 'RIVN', 'LCID',
+    'NKLA', 'GRAB', 'SE', 'BABA', 'JD', 'NIO', 'XPEV', 'LI', 'BILI', 'PDD',
+    'SPY', 'QQQ', 'SOXL', 'TQQQ', 'ARKK', 'LABU', 'MARA', 'RIOT', 'CLSK',
+}
+
+
+async def _fetch_yfinance_prices(tickers: list) -> dict:
+    """Batch-fetch current prices from yfinance for a list of tickers (fallback)."""
+    if not tickers:
+        return {}
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _sync_fetch():
+        try:
+            import yfinance as yf
+            prices = {}
+            if len(tickers) == 1:
+                t = tickers[0]
+                tk = yf.Ticker(t)
+                hist = tk.history(period='1d', interval='1m', timeout=8)
+                if not hist.empty:
+                    prices[t] = float(hist['Close'].dropna().iloc[-1])
+            else:
+                data = yf.download(tickers, period='1d', interval='1m',
+                                   progress=False, timeout=10, group_by='ticker')
+                for t in tickers:
+                    try:
+                        col = data[t]['Close'] if t in data.columns.get_level_values(0) else data['Close']
+                        p = float(col.dropna().iloc[-1])
+                        if p > 0:
+                            prices[t] = p
+                    except Exception:
+                        pass
+            return prices
+        except Exception as e:
+            print(f"[Brain] yfinance batch error: {e}")
+            return {}
+
+    with ThreadPoolExecutor(max_workers=1) as ex:
+        return await asyncio.get_event_loop().run_in_executor(ex, _sync_fetch)
+
 
 def _default_smart_portfolio_stats():
     """תשובת ברירת מחדל כש־Smart Portfolio לא זמין (למשל בענן בלי אחסון נתונים)."""
@@ -2871,6 +2917,7 @@ async def smart_portfolio_status():
     """Current smart portfolio state, positions, equity curve."""
     try:
         live = {}
+        missing = []
         for ticker in smart_portfolio.positions:
             if ticker in _LIVE_PRICES_CACHE:
                 live[ticker] = _LIVE_PRICES_CACHE[ticker].get('price', 0)
@@ -2878,6 +2925,14 @@ async def smart_portfolio_status():
                 p = _parse_fv_num(_FV_FUND_CACHE[ticker].get('price', ''))
                 if p:
                     live[ticker] = p
+                else:
+                    missing.append(ticker)
+            else:
+                missing.append(ticker)
+        # yfinance fallback for tickers not in any cache
+        if missing:
+            yf_prices = await _fetch_yfinance_prices(missing)
+            live.update(yf_prices)
 
         stats = smart_portfolio.get_stats(live)
 
@@ -2926,16 +2981,75 @@ async def smart_portfolio_think():
     """
     cached = _FV_TABLE_CACHE.get('data', {})
     stocks = cached.get('stocks', [])
-    if not stocks:
-        return {'decision': None, 'error': 'No stock data available'}
 
+    # Build live prices from finviz cache first
     live_prices = {}
     for s in stocks:
         t = s.get('ticker')
-        if t in _LIVE_PRICES_CACHE:
-            live_prices[t] = _LIVE_PRICES_CACHE[t].get('price', s.get('price', 0))
+        if t:
+            if t in _LIVE_PRICES_CACHE:
+                live_prices[t] = _LIVE_PRICES_CACHE[t].get('price', s.get('price', 0))
+            else:
+                p = s.get('price', 0)
+                if p:
+                    live_prices[t] = p
+
+    # CRITICAL: fetch live prices for open positions not in finviz cache
+    missing_positions = [t for t in smart_portfolio.positions
+                         if t not in live_prices or not live_prices.get(t)]
+    if missing_positions:
+        yf_prices = await _fetch_yfinance_prices(missing_positions)
+        live_prices.update(yf_prices)
+
+    # Enforce max positions — close worst performers over the limit
+    from datetime import datetime as _dt
+    _MAX_POS = 5
+    while len(smart_portfolio.positions) > _MAX_POS:
+        worst_ticker = None
+        worst_pnl = 9999.0
+        for t, pos in smart_portfolio.positions.items():
+            price = live_prices.get(t, 0)
+            if not price:
+                worst_ticker = t  # no price data = always close first
+                break
+            entry = pos.get('entry_price', price)
+            pnl_pct = (price - entry) / entry * 100 if entry else 0
+            if pnl_pct < worst_pnl:
+                worst_pnl = pnl_pct
+                worst_ticker = t
+        if worst_ticker:
+            close_px = live_prices.get(worst_ticker,
+                                        smart_portfolio.positions[worst_ticker].get('entry_price', 0))
+            r = smart_portfolio.close_position(worst_ticker, close_px, 'Max positions — closing weakest')
+            if r.get('success'):
+                await send_signal_alert({'action': 'CLOSED', 'ticker': worst_ticker,
+                                          'price': close_px, 'confidence': 100,
+                                          'reason': 'Max positions exceeded', 'stop_loss': 0, 'target': 0})
+                await post_mortem(r['trade'], _load_strategy())
         else:
-            live_prices[t] = s.get('price', 0)
+            break
+
+    # Close stale positions (>48h old with <2% gain — not working)
+    _now = _dt.now()
+    for ticker in list(smart_portfolio.positions.keys()):
+        pos = smart_portfolio.positions.get(ticker)
+        if not pos:
+            continue
+        try:
+            age_h = (_now - _dt.fromisoformat(pos['entry_time'])).total_seconds() / 3600
+        except Exception:
+            age_h = 0
+        price = live_prices.get(ticker, 0)
+        entry = pos.get('entry_price', 0)
+        pnl_pct = (price - entry) / entry * 100 if (price and entry) else 0
+        if age_h > 48 and pnl_pct < 2:
+            reason = f'Stale {age_h:.0f}h — {pnl_pct:.1f}%'
+            r = smart_portfolio.close_position(ticker, price or entry, reason)
+            if r.get('success'):
+                await send_signal_alert({'action': 'CLOSED', 'ticker': ticker,
+                                          'price': price or entry, 'confidence': 100,
+                                          'reason': reason, 'stop_loss': 0, 'target': 0})
+                await post_mortem(r['trade'], _load_strategy())
 
     stock_data_map = {s.get('ticker'): s for s in stocks if s.get('ticker')}
     closed = smart_portfolio.check_stops(live_prices, stock_data_map)
@@ -2971,30 +3085,54 @@ async def smart_portfolio_think():
     portfolio_state = smart_portfolio.get_stats(live_prices)
     history = smart_portfolio.get_trade_history()
 
-    decision = await get_ai_decision(stocks, portfolio_state, history)
+    # If no finviz data yet — still do position maintenance, but skip AI entry decision
+    if not stocks:
+        smart_portfolio.record_equity(live_prices)
+        return {'decision': None, 'error': 'No stock data — position maintenance done', 'closed_trades': closed}
+
+    # Filter candidate stocks to high-liquidity universe only → prevents obscure tickers
+    candidate_stocks = [s for s in stocks if s.get('ticker', '').upper() in _SMART_PORTFOLIO_UNIVERSE]
+    if not candidate_stocks:
+        candidate_stocks = stocks[:30]  # fallback: top 30 finviz results
+
+    decision = await get_ai_decision(candidate_stocks, portfolio_state, history)
     if not decision:
-        return {'decision': None, 'error': 'AI did not return a decision'}
+        smart_portfolio.record_equity(live_prices)
+        return {'decision': None, 'error': 'AI did not return a decision', 'closed_trades': closed}
 
     result = {'decision': decision, 'executed': False, 'closed_trades': closed}
 
     if decision.get('action') in ('BUY', 'SHORT') and decision.get('confidence', 0) >= 60:
         ticker = decision.get('ticker', '').upper()
-        if not ticker or ticker in smart_portfolio.positions:
+        # Only trade tickers in our high-liquidity universe
+        if not ticker or ticker in smart_portfolio.positions or ticker not in _SMART_PORTFOLIO_UNIVERSE:
+            smart_portfolio.record_equity(live_prices)
             return result
 
         if not smart_portfolio.can_open_position(live_prices):
             result['error'] = 'Daily loss limit reached'
+            smart_portfolio.record_equity(live_prices)
             return result
 
+        # Fetch price via yfinance if not in live_prices (new entry)
         price = live_prices.get(ticker, 0)
         if not price:
+            yf_p = await _fetch_yfinance_prices([ticker])
+            price = yf_p.get(ticker, 0)
+            if price:
+                live_prices[ticker] = price
+        if not price:
+            smart_portfolio.record_equity(live_prices)
             return result
 
         equity = smart_portfolio.get_total_equity(live_prices)
-        position_pct = min(decision.get('position_pct', 10), 20) / 100
+        # Position size: 15% max, minimum 5%
+        position_pct = min(decision.get('position_pct', 10), 15) / 100
         qty = max(1, int((equity * position_pct) / price))
-        sl_pct = decision.get('stop_loss_pct', 5) / 100
-        tgt_pct = decision.get('target_pct', 10) / 100
+        # Stop loss: AI suggestion but cap at 5%, minimum 2%
+        sl_pct = max(0.02, min(decision.get('stop_loss_pct', 4), 5)) / 100
+        # Target: AI suggestion but at least 8%, cap at 30%
+        tgt_pct = max(0.08, min(decision.get('target_pct', 12), 30)) / 100
 
         if decision['action'] == 'BUY':
             stop = round(price * (1 - sl_pct), 2)
