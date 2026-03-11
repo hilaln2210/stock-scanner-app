@@ -23,19 +23,19 @@ except ImportError:
 
 # Rotating clientId pool to avoid conflicts when requests overlap
 _client_id_counter = itertools.count(21)
-# Semaphore: max 4 concurrent IB connections to avoid thread pool exhaustion
+# Semaphore: max 4 concurrent IB connections for background polling
 _ib_semaphore = threading.Semaphore(4)
 
 
 def _next_client_id() -> int:
     cid = next(_client_id_counter)
-    # Wrap around at 99 to avoid very large numbers
     return 21 + (cid - 21) % 78
 
 
-def _run_in_ib_thread(fn, timeout=12):
+def _run_in_ib_thread(fn, timeout=12, priority=False):
     """
     Run fn(ib: IB) in a fresh daemon thread with its own IB connection.
+    priority=True bypasses semaphore (for user-initiated order operations).
     Returns the result or None on timeout/error.
     """
     result_holder = [None]
@@ -44,10 +44,11 @@ def _run_in_ib_thread(fn, timeout=12):
 
     def _worker():
         import asyncio
-        if not _ib_semaphore.acquire(timeout=timeout - 1):
-            log.warning("[IB] semaphore timeout — too many concurrent connections")
-            done.set()
-            return
+        if not priority:
+            if not _ib_semaphore.acquire(timeout=timeout - 1):
+                log.warning("[IB] semaphore timeout — too many concurrent connections")
+                done.set()
+                return
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         ib = _ib.IB()
@@ -64,7 +65,8 @@ def _run_in_ib_thread(fn, timeout=12):
             except Exception:
                 pass
             loop.close()
-            _ib_semaphore.release()
+            if not priority:
+                _ib_semaphore.release()
             done.set()
 
     t = threading.Thread(target=_worker, daemon=True, name="ib-fetch")
@@ -204,7 +206,7 @@ class IBService:
         if result:
             self._account_cache = result
             self._account_cache_time = time.time()
-        return result or {"error": "timeout"}
+        return result or self._account_cache or {"error": "timeout"}
 
     # ── Positions ─────────────────────────────────────────────────────────
 
@@ -216,14 +218,18 @@ class IBService:
         if time.time() - self._positions_cache_time < self._CACHE_TTL and self._positions_cache:
             return self._positions_cache
 
-        def _fetch(ib: "_ib.IB"):
+        def _fetch_raw(ib: "_ib.IB"):
+            """Get raw positions from IB only — fast, releases semaphore quickly."""
             ib.reqPositions()
             ib.sleep(3)
             raw = ib.positions()
             log.info(f"[IB] got {len(raw)} positions")
+            return [(pos.contract.symbol, pos.contract.currency, pos.position, pos.avgCost, pos.account)
+                    for pos in raw if pos.position != 0]
 
-            # Fetch live prices + prev close via yfinance (IB paper has no market data)
-            tickers_needed = [pos.contract.symbol for pos in raw if pos.position != 0]
+        def _enrich_with_yfinance(raw_positions):
+            """Fetch yfinance prices outside IB thread — doesn't hold semaphore."""
+            tickers_needed = [sym for sym, *_ in raw_positions]
             yf_prices: Dict[str, float] = {}
             yf_prev_close: Dict[str, float] = {}
             if tickers_needed:
@@ -237,15 +243,11 @@ class IBService:
                     )
                     for tk in tickers_needed:
                         try:
-                            if len(tickers_needed) == 1:
-                                close_series = data["Close"]
-                            else:
-                                close_series = data[tk]["Close"]
+                            close_series = data["Close"] if len(tickers_needed) == 1 else data[tk]["Close"]
                             close_series = close_series.dropna()
                             if close_series.empty:
                                 continue
                             yf_prices[tk] = float(close_series.iloc[-1])
-                            # prev close = last bar of previous day
                             today = close_series.index[-1].date()
                             prev = close_series[close_series.index.date < today]
                             if not prev.empty:
@@ -256,36 +258,31 @@ class IBService:
                     log.warning(f"[IB] yfinance price fetch failed: {e}")
 
             result = []
-            for pos in raw:
-                if pos.position == 0:
-                    continue
-                c = pos.contract
-                avg = pos.avgCost
-                qty = pos.position
-                mkt = yf_prices.get(c.symbol, 0.0)
-                prev = yf_prev_close.get(c.symbol, 0.0)
+            for sym, currency, qty, avg, acct in raw_positions:
+                mkt = yf_prices.get(sym, 0.0)
+                prev = yf_prev_close.get(sym, 0.0)
                 pnl = round((mkt - avg) * qty, 2) if mkt and avg else 0
                 pnl_pct = round((mkt - avg) / avg * 100, 2) if mkt and avg else 0
-                day_change = round(mkt - prev, 4) if mkt and prev else None
-                day_change_pct = round((mkt - prev) / prev * 100, 2) if mkt and prev else None
                 result.append({
-                    "ticker": c.symbol,
-                    "currency": c.currency,
-                    "qty": qty,
+                    "ticker": sym, "currency": currency, "qty": qty,
                     "avg_cost": round(avg, 4),
                     "market_price": round(mkt, 4) if mkt else None,
                     "market_value": round(mkt * qty, 2) if mkt else None,
-                    "unrealized_pnl": pnl,
-                    "pnl_pct": pnl_pct,
-                    "day_change": day_change,
-                    "day_change_pct": day_change_pct,
-                    "account": pos.account,
+                    "unrealized_pnl": pnl, "pnl_pct": pnl_pct,
+                    "day_change": round(mkt - prev, 4) if mkt and prev else None,
+                    "day_change_pct": round((mkt - prev) / prev * 100, 2) if mkt and prev else None,
+                    "account": acct,
                 })
             return sorted(result, key=lambda x: abs(x.get("market_value") or 0), reverse=True)
 
         import asyncio
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_fetch, timeout=25))
+        # Step 1: get raw positions from IB (fast — releases semaphore after ~5s)
+        raw = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_fetch_raw, timeout=12))
+        if raw is None:
+            return self._positions_cache
+        # Step 2: enrich with yfinance (no semaphore, separate thread)
+        result = await loop.run_in_executor(None, lambda: _enrich_with_yfinance(raw))
         if result is not None:
             self._positions_cache = result
             self._positions_cache_time = time.time()
@@ -407,9 +404,9 @@ class IBService:
 
         import asyncio
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_do, timeout=20))
+        # priority=True: bypass semaphore for user-initiated orders
+        result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_do, timeout=20, priority=True))
         if result and "order_id" in result:
-            # Invalidate caches so next fetch reflects the new order/position
             self._orders_cache_time = 0
             self._positions_cache_time = 0
         return result or {"error": "timeout"}
@@ -432,7 +429,8 @@ class IBService:
 
         import asyncio
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_do, timeout=12))
+        # priority=True: bypass semaphore for user-initiated cancels
+        result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_do, timeout=12, priority=True))
         if result and result.get("cancelled"):
             self._orders_cache_time = 0
         return result or {"error": "timeout"}

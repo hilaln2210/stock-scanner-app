@@ -421,14 +421,14 @@ export default function IBPortfolio() {
     queryKey: ["ibAccount"],
     queryFn: () => api.get("/ib/account").then(r => r.data),
     enabled: connected,
-    refetchInterval: 10000,
+    refetchInterval: 20000,
   });
 
   const { data: positions, refetch: refetchPositions } = useQuery({
     queryKey: ["ibPositions"],
     queryFn: () => api.get("/ib/positions").then(r => r.data),
     enabled: connected,
-    refetchInterval: 10000,
+    refetchInterval: 20000,
   });
 
   const { data: orders, refetch: refetchOrders } = useQuery({
