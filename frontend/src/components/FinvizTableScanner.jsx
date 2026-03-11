@@ -392,7 +392,7 @@ function fmtNum(v, dec = 1) {
 
 // ── Table style constants — כותרות מעוצבות (פונט נבחר via --header-font) ───────
 const TH_BASE = {
-  padding: '11px 12px',
+  padding: '7px 8px',
   textAlign: 'right',
   fontWeight: 600,
   fontSize: 11,
@@ -411,7 +411,7 @@ const TH_BASE = {
 };
 
 const TD_BASE = {
-  padding: '8px 10px',
+  padding: '5px 7px',
   textAlign: 'right',
   verticalAlign: 'middle',
   fontSize: 12,
