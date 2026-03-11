@@ -23,8 +23,8 @@ except ImportError:
 
 # Rotating clientId pool to avoid conflicts when requests overlap
 _client_id_counter = itertools.count(21)
-# Semaphore: max 3 concurrent IB connections to avoid thread pool exhaustion
-_ib_semaphore = threading.Semaphore(3)
+# Semaphore: max 4 concurrent IB connections to avoid thread pool exhaustion
+_ib_semaphore = threading.Semaphore(4)
 
 
 def _next_client_id() -> int:
@@ -301,11 +301,16 @@ class IBService:
             return self._orders_cache
 
         def _fetch(ib: "_ib.IB"):
-            ib.sleep(1)  # allow order data to arrive
+            trades = ib.reqAllOpenOrders()  # all orders across all clientIds
+            ib.sleep(1)
+            seen = set()
             result = []
             _MAX = 1.7976931348623157e+308
-            for trade in ib.openTrades():
+            for trade in trades:
                 o = trade.order
+                if o.orderId in seen:
+                    continue
+                seen.add(o.orderId)
                 c = trade.contract
                 s = trade.orderStatus
                 result.append({
@@ -402,7 +407,7 @@ class IBService:
 
         import asyncio
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_do, timeout=15))
+        result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_do, timeout=20))
         if result and "order_id" in result:
             # Invalidate caches so next fetch reflects the new order/position
             self._orders_cache_time = 0
@@ -416,10 +421,9 @@ class IBService:
             return {"error": "לא מחובר ל-IB"}
 
         def _do(ib: "_ib.IB"):
+            trades = ib.reqAllOpenOrders()
             ib.sleep(0.5)
-            target = next(
-                (t for t in ib.openTrades() if t.order.orderId == order_id), None
-            )
+            target = next((t for t in trades if t.order.orderId == order_id), None)
             if target is None:
                 return {"error": f"הוראה #{order_id} לא נמצאה"}
             ib.cancelOrder(target.order)
