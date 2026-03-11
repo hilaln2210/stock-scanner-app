@@ -3241,26 +3241,55 @@ async def smart_portfolio_arena_status():
 @router.post("/smart-portfolio/arena/think")
 async def smart_portfolio_arena_think():
     """One arena tick — all 4 strategies analyze the same current market data."""
-    cached = _FV_TABLE_CACHE.get('data', {})
-    stocks = cached.get('stocks', [])
+    # Try primary cache first, then fallback sources
+    stocks = _FV_TABLE_CACHE.get('data', {}).get('stocks', [])
+
+    # Fallback: use smart-portfolio universe with yfinance prices
     if not stocks:
-        # Auto-fetch if cache empty
         try:
             result = await _finviz_table_inner({}, None, _time.time(), "arena_auto")
             stocks = result.get('stocks', [])
         except Exception:
             pass
+
+    # Last resort: build minimal stock list from universe tickers with live prices
+    if not stocks:
+        import yfinance as yf
+        tickers_to_try = list(_SMART_PORTFOLIO_UNIVERSE)[:20]
+        try:
+            data_yf = yf.download(tickers_to_try, period="1d", interval="5m",
+                                   group_by="ticker", progress=False, timeout=8)
+            minimal = []
+            for t in tickers_to_try:
+                try:
+                    df = data_yf[t] if len(tickers_to_try) > 1 else data_yf
+                    if df is not None and not df.empty:
+                        price = float(df['Close'].iloc[-1])
+                        prev  = float(df['Close'].iloc[0])
+                        chg   = (price - prev) / prev * 100 if prev else 0
+                        vol   = float(df['Volume'].mean()) if 'Volume' in df else 0
+                        avg_vol = vol  # no 30d avg available, use as-is
+                        minimal.append({
+                            'ticker': t, 'price': price, 'change_pct': round(chg, 2),
+                            'health_score': 50, 'rel_volume': 1.0,
+                            'short_float': 0, 'squeeze_total_score': 0, 'rsi': 50,
+                        })
+                except Exception:
+                    pass
+            stocks = minimal
+        except Exception:
+            pass
+
     if not stocks:
         return {"error": "No stock data yet", "tick_count": arena_singleton.tick_count}
+
     live_prices = {
         s['ticker']: _safe_float(s.get('price'))
         for s in stocks
         if s.get('ticker') and _safe_float(s.get('price')) > 0
     }
-    candidate_stocks = [s for s in stocks if s.get('ticker', '').upper() in _SMART_PORTFOLIO_UNIVERSE]
-    if not candidate_stocks:
-        candidate_stocks = stocks[:30]
-    return arena_singleton.think(candidate_stocks, live_prices)
+    # Use all stocks as candidates (arena filters internally)
+    return arena_singleton.think(stocks, live_prices)
 
 
 @router.post("/smart-portfolio/arena/declare-winner")

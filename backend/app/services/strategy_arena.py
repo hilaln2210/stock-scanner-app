@@ -54,49 +54,49 @@ STRATEGY_CONFIGS = {
     "Balanced": {
         "label": "⚖️ Balanced",
         "description": "כניסות מאוזנות — health טוב + מומנטום",
-        "min_health": 55, "min_conf": 60, "min_rvol": 0.8,
-        "stop_pct": 4.0, "target_pct": 14.0,
-        "max_day_chg": 5.0, "requires_short_float": None,
+        "min_health": 40, "min_conf": 45, "min_rvol": 0.5,
+        "stop_pct": 4.0, "target_pct": 12.0,
+        "max_day_chg": 8.0, "requires_short_float": None,
         "requires_min_chg": None, "max_positions": 3,
     },
     "HighConviction": {
         "label": "🎯 High Conviction",
         "description": "רק הכי טובים — פחות עסקאות, R:R גבוה",
-        "min_health": 65, "min_conf": 70, "min_rvol": 1.0,
+        "min_health": 55, "min_conf": 58, "min_rvol": 0.8,
         "stop_pct": 3.5, "target_pct": 17.5,
-        "max_day_chg": 4.0, "requires_short_float": None,
+        "max_day_chg": 5.0, "requires_short_float": None,
         "requires_min_chg": None, "max_positions": 2,
     },
     "SqueezeHunter": {
         "label": "🔥 Squeeze Hunter",
         "description": "מניות עם שורט גבוה — לחץ כיסוי שורטים",
-        "min_health": 50, "min_conf": 58, "min_rvol": 0.8,
+        "min_health": 35, "min_conf": 40, "min_rvol": 0.5,
         "stop_pct": 4.0, "target_pct": 20.0,
-        "max_day_chg": 999.0, "requires_short_float": 12.0,
+        "max_day_chg": 999.0, "requires_short_float": 8.0,
         "requires_min_chg": None, "max_positions": 3,
     },
     "Scalper": {
         "label": "⚡ Scalper",
         "description": "ווליום גבוה + תנועה מהירה — יציאה מהירה",
-        "min_health": 55, "min_conf": 62, "min_rvol": 1.5,
-        "stop_pct": 2.5, "target_pct": 7.0,
+        "min_health": 35, "min_conf": 40, "min_rvol": 1.2,
+        "stop_pct": 2.5, "target_pct": 6.0,
         "max_day_chg": 999.0, "requires_short_float": None,
-        "requires_min_chg": 1.5, "max_positions": 4,
+        "requires_min_chg": 0.8, "max_positions": 4,
     },
     "MomentumBreaker": {
         "label": "🚀 Momentum Breaker",
-        "description": "פורצים עם נפח פנומנלי — rvol ≥ 2.5, תנועה > 2%",
-        "min_health": 48, "min_conf": 55, "min_rvol": 2.5,
-        "stop_pct": 3.5, "target_pct": 11.0,
-        "max_day_chg": 15.0, "requires_short_float": None,
-        "requires_min_chg": 2.0, "max_positions": 4,
+        "description": "פורצים עם נפח פנומנלי — rvol ≥ 1.8, תנועה > 1%",
+        "min_health": 30, "min_conf": 35, "min_rvol": 1.8,
+        "stop_pct": 3.5, "target_pct": 10.0,
+        "max_day_chg": 20.0, "requires_short_float": None,
+        "requires_min_chg": 1.0, "max_positions": 4,
     },
     "SwingSetup": {
         "label": "🌊 Swing Setup",
         "description": "כניסות איכותיות, יעדים גדולים — סבלנות ומשמעת",
-        "min_health": 62, "min_conf": 68, "min_rvol": 0.6,
-        "stop_pct": 5.0, "target_pct": 20.0,
-        "max_day_chg": 3.0, "requires_short_float": None,
+        "min_health": 50, "min_conf": 50, "min_rvol": 0.4,
+        "stop_pct": 5.0, "target_pct": 18.0,
+        "max_day_chg": 4.0, "requires_short_float": None,
         "requires_min_chg": None, "max_positions": 2,
     },
 }
@@ -340,7 +340,15 @@ class StrategyArena:
             if ARENA_FILE.exists():
                 state = json.loads(ARENA_FILE.read_text())
                 cur_week = _week_start()
-                if state.get("week_start") == cur_week:
+                saved_week = state.get("week_start") or state.get("session_date", "")[:10]
+                # Restore if same week OR if within 2 days (handles format migration)
+                week_ok = (saved_week == cur_week) or (
+                    saved_week and abs(
+                        (datetime.strptime(cur_week, "%Y-%m-%d") -
+                         datetime.strptime(saved_week[:10], "%Y-%m-%d")).days
+                    ) <= 7
+                )
+                if week_ok:
                     for name, pf_state in state.get("portfolios", {}).items():
                         if name in self.portfolios:
                             self.portfolios[name].restore(pf_state)
@@ -351,9 +359,10 @@ class StrategyArena:
                     self.weekly_winner_at = state.get("weekly_winner_at")
                     self.tick_count       = state.get("tick_count", 0)
                     self.last_tick        = state.get("last_tick")
+                    print(f"[Arena] Restored state: tick={self.tick_count}, week={self.week_start}")
                     return
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[Arena] Load error: {e}")
         self._reset_week()
 
     def _save(self, live_prices: dict = None):

@@ -1,32 +1,6 @@
 {
-  "cash": 982.3799999999999,
+  "cash": 1397.779980163574,
   "positions": {
-    "UPST": {
-      "side": "long",
-      "qty": 15,
-      "entry_price": 29.26,
-      "entry_time": "2026-03-11T12:23:50.693003",
-      "stop_loss": 27.8,
-      "target": 34.53,
-      "highest_price": 29.46,
-      "lowest_price": 28.51,
-      "trailing_active": false,
-      "partial_taken": false,
-      "reason": "\u05d4\u05d5\u05d7 \u05e8\u05d1\u05e2\u05d5\u05e0\u05d9 \u05d5\u05d4\u05d5\u05d7 \u05d4\u05e0\u05e4\u05e7\u05ea \u05de\u05e2\u05dc \u05e9\u05d5\u05e8 \u05d1\u05d8\u05d9\u05d7\u05d5\u05df \u05d1\u05e8\u05d5\u05e8 \u05d4\u05de\u05d7\u05d9\u05e8 \u05d5\u05d4\u05d5\u05da\u05d2 \u05d4\u05e8\u05d1\u05d9"
-    },
-    "AFRM": {
-      "side": "long",
-      "qty": 13,
-      "entry_price": 50.1,
-      "entry_time": "2026-03-11T13:09:08.905987",
-      "stop_loss": 48.1,
-      "target": 62.62,
-      "highest_price": 50.1,
-      "lowest_price": 49.85,
-      "trailing_active": false,
-      "partial_taken": false,
-      "reason": "DTC 2.8d | RSI \u05d0\u05d5\u05e4\u05d8\u05d9\u05de\u05dc\u05d9 (41) | \u05e6\u05de\u05d9\u05d7\u05ea EPS +59% | \u05d3\u05d5\u05d7 \u05e8\u05d1\u05e2\u05d5\u05e0\u05d9 | \u05e1\u05e7\u05d8\u05d5\u05e8 AI"
-    },
     "NIO": {
       "side": "long",
       "qty": 91,
@@ -34,8 +8,8 @@
       "entry_time": "2026-03-11T13:54:10.095616",
       "stop_loss": 5.35,
       "target": 6.68,
-      "highest_price": 5.57,
-      "lowest_price": 5.57,
+      "highest_price": 5.66,
+      "lowest_price": 5.549699783325195,
       "trailing_active": false,
       "partial_taken": false,
       "reason": "DTC 3.3d | \u05e6\u05de\u05d9\u05d7\u05ea EPS +101% | \u05d3\u05d5\u05d7 \u05e8\u05d1\u05e2\u05d5\u05e0\u05d9 | \u05e1\u05e7\u05d8\u05d5\u05e8 AI | \u05e1\u05e0\u05d8\u05d9\u05de\u05e0\u05d8 \u05d7\u05d9\u05d5\u05d1\u05d9 (7\ud83d\udfe2)"
@@ -47,11 +21,37 @@
       "entry_time": "2026-03-11T14:24:10.188002",
       "stop_loss": 31.38,
       "target": 41.41,
-      "highest_price": 32.4,
-      "lowest_price": 32.26,
+      "highest_price": 32.5,
+      "lowest_price": 32.0,
       "trailing_active": false,
       "partial_taken": false,
       "reason": "DTC 2.9d | \u05e9\u05d5\u05e8\u05d8 \u05d2\u05d1\u05d5\u05d4 17% | RSI 52 \u2014 \u05d7\u05dc\u05d5\u05df \u05db\u05e0\u05d9\u05e1\u05d4 \u05dc\u05e1\u05e7\u05d5\u05d5\u05d9\u05d6 | \u05d0\u05d9\u05db\u05d5\u05ea \u05d2\u05d1\u05d5\u05d4\u05d4 (100) | \u05e9\u05d5\u05e8\u05d8 \u05d2\u05d1\u05d5\u05d4 17%"
+    },
+    "HIMS": {
+      "side": "long",
+      "qty": 15,
+      "entry_price": 26.3,
+      "entry_time": "2026-03-11T16:37:56.681206",
+      "stop_loss": 24.72,
+      "target": 36.82,
+      "highest_price": 26.792600631713867,
+      "lowest_price": 26.13629913330078,
+      "trailing_active": false,
+      "partial_taken": false,
+      "reason": "DTC 3.0d | \ud83e\ude78 \u05e9\u05d5\u05e8\u05d8\u05d9\u05dd \u05de\u05d3\u05de\u05de\u05d9\u05dd (DTC 3.0 + \u05e2\u05dc\u05d9\u05d9\u05d4 +12.0%) | \ud83d\udcc9 \u05de\u05d5\u05de\u05e0\u05d8\u05d5\u05dd \u05d3\u05d5\u05e2\u05da (+3.8\u2192-0.1%) | \u05e9\u05d5\u05e8\u05d8 \u05e7\u05d9\u05e6\u05d5\u05e0\u05d9 41% \u2014 \u05e4\u05d5\u05d8\u05e0\u05e6\u05d9\u05d0\u05dc \u05e1\u05e7\u05d5\u05d5\u05d9\u05d6 | \u05e1\u05e7\u05d5\u05d5\u05d9\u05d6 \u05e4\u05e2\u05d9\u05dc! (\u05e2\u05dc\u05d9\u05d9\u05d4 +12.0% \u05e2\u05dd \u05e9\u05d5\u05e8\u05d8 41%)"
+    },
+    "AAOI": {
+      "side": "long",
+      "qty": 2,
+      "entry_price": 124.1,
+      "entry_time": "2026-03-11T16:47:55.052382",
+      "stop_loss": 116.65,
+      "target": 155.12,
+      "highest_price": 128.4199981689453,
+      "lowest_price": 124.1,
+      "trailing_active": false,
+      "partial_taken": false,
+      "reason": "\ud83d\udcc8 \u05de\u05d0\u05d9\u05e5 (+0.9\u2192+0.9%) | \u05de\u05db\u05d9\u05e8\u05d5\u05ea \u05e4\u05e0\u05d9\u05dd -6% | \u05e2\u05dc\u05d9\u05d9\u05d4 +3.0% | \u05e0\u05e4\u05d7 \u05d2\u05d1\u05d5\u05d4 x2.3 | RSI \u05de\u05db\u05d5\u05e8-\u05d9\u05ea\u05e8 (81)"
     }
   },
   "equity_history": [
@@ -146,12 +146,40 @@
     {
       "date": "2026-03-11T15:24:10.070401",
       "equity": 2992.15
+    },
+    {
+      "date": "2026-03-11T15:29:22.757138",
+      "equity": 2994.35
+    },
+    {
+      "date": "2026-03-11T16:37:58.027348",
+      "equity": 2970.24
+    },
+    {
+      "date": "2026-03-11T16:47:55.421696",
+      "equity": 2972.64
+    },
+    {
+      "date": "2026-03-11T17:02:45.525332",
+      "equity": 2996.32
+    },
+    {
+      "date": "2026-03-11T17:12:46.122183",
+      "equity": 2982.15
+    },
+    {
+      "date": "2026-03-11T17:22:44.522515",
+      "equity": 2970.67
+    },
+    {
+      "date": "2026-03-11T17:34:25.341614",
+      "equity": 2965.55
     }
   ],
-  "daily_pnl": 0,
+  "daily_pnl": -32.10001983642581,
   "last_reset_date": "2026-03-11",
-  "total_trades": 0,
+  "total_trades": 2,
   "winning_trades": 0,
-  "total_pnl": 0,
-  "peak_equity": 3003.0
+  "total_pnl": -32.10001983642581,
+  "peak_equity": 3006.2941307830806
 }

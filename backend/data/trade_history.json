@@ -1,1 +1,32 @@
-[]
+[
+  {
+    "ticker": "UPST",
+    "side": "long",
+    "entry_price": 29.26,
+    "exit_price": 27.12,
+    "qty": 15,
+    "pnl": -32.1,
+    "pnl_pct": -7.31,
+    "entry_time": "2026-03-11T12:23:50.693003",
+    "exit_time": "2026-03-11T16:37:55.028786",
+    "entry_reason": "\u05d4\u05d5\u05d7 \u05e8\u05d1\u05e2\u05d5\u05e0\u05d9 \u05d5\u05d4\u05d5\u05d7 \u05d4\u05e0\u05e4\u05e7\u05ea \u05de\u05e2\u05dc \u05e9\u05d5\u05e8 \u05d1\u05d8\u05d9\u05d7\u05d5\u05df \u05d1\u05e8\u05d5\u05e8 \u05d4\u05de\u05d7\u05d9\u05e8 \u05d5\u05d4\u05d5\u05da\u05d2 \u05d4\u05e8\u05d1\u05d9",
+    "exit_reason": "Stop loss",
+    "holding_minutes": 254,
+    "was_partial": false
+  },
+  {
+    "ticker": "AFRM",
+    "side": "long",
+    "entry_price": 50.1,
+    "exit_price": 50.099998474121094,
+    "qty": 13,
+    "pnl": -0.0,
+    "pnl_pct": -0.0,
+    "entry_time": "2026-03-11T13:09:08.905987",
+    "exit_time": "2026-03-11T17:12:44.294916",
+    "entry_reason": "DTC 2.8d | RSI \u05d0\u05d5\u05e4\u05d8\u05d9\u05de\u05dc\u05d9 (41) | \u05e6\u05de\u05d9\u05d7\u05ea EPS +59% | \u05d3\u05d5\u05d7 \u05e8\u05d1\u05e2\u05d5\u05e0\u05d9 | \u05e1\u05e7\u05d8\u05d5\u05e8 AI",
+    "exit_reason": "Stale 4.1h \u2014 -0.0%",
+    "holding_minutes": 243,
+    "was_partial": false
+  }
+]

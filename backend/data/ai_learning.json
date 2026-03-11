@@ -19,7 +19,7 @@
     "trend_alignment_weight": 1.1,
     "short_squeeze_weight": 2.2,
     "max_position_pct": 15,
-    "stop_loss_pct": 4.0,
+    "stop_loss_pct": 3.96,
     "target_pct": 14,
     "max_positions": 5
   },
@@ -29,7 +29,9 @@
       "pnl": -5.32,
       "pnl_pct": -1.18,
       "lesson": "הפסד: -1.2% — חדשות שליליות (6 אזכורים)",
-      "adjustments": {"min_health_score": 51},
+      "adjustments": {
+        "min_health_score": 51
+      },
       "date": "2026-03-05T14:29:03.041704"
     },
     {
@@ -45,7 +47,9 @@
       "pnl": -28.13,
       "pnl_pct": -6.39,
       "lesson": "הפסד גדול -6.4% — SL נפגע. בעיה: כניסה על מניה עם health נמוך.",
-      "adjustments": {"min_health_score": 55},
+      "adjustments": {
+        "min_health_score": 55
+      },
       "date": "2026-03-09T10:39:34.987542"
     },
     {
@@ -53,7 +57,9 @@
       "pnl": -27.99,
       "pnl_pct": -7.66,
       "lesson": "הפסד גדול -7.7% — SL נפגע. צריך confidence גבוה יותר לפני כניסה.",
-      "adjustments": {"min_confidence": 60},
+      "adjustments": {
+        "min_confidence": 60
+      },
       "date": "2026-03-09T15:42:24.779658"
     },
     {
@@ -61,7 +67,9 @@
       "pnl": 11.6,
       "pnl_pct": 7.22,
       "lesson": "רווח יפה +7.2% — מימוש חלקי חכם. מומנטום + קטליסט עובד.",
-      "adjustments": {"momentum_weight": 1.65},
+      "adjustments": {
+        "momentum_weight": 1.65
+      },
       "date": "2026-03-09T18:44:00.963454"
     },
     {
@@ -69,7 +77,9 @@
       "pnl": -20.0,
       "pnl_pct": -3.35,
       "lesson": "Trailing stop הפסיד -3.4%. כניסה מאוחרת מדי אחרי עלייה גדולה.",
-      "adjustments": {"min_change_pct": 1.0},
+      "adjustments": {
+        "min_change_pct": 1.0
+      },
       "date": "2026-03-10T16:49:33.996037"
     },
     {
@@ -79,7 +89,39 @@
       "lesson": "הפסד -7.3% — SL. שיעור שינוי יומי היה גבוה בכניסה — מנענו כניסות כאלה עם gap filter.",
       "adjustments": {},
       "date": "2026-03-11T16:37:56.487728"
+    },
+    {
+      "trade": "AFRM",
+      "pnl": -0.0,
+      "pnl_pct": -0.0,
+      "lesson": "אופטימלי קצר וא בלו היא חוזר בלי רביי",
+      "adjustments": {
+        "stop_loss_pct": 3.8
+      },
+      "date": "2026-03-11T17:12:46.119742"
     }
   ],
-  "updated": "2026-03-11T00:00:00.000000"
+  "updated": "2026-03-11T17:30:24.717840",
+  "missed_patterns": [
+    {
+      "ticker": "MSTR",
+      "window": "10:30-11:00",
+      "direction": "LONG",
+      "win_rate": 71.1,
+      "avg_change": 0.545,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-11",
+      "lesson": "פספסנו MSTR חלון 10:30-11:00 (WR 71.1%, avg +0.55%) — לא נכנסנו"
+    },
+    {
+      "ticker": "MSTR",
+      "window": "10:30-11:00",
+      "direction": "LONG",
+      "win_rate": 71.1,
+      "avg_change": 0.545,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-11",
+      "lesson": "פספסנו MSTR חלון 10:30-11:00 (WR 71.1%, avg +0.55%) — לא נכנסנו"
+    }
+  ]
 }
