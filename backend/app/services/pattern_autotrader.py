@@ -50,6 +50,14 @@ def _parse_hhmm(s: str):
     h, m = map(int, s.split(":"))
     return h * 60 + m
 
+# ── Fixed curated ticker universe — high ATR, high volume, consistent patterns ──
+# Skip slow Finviz pool fetch; these are tested high-movers with daily ATR >2%
+FIXED_UNIVERSE = [
+    "NVDA", "AMD", "TSLA", "META", "GOOGL", "AMZN", "AAPL", "MSFT",
+    "MSTR", "COIN", "PLTR", "SMCI", "AVGO", "ARM",
+    "RKLB", "RGTI", "AAOI", "IONQ", "SOUN", "CRDO",
+]
+
 # ── Risk parameters ────────────────────────────────────────────────────────────
 PORTFOLIO_SIZE   = 700    # $ total portfolio
 MAX_CONCURRENT   = 1      # max open positions at once (1 = full portfolio on 1 trade)
@@ -179,15 +187,7 @@ def _record_missed_lesson(entry: dict):
 async def _run_daily_scan():
     """Scan universe and pick top-N stocks for today based on pattern strength."""
     _state["status_msg"] = "סורק מניות..."
-    try:
-        pool = await filter_stock_pool(
-            min_market_cap=2_000_000_000,
-            min_atr=2.0, min_atr_pct=2.5, min_volume=5_000_000
-        )
-        tickers = [s["ticker"] for s in pool[:15]]  # analyze top 15 from pool
-    except Exception as e:
-        _state["status_msg"] = f"שגיאה בסריקה: {e}"
-        return
+    tickers = FIXED_UNIVERSE  # use curated list — fast, no Finviz fetch needed
 
     candidates = []
     sem = asyncio.Semaphore(3)
@@ -571,13 +571,28 @@ def confirm_ib_demo(ticker: str) -> dict:
 
 
 def enable_no_scan(amount: float = 700, top_n: int = 3) -> dict:
-    """Enable the bot instantly with no immediate scan (used on server startup).
-    Scan runs at 3:55 AM ET or when manually triggered."""
+    """Enable the bot instantly. If no scan today yet, schedules one after 15s
+    so the server finishes startup first."""
     _state["enabled"] = True
     _state["amount_per_trade"] = amount
     _state["top_n"] = top_n
-    if not _state["status_msg"] or _state["status_msg"] in ("לא פעיל", "כובה"):
-        _state["status_msg"] = "פעיל — ממתין לסריקה הבאה (3:55 AM ET)"
+
+    if _state["last_scan_date"] != date.today().isoformat():
+        _state["status_msg"] = "פעיל — סריקה תתחיל בעוד 15 שניות..."
+        _state["daily_pnl"] = 0.0
+
+        async def _delayed_scan():
+            await asyncio.sleep(15)
+            await _run_daily_scan()
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(_delayed_scan())
+        except Exception:
+            pass
+    else:
+        _state["status_msg"] = "פעיל"
     return get_state()
 
 
