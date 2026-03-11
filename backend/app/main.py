@@ -243,6 +243,42 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(_arena_eod_check, "interval", minutes=1, id="arena_eod_job")
     print("Arena EOD: preview at 15:45, winner at 16:05 ET")
 
+    # IB Auto-Reconnect — if arena trader is enabled and IB disconnected, reconnect automatically
+    _ib_reconnect_failures = [0]  # consecutive failure counter
+
+    async def _ib_auto_reconnect():
+        from app.services.ib_service import ib_service
+        from app.services.arena_ib_trader import arena_ib_trader
+        if not arena_ib_trader.enabled:
+            return
+        if ib_service.is_connected():
+            _ib_reconnect_failures[0] = 0
+            return
+        # Back off after repeated failures: skip if too many consecutive fails
+        if _ib_reconnect_failures[0] >= 10:
+            # Reset every 10 min (10 failures × 60s = 10min) to retry
+            if _ib_reconnect_failures[0] % 10 == 0:
+                print("[IB Reconnect] Resetting backoff, retrying...")
+            else:
+                return
+        try:
+            print("[IB Reconnect] Arena trader enabled but IB disconnected — reconnecting...")
+            result = await ib_service.connect(host="127.0.0.1", port=4002, client_id=20)
+            if result.get("connected"):
+                _ib_reconnect_failures[0] = 0
+                print(f"[IB Reconnect] ✓ Connected to {result.get('account', '?')}")
+            else:
+                _ib_reconnect_failures[0] += 1
+                print(f"[IB Reconnect] Failed: {result.get('error', 'unknown')} "
+                      f"(attempt {_ib_reconnect_failures[0]})")
+        except Exception as e:
+            _ib_reconnect_failures[0] += 1
+            print(f"[IB Reconnect] Error: {e} (attempt {_ib_reconnect_failures[0]})")
+
+    scheduler.add_job(_ib_auto_reconnect, "interval", seconds=60, id="ib_reconnect_job",
+                      max_instances=1, coalesce=True)
+    print("IB Auto-Reconnect: checks every 60s when arena trader is enabled")
+
     # Pre-warm briefing cache in background
     async def _prewarm_briefing():
         import httpx
