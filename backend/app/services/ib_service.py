@@ -23,6 +23,8 @@ except ImportError:
 
 # Rotating clientId pool to avoid conflicts when requests overlap
 _client_id_counter = itertools.count(21)
+# Semaphore: max 3 concurrent IB connections to avoid thread pool exhaustion
+_ib_semaphore = threading.Semaphore(3)
 
 
 def _next_client_id() -> int:
@@ -42,7 +44,10 @@ def _run_in_ib_thread(fn, timeout=12):
 
     def _worker():
         import asyncio
-        # ib_insync requires an event loop in the thread
+        if not _ib_semaphore.acquire(timeout=timeout - 1):
+            log.warning("[IB] semaphore timeout — too many concurrent connections")
+            done.set()
+            return
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         ib = _ib.IB()
@@ -59,6 +64,7 @@ def _run_in_ib_thread(fn, timeout=12):
             except Exception:
                 pass
             loop.close()
+            _ib_semaphore.release()
             done.set()
 
     t = threading.Thread(target=_worker, daemon=True, name="ib-fetch")
@@ -82,7 +88,9 @@ class IBService:
         self._positions_cache_time: float = 0
         self._account_cache: Dict = {}
         self._account_cache_time: float = 0
-        self._CACHE_TTL = 15  # seconds
+        self._orders_cache: List[Dict] = []
+        self._orders_cache_time: float = 0
+        self._CACHE_TTL = 20  # seconds
 
     # ── helpers ──────────────────────────────────────────────────────────
 
@@ -214,28 +222,36 @@ class IBService:
             raw = ib.positions()
             log.info(f"[IB] got {len(raw)} positions")
 
-            # Fetch live prices via yfinance (IB paper has no market data)
+            # Fetch live prices + prev close via yfinance (IB paper has no market data)
             tickers_needed = [pos.contract.symbol for pos in raw if pos.position != 0]
             yf_prices: Dict[str, float] = {}
+            yf_prev_close: Dict[str, float] = {}
             if tickers_needed:
                 try:
                     import yfinance as yf
                     data = yf.download(
-                        " ".join(tickers_needed),
-                        period="1d", interval="1m",
-                        progress=False, auto_adjust=True, timeout=5
+                        tickers_needed if len(tickers_needed) > 1 else tickers_needed[0],
+                        period="2d", interval="1m",
+                        progress=False, auto_adjust=True, timeout=8,
+                        group_by="ticker" if len(tickers_needed) > 1 else "column",
                     )
-                    close = data.get("Close", data) if hasattr(data, "get") else data
-                    if hasattr(close, "iloc") and not close.empty:
-                        last_row = close.iloc[-1]
-                        if len(tickers_needed) == 1:
-                            yf_prices[tickers_needed[0]] = float(last_row)
-                        else:
-                            for tk in tickers_needed:
-                                try:
-                                    yf_prices[tk] = float(last_row[tk])
-                                except Exception:
-                                    pass
+                    for tk in tickers_needed:
+                        try:
+                            if len(tickers_needed) == 1:
+                                close_series = data["Close"]
+                            else:
+                                close_series = data[tk]["Close"]
+                            close_series = close_series.dropna()
+                            if close_series.empty:
+                                continue
+                            yf_prices[tk] = float(close_series.iloc[-1])
+                            # prev close = last bar of previous day
+                            today = close_series.index[-1].date()
+                            prev = close_series[close_series.index.date < today]
+                            if not prev.empty:
+                                yf_prev_close[tk] = float(prev.iloc[-1])
+                        except Exception:
+                            pass
                 except Exception as e:
                     log.warning(f"[IB] yfinance price fetch failed: {e}")
 
@@ -247,8 +263,11 @@ class IBService:
                 avg = pos.avgCost
                 qty = pos.position
                 mkt = yf_prices.get(c.symbol, 0.0)
+                prev = yf_prev_close.get(c.symbol, 0.0)
                 pnl = round((mkt - avg) * qty, 2) if mkt and avg else 0
                 pnl_pct = round((mkt - avg) / avg * 100, 2) if mkt and avg else 0
+                day_change = round(mkt - prev, 4) if mkt and prev else None
+                day_change_pct = round((mkt - prev) / prev * 100, 2) if mkt and prev else None
                 result.append({
                     "ticker": c.symbol,
                     "currency": c.currency,
@@ -258,6 +277,8 @@ class IBService:
                     "market_value": round(mkt * qty, 2) if mkt else None,
                     "unrealized_pnl": pnl,
                     "pnl_pct": pnl_pct,
+                    "day_change": day_change,
+                    "day_change_pct": day_change_pct,
                     "account": pos.account,
                 })
             return sorted(result, key=lambda x: abs(x.get("market_value") or 0), reverse=True)
@@ -275,6 +296,9 @@ class IBService:
     async def get_open_orders(self) -> List[Dict]:
         if not self.is_connected():
             return []
+
+        if time.time() - self._orders_cache_time < self._CACHE_TTL:
+            return self._orders_cache
 
         def _fetch(ib: "_ib.IB"):
             ib.sleep(1)  # allow order data to arrive
@@ -301,7 +325,11 @@ class IBService:
 
         import asyncio
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, lambda: _run_in_ib_thread(_fetch, timeout=12)) or []
+        result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_fetch, timeout=12))
+        if result is not None:
+            self._orders_cache = result
+            self._orders_cache_time = time.time()
+        return result if result is not None else self._orders_cache
 
     # ── Executions ────────────────────────────────────────────────────────
 
@@ -343,11 +371,9 @@ class IBService:
         if not self.is_connected():
             return {"error": "לא מחובר ל-IB"}
 
-        # Use persistent connection for order placement (needs to stay connected
-        # for order status tracking)
-        def _do():
+        def _do(ib: "_ib.IB"):
             contract = _ib.Stock(ticker.upper(), "SMART", "USD")
-            self._ib.qualifyContracts(contract)
+            ib.qualifyContracts(contract)
             if order_type == "MKT":
                 order = _ib.MarketOrder(action.upper(), quantity, tif=tif)
             elif order_type == "LMT":
@@ -360,8 +386,8 @@ class IBService:
                 order = _ib.StopOrder(action.upper(), quantity, stop_price, tif=tif)
             else:
                 return {"error": f"סוג הוראה לא נתמך: {order_type}"}
-            trade = self._ib.placeOrder(contract, order)
-            self._ib.sleep(0.5)
+            trade = ib.placeOrder(contract, order)
+            ib.sleep(1)
             return {
                 "order_id": trade.order.orderId,
                 "ticker": ticker.upper(),
@@ -373,23 +399,10 @@ class IBService:
                 "tif": tif,
             }
 
-        done = threading.Event()
-        result = [None]
-
-        def _run():
-            try:
-                result[0] = _do()
-            except Exception as e:
-                result[0] = {"error": str(e)}
-            finally:
-                done.set()
-
-        t = threading.Thread(target=_run, daemon=True)
-        t.start()
         import asyncio
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, lambda: done.wait(15))
-        return result[0] or {"error": "timeout"}
+        result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_do, timeout=15))
+        return result or {"error": "timeout"}
 
     # ── Cancel Order ──────────────────────────────────────────────────────
 
@@ -397,33 +410,21 @@ class IBService:
         if not self.is_connected():
             return {"error": "לא מחובר ל-IB"}
 
-        def _do():
+        def _do(ib: "_ib.IB"):
+            ib.sleep(0.5)
             target = next(
-                (t for t in self._ib.openTrades() if t.order.orderId == order_id), None
+                (t for t in ib.openTrades() if t.order.orderId == order_id), None
             )
             if target is None:
                 return {"error": f"הוראה #{order_id} לא נמצאה"}
-            self._ib.cancelOrder(target.order)
-            self._ib.sleep(0.3)
+            ib.cancelOrder(target.order)
+            ib.sleep(0.5)
             return {"cancelled": True, "order_id": order_id}
 
-        done = threading.Event()
-        result = [None]
-
-        def _run():
-            try:
-                result[0] = _do()
-            except Exception as e:
-                result[0] = {"error": str(e)}
-            finally:
-                done.set()
-
-        t = threading.Thread(target=_run, daemon=True)
-        t.start()
         import asyncio
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, lambda: done.wait(10))
-        return result[0] or {"error": "timeout"}
+        result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_do, timeout=12))
+        return result or {"error": "timeout"}
 
 
 ib_service = IBService()

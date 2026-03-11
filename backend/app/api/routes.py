@@ -1303,6 +1303,54 @@ async def ib_status():
     return ib_service.status()
 
 
+@router.post("/ib/raise-gateway")
+async def ib_raise_gateway():
+    """Raise IB Gateway window to front, or launch it if not running."""
+    import asyncio
+    loop = asyncio.get_running_loop()
+
+    def _do():
+        import subprocess, os, ctypes
+        result = subprocess.run(["pgrep", "-f", "ibgateway"], capture_output=True, text=True, timeout=3)
+        is_running = bool(result.stdout.strip())
+
+        if not is_running:
+            env = os.environ.copy()
+            env["DISPLAY"] = ":0"
+            subprocess.Popen(
+                ["/home/hila/ibgateway/ibgateway", "-J-DjtsConfigDir=/home/hila/Jts"],
+                env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            return {"launched": True, "raised": False, "message": "IB Gateway מופעל — המתיני מספר שניות"}
+
+        try:
+            libX11 = ctypes.CDLL("libX11.so.6")
+            libXtst = ctypes.CDLL("libXtst.so.6")
+            display = libX11.XOpenDisplay(b":0")
+            if display:
+                result2 = subprocess.run(
+                    ["bash", "-c", "DISPLAY=:0 xwininfo -root -tree 2>/dev/null | grep -i 'IBKR Gateway\\|Login Messages'"],
+                    capture_output=True, text=True, timeout=3
+                )
+                import re as _re
+                wins = _re.findall(r'(0x[0-9a-f]+)\s+"(?:IBKR Gateway|Login Messages)"', result2.stdout)
+                for win_hex in wins:
+                    win_id = int(win_hex, 16)
+                    libX11.XRaiseWindow(display, win_id)
+                    libX11.XFlush(display)
+                libXtst.XTestFakeMotionEvent(display, -1, 960, 540, 0)
+                libX11.XFlush(display)
+                libX11.XCloseDisplay(display)
+            return {"launched": False, "raised": True, "message": "חלון IB Gateway הועלה לחזית"}
+        except Exception as e:
+            return {"launched": False, "raised": False, "message": str(e)}
+
+    try:
+        return await asyncio.wait_for(loop.run_in_executor(None, _do), timeout=5)
+    except Exception:
+        return {"launched": False, "raised": False, "message": "timeout"}
+
+
 @router.post("/ib/connect")
 async def ib_connect(body: dict = Body(default={})):
     host = body.get("host", "127.0.0.1")

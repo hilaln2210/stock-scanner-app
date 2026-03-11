@@ -11,7 +11,7 @@ const DailyBriefing = lazy(() => import('./components/DailyBriefing'));
 const TechnicalSignalsScanner = lazy(() => import('./components/TechnicalSignalsScanner'));
 const DailyAnalysisScanner = lazy(() => import('./components/DailyAnalysisScanner'));
 const NewsPanel = lazy(() => import('./components/NewsPanel'));
-const IBPortfolio = lazy(() => import('./components/IBPortfolio'));
+import IBPortfolio from './components/IBPortfolio';
 const PatternScanner = lazy(() => import('./components/PatternScanner'));
 const SeasonalityScanner = lazy(() => import('./components/SeasonalityScanner'));
 
