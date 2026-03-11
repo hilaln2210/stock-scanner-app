@@ -3,9 +3,9 @@
 [![CI](https://github.com/hilaln2210/stock-scanner-app/actions/workflows/ci.yml/badge.svg)](https://github.com/hilaln2210/stock-scanner-app/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A real-time stock market intelligence platform built with **FastAPI** + **React**. Combines technical analysis, FDA catalyst tracking, social trending data, and AI-assisted briefings into a single Hebrew/English dashboard.
+A real-time stock market intelligence platform built with **FastAPI** + **React**. Combines technical analysis, FDA catalyst tracking, social trending data, and AI-assisted briefings into a single dashboard.
 
-**📱 זמין לנייד כ־PWA · 🚀 ניתן לפריסה 24/7** – ראה [DEPLOY.md](DEPLOY.md)
+**📱 Available as PWA · 🚀 Deployable 24/7** — see [DEPLOY.md](DEPLOY.md)
 
 ---
 
@@ -69,15 +69,15 @@ Finviz-powered fundamental screener with custom filters.
 
 | Tab | Description |
 |-----|-------------|
-| ☀️ בריפינג | Daily morning briefing — top 5 stocks by earnings beat + RSI |
-| 💼 תיק דמו | Demo portfolio tracker |
-| 🔥 הכי מדוברות | Social trending stocks |
+| ☀️ Briefing | Daily morning briefing — top 5 stocks by earnings beat + RSI |
+| 💼 Demo Portfolio | Demo portfolio tracker |
+| 🔥 Trending | Social trending stocks |
 | 💊 FDA | FDA catalyst calendar — PDUFA dates, NDA/BLA, Phase 3 |
-| 🖥️ קטליסטים | Tech catalyst tracker (earnings events) |
-| 📈 סיגנלים | Technical signals — MACD + RSI + Bollinger Bands |
-| 🎯 ניתוח יומי | Daily composite analysis — score 0–100, entry/stop/target |
-| 🏦 IB חשבון | Interactive Brokers live account / positions |
-| 📋 סורק בסיסי | Finviz fundamental screener |
+| 🖥️ Catalysts | Tech catalyst tracker (earnings events) |
+| 📈 Signals | Technical signals — MACD + RSI + Bollinger Bands |
+| 🎯 Daily Analysis | Daily composite analysis — score 0–100, entry/stop/target |
+| 🏦 IB Account | Interactive Brokers live account / positions |
+| 📋 Basic Scanner | Finviz fundamental screener |
 
 ---
 
@@ -100,6 +100,28 @@ npx vite --host 0.0.0.0
 
 - Frontend: http://localhost:3000
 - API docs: http://localhost:8000/docs
+
+---
+
+## Project Structure
+
+```
+stock-scanner-app/
+├── backend/
+│   └── app/
+│       ├── main.py           # FastAPI entry point + all endpoints
+│       ├── momentum/         # Momentum scanner
+│       ├── screener/         # VWAP screener
+│       ├── catalyst/         # FDA and tech catalysts
+│       ├── signals/          # Technical signals (MACD+RSI+BB)
+│       ├── analysis/         # Daily composite analysis
+│       ├── trending/         # Social trending
+│       └── briefing/         # Morning briefing
+└── frontend/
+    └── src/
+        ├── components/       # React components per tab
+        └── App.jsx           # Main tab routing
+```
 
 ---
 
@@ -131,73 +153,6 @@ For educational and informational purposes only. Not financial advice.
 
 ---
 
-## 🇮🇱 תיעוד בעברית
+## 🇮🇱 בעברית
 
-### מה הפרויקט עושה
-
-פלטפורמת מודיעין שוק מניות בזמן אמת, המשלבת ניתוח טכני, מעקב אחר קטליסטים (FDA, רווחים), נתוני סנטימנט חברתי ובריפינג בוקר יומי — הכול בממשק אחד.
-
-האפליקציה מיועדת לטריידרים פעילים ומאפשרת סריקת מניות, זיהוי הזדמנויות מסחר, ומעקב אחר אירועים קטליטיים חשובים.
-
-**טאבים ראשיים בממשק:**
-- **☀️ בריפינג יומי** — סיכום בוקר: 5 המניות המובילות לפי ביצועי רווחים + RSI
-- **🔥 הכי מדוברות** — מניות טרנדיות ברשתות חברתיות (Reddit, StockTwits)
-- **💊 FDA** — לוח קטליסטים של FDA: תאריכי PDUFA, הגשות NDA/BLA, תוצאות ניסויי שלב 3
-- **📈 סיגנלים טכניים** — סריקת MACD + RSI + Bollinger Bands
-- **🎯 ניתוח יומי** — ניקוד 0–100 לכל מניה עם רמות כניסה/עצירה/מטרה
-- **🏦 חשבון IB** — חיבור ל-Interactive Brokers לצפייה בפוזיציות בזמן אמת
-
-### טכנולוגיות
-
-| שכבה | טכנולוגיה |
-|------|-----------|
-| Backend | Python 3.11, FastAPI, uvicorn |
-| Frontend | React 18, Vite, TailwindCSS, TanStack Query |
-| נתוני שוק | yfinance, Finviz, ClinicalTrials.gov, מקורות FDA |
-| ברוקר | Interactive Brokers (IB Gateway) |
-| Cache | זיכרון פנימי (per-ticker 120s, סריקה מלאה 90s, API 60s) |
-
-### הוראות התקנה והפעלה
-
-**הרצת ה-Backend:**
-
-```bash
-cd backend
-source venv/bin/activate
-python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-**הרצת ה-Frontend:**
-
-```bash
-# דרוש Node דרך nvm
-export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh"
-cd frontend
-npx vite --host 0.0.0.0
-```
-
-- ממשק משתמש: `http://localhost:3000`
-- תיעוד API: `http://localhost:8000/docs`
-
-### מבנה הפרויקט
-
-```
-stock-scanner-app/
-├── backend/
-│   └── app/
-│       ├── main.py           # נקודת כניסה FastAPI + כל ה-endpoints
-│       ├── momentum/         # סורק מומנטום
-│       ├── screener/         # סורק VWAP
-│       ├── catalyst/         # FDA וקטליסטים טכנולוגיים
-│       ├── signals/          # סיגנלים טכניים (MACD+RSI+BB)
-│       ├── analysis/         # ניתוח יומי מרוכב
-│       ├── trending/         # מגמות חברתיות
-│       └── briefing/         # בריפינג בוקר
-└── frontend/
-    └── src/
-        ├── components/       # רכיבי React לכל טאב
-        └── App.jsx           # ניתוב ראשי בין הטאבים
-```
-
-**מקורות נתוני FDA (6 מקורות):**
-BioPharmCatalyst, RTTNews, Drugs.com, ClinicalTrials.gov, CheckRare, FDATracker
+פלטפורמת מודיעין שוק מניות בזמן אמת — סורק מומנטום, VWAP, קטליסטים FDA, מגמות חברתיות ובריפינג בוקר מבוסס AI. FastAPI + React.
