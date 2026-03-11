@@ -1364,6 +1364,40 @@ async def ib_cancel_order(order_id: int):
     return await ib_service.cancel_order(order_id)
 
 
+# ── Arena → IB Live Trader ──────────────────────────────────────────────────
+
+@router.get("/ib/arena-trader/status")
+async def arena_ib_trader_status():
+    """Get Arena→IB live trader state."""
+    from app.services.arena_ib_trader import arena_ib_trader
+    state = arena_ib_trader.get_state()
+    state["ib_connected"] = ib_service.is_connected()
+    return state
+
+@router.post("/ib/arena-trader/enable")
+async def arena_ib_trader_enable(payload: dict = Body({})):
+    """Enable Arena→IB live trader for a given strategy."""
+    from app.services.arena_ib_trader import arena_ib_trader
+    strategy  = payload.get("strategy_name", "")
+    amount    = float(payload.get("trade_amount", 500.0))
+    if not strategy:
+        return {"error": "strategy_name חסר"}
+    from app.services.strategy_arena import STRATEGY_CONFIGS
+    if strategy not in STRATEGY_CONFIGS:
+        return {"error": f"אסטרטגיה לא קיימת: {strategy}"}
+    if not ib_service.is_connected():
+        return {"error": "לא מחובר ל-IB Gateway — חבר קודם"}
+    arena_ib_trader.enable(strategy, amount)
+    return {"ok": True, "strategy_name": strategy, "trade_amount": amount}
+
+@router.post("/ib/arena-trader/disable")
+async def arena_ib_trader_disable():
+    """Disable Arena→IB live trader (open IB positions stay open)."""
+    from app.services.arena_ib_trader import arena_ib_trader
+    arena_ib_trader.disable()
+    return {"ok": True, "enabled": False}
+
+
 # ── Big-move alert scanner ──────────────────────────────────────────────────
 import aiohttp as _aiohttp
 from bs4 import BeautifulSoup as _BS4
@@ -3318,7 +3352,16 @@ async def smart_portfolio_arena_think():
         for s in stocks
         if s.get('ticker') and _safe_float(s.get('price')) > 0
     }
-    return arena_singleton.think(stocks, live_prices)
+    result = arena_singleton.think(stocks, live_prices)
+
+    # Arena→IB bridge: execute trades for the followed strategy
+    from app.services.arena_ib_trader import arena_ib_trader
+    if arena_ib_trader.enabled and ib_service.is_connected():
+        await arena_ib_trader.process_arena_tick(
+            result.get("recent_events", []), ib_service
+        )
+
+    return result
 
 
 @router.post("/smart-portfolio/arena/declare-winner")
