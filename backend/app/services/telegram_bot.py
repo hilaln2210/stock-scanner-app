@@ -531,8 +531,8 @@ def _fact_check_multi(response: str, all_stocks: list) -> str:
     return checked
 
 
-def _chat_with_ai(user_message: str, context: str = '', retries: int = 2,
-                   stock_data: dict = None, all_stocks: list = None) -> str:
+async def _chat_with_ai(user_message: str, context: str = '', retries: int = 2,
+                        stock_data: dict = None, all_stocks: list = None) -> str:
     """Send a message to Groq with conversation history and get a response."""
     api_key = settings.groq_api_key
     if not api_key:
@@ -550,15 +550,18 @@ def _chat_with_ai(user_message: str, context: str = '', retries: int = 2,
     model = _PRIMARY_MODEL
     last_error = None
 
+    def _call_groq(msgs, mdl):
+        client = Groq(api_key=api_key)
+        return client.chat.completions.create(
+            messages=msgs,
+            model=mdl,
+            temperature=0.7,
+            max_completion_tokens=1200,
+        )
+
     for attempt in range(retries + 1):
         try:
-            client = Groq(api_key=api_key)
-            completion = client.chat.completions.create(
-                messages=messages,
-                model=model,
-                temperature=0.7,
-                max_completion_tokens=1200,
-            )
+            completion = await asyncio.to_thread(_call_groq, messages, model)
             text = completion.choices[0].message.content.strip()
             if text.startswith('```'):
                 text = text.split('\n', 1)[1] if '\n' in text else text[3:]
@@ -586,7 +589,7 @@ def _chat_with_ai(user_message: str, context: str = '', retries: int = 2,
 
             if '429' in err_str or 'rate_limit' in err_str:
                 if attempt < retries:
-                    time.sleep(2 * (attempt + 1))
+                    await asyncio.sleep(2 * (attempt + 1))
                     continue
 
             if model == _PRIMARY_MODEL and attempt == 0:
@@ -595,7 +598,7 @@ def _chat_with_ai(user_message: str, context: str = '', retries: int = 2,
                 continue
 
             if attempt < retries:
-                time.sleep(1)
+                await asyncio.sleep(1)
                 continue
 
     if '429' in str(last_error).lower():
@@ -603,7 +606,23 @@ def _chat_with_ai(user_message: str, context: str = '', retries: int = 2,
     return f"שגיאה בתקשורת עם ה-AI. פרטים: {str(last_error)[:80]} 🤔"
 
 
-# ─── Telegram send with inline keyboard ─────────────────────────────────────
+# ─── Telegram send helpers ───────────────────────────────────────────────────
+async def _send_typing():
+    """Send 'typing...' action so user knows the bot received the message."""
+    token = settings.telegram_bot_token
+    chat_id = settings.telegram_chat_id
+    if not token or not chat_id:
+        return
+    try:
+        url = f"https://api.telegram.org/bot{token}/sendChatAction"
+        async with aiohttp.ClientSession() as session:
+            await session.post(url,
+                               json={'chat_id': chat_id, 'action': 'typing'},
+                               timeout=aiohttp.ClientTimeout(total=3))
+    except Exception:
+        pass
+
+
 async def _send_with_keyboard(text: str, ticker: str = None):
     """Send message, optionally with quick-reply inline keyboard."""
     token = settings.telegram_bot_token
@@ -690,6 +709,7 @@ async def _handle_command(text: str) -> tuple:
             "🔥 /top — 5 מניות מובילות\n"
             "🩳 /squeeze — סקוויזים פעילים + קטליסטים\n"
             "📰 /news — חדשות אחרונות (או /news TTD)\n"
+            "💬 /ask שאלה — שאלה ישירה ל-AI (מהיר)\n"
             "📈 /ta TICKER — ניתוח טכני (סיגנל, צפי עלייה/ירידה, תמיכה/התנגדות)\n"
             "🏷️ /insider — פעילות אנשי פנים\n"
             "🔍 /force TICKER — ניתוח מניה ספציפית\n"
@@ -714,6 +734,11 @@ async def _handle_command(text: str) -> tuple:
 
     if cmd == '/squeeze':
         return (await _cmd_squeeze(), None)
+
+    if cmd == '/ask' and args:
+        # Direct free-text AI question without stock context fetching — fastest response
+        question = ' '.join(args)
+        return (await _chat_with_ai(question), None)
 
     if cmd == '/news':
         ticker = _resolve_ticker(' '.join(args)) if args else None
@@ -743,30 +768,39 @@ async def _handle_command(text: str) -> tuple:
     except Exception:
         pass
 
+    # Fetch stock + market context in parallel to cut latency in half
     stock = None
     all_stocks = []
-    if ticker:
-        stock = await _fetch_stock_data(ticker)
+
+    async def _fetch_finviz_stocks() -> list:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    "http://localhost:8000/api/screener/finviz-table"
+                    "?filters=cap_midover,sh_avgvol_o2000,sh_instown_o10",
+                    timeout=aiohttp.ClientTimeout(total=7)
+                ) as resp:
+                    data = await resp.json()
+                    return data.get('stocks', [])[:80]
+        except Exception:
+            return []
+
+    stock_task = asyncio.create_task(_fetch_stock_data(ticker)) if ticker else None
+    market_task = asyncio.create_task(_fetch_market_context())
+    stocks_task = asyncio.create_task(_fetch_finviz_stocks())
+
+    if stock_task:
+        stock = await stock_task
         if stock:
             context_parts.append(_build_stock_context(stock))
         else:
             context_parts.append(f"{ticker} לא נמצאה בסורק. ענה על סמך הידע שלך.")
 
-    market = await _fetch_market_context()
+    market = await market_task
     if market:
         context_parts.append(market)
 
-    # For fact-check + תשובה מדויקת על "מי תעלה מעל X%": fetch current list
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                "http://localhost:8000/api/screener/finviz-table?filters=cap_midover,sh_avgvol_o2000,sh_instown_o10",
-                timeout=aiohttp.ClientTimeout(total=6)
-            ) as resp:
-                data = await resp.json()
-                all_stocks = data.get('stocks', [])[:80]
-    except Exception:
-        all_stocks = []
+    all_stocks = await stocks_task
 
     # בלוק עובדות מהסורק — טופ עליות עם אחוזים מדויקים, כדי שהתשובה תהיה מדויקת
     if all_stocks:
@@ -784,7 +818,7 @@ async def _handle_command(text: str) -> tuple:
         context_parts.insert(0, "\n".join(facts_lines))
 
     context = "\n".join(context_parts)
-    return (_chat_with_ai(text, context, stock_data=stock, all_stocks=all_stocks if not stock else None), ticker)
+    return (await _chat_with_ai(text, context, stock_data=stock, all_stocks=all_stocks if not stock else None), ticker)
 
 
 # ─── Callback query handler ──────────────────────────────────────────────────
@@ -845,7 +879,7 @@ async def _handle_callback(callback_data: str, callback_query_id: str) -> tuple:
     else:
         prompt = f"ספר לי על {ticker}"
 
-    return (_chat_with_ai(prompt, context, stock_data=stock), ticker)
+    return (await _chat_with_ai(prompt, context, stock_data=stock), ticker)
 
 
 # ─── Structured command implementations ──────────────────────────────────────
@@ -1001,7 +1035,7 @@ async def _cmd_brain() -> str:
         if market:
             context += f"\n{market}"
 
-        return _chat_with_ai(
+        return await _chat_with_ai(
             "מה המצב? מה החלטת אחרונה? על מה אתה מסתכל עכשיו? "
             "תן ניתוח ספציפי: האם התיק מנוהל נכון? מה צריך לשנות? "
             "תגיד אם יש סקוויזים חזקים שכדאי לשקול.",
@@ -1175,7 +1209,7 @@ async def _cmd_squeeze() -> str:
         top_ticker = squeeze_plays[0][1].get('ticker', '')
         top_stock = squeeze_plays[0][1]
         context = _build_stock_context(top_stock)
-        ai_insight = _chat_with_ai(
+        ai_insight = await _chat_with_ai(
             f"תן סיכום קצר (3 משפטים) על הסקוויז הכי חזק עכשיו: {top_ticker}. למה הוא מעניין? מה הסיכון?",
             context, stock_data=top_stock)
         lines.append(f"\n💡 <b>תובנה על {top_ticker}:</b>\n{ai_insight}")
@@ -1201,14 +1235,14 @@ async def _cmd_news(ticker: str = None) -> str:
             if len(lines) == 1:
                 lines.append("אין חדשות אחרונות.")
             context = _build_stock_context(stock)
-            ai_summary = _chat_with_ai(
+            ai_summary = await _chat_with_ai(
                 f"סכם בקצרה את החדשות האחרונות על {ticker} ומה ההשפעה על המניה. 2-3 משפטים.",
                 context,
                 stock_data=stock)
             lines.append(f"\n💡 <b>סיכום:</b>\n{ai_summary}")
             return "\n".join(lines)
         else:
-            return _chat_with_ai(
+            return await _chat_with_ai(
                 f"מה החדשות האחרונות על {ticker}? מה ההשפעה על המניה?",
                 f"{ticker} — אין חדשות בסורק. ענה על סמך הידע שלך.")
 
@@ -1216,7 +1250,7 @@ async def _cmd_news(ticker: str = None) -> str:
     market_ctx = await _fetch_market_context()
     if not market_ctx:
         return "📰 אין חדשות זמינות כרגע. נסי שוב בעוד דקה."
-    return _chat_with_ai(
+    return await _chat_with_ai(
         "סכם את החדשות האחרונות מהשוק. מה הכותרות? מה משפיע על המניות היום? תהיה ספציפי.",
         market_ctx)
 
@@ -1298,7 +1332,7 @@ async def _cmd_ta(ticker: str) -> str:
             lines.append("  ⚡ <b>Bollinger Squeeze פעיל — פריצה צפויה!</b>")
 
     context = _build_stock_context(stock)
-    ai_insight = _chat_with_ai(
+    ai_insight = await _chat_with_ai(
         f"בהתבסס על הניתוח הטכני של {ticker}, תן 2-3 משפטים: מה המסקנה? מתי כדאי להיכנס/לצאת? מה הסיכונים?",
         context,
         stock_data=stock)
@@ -1315,7 +1349,7 @@ async def _cmd_force(ticker: str) -> str:
     if market:
         context += f"\n{market}"
 
-    return _chat_with_ai(
+    return await _chat_with_ai(
         f"תנתח לי את {ticker} עכשיו. כדאי להיכנס? לכמה יעד? איפה סטופ? תהיה ספציפי עם מספרים.",
         context,
         stock_data=stock
@@ -1367,6 +1401,8 @@ async def start_telegram_bot():
                     continue
 
                 print(f"[TG Bot] Got message: {text[:50]}")
+                # Show typing immediately so user knows we received the message
+                await _send_typing()
                 response, ticker = await _handle_command(text)
                 await _send_with_keyboard(response, ticker)
 
