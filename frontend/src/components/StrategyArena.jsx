@@ -1,6 +1,14 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
+const LEADER_PULSE_CSS = `
+@keyframes leaderPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251,191,36,0), 0 0 20px rgba(251,191,36,0.15); border-color: rgba(251,191,36,0.5); }
+  50%       { box-shadow: 0 0 0 4px rgba(251,191,36,0.25), 0 0 30px rgba(251,191,36,0.35); border-color: rgba(251,191,36,0.9); }
+}
+.leader-card { animation: leaderPulse 1.8s ease-in-out infinite; }
+`;
+
 const W = '#4ade80';
 const L = '#f87171';
 const A = '#818cf8';
@@ -9,10 +17,12 @@ const SILVER = '#94a3b8';
 const BRONZE = '#f97316';
 
 const STRATEGY_META = {
-  Balanced:        { emoji: '⚖️', color: '#60a5fa', bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.25)' },
-  HighConviction:  { emoji: '🎯', color: '#a78bfa', bg: 'rgba(167,139,250,0.08)', border: 'rgba(167,139,250,0.25)' },
-  SqueezeHunter:   { emoji: '🔥', color: '#fb923c', bg: 'rgba(251,146,60,0.08)',  border: 'rgba(251,146,60,0.25)'  },
-  Scalper:         { emoji: '⚡', color: '#34d399', bg: 'rgba(52,211,153,0.08)',  border: 'rgba(52,211,153,0.25)'  },
+  Balanced:         { emoji: '⚖️', color: '#60a5fa', bg: 'rgba(96,165,250,0.08)',  border: 'rgba(96,165,250,0.25)'  },
+  HighConviction:   { emoji: '🎯', color: '#a78bfa', bg: 'rgba(167,139,250,0.08)', border: 'rgba(167,139,250,0.25)' },
+  SqueezeHunter:    { emoji: '🔥', color: '#fb923c', bg: 'rgba(251,146,60,0.08)',   border: 'rgba(251,146,60,0.25)'  },
+  Scalper:          { emoji: '⚡', color: '#34d399', bg: 'rgba(52,211,153,0.08)',   border: 'rgba(52,211,153,0.25)'  },
+  MomentumBreaker:  { emoji: '🚀', color: '#f43f5e', bg: 'rgba(244,63,94,0.08)',   border: 'rgba(244,63,94,0.25)'   },
+  SwingSetup:       { emoji: '🌊', color: '#22d3ee', bg: 'rgba(34,211,238,0.08)',  border: 'rgba(34,211,238,0.25)'  },
 };
 
 const RANK_COLORS = [GOLD, SILVER, BRONZE, L];
@@ -46,16 +56,19 @@ function StrategyCard({ strategy, rank, isLeader }) {
   const rankColor = RANK_COLORS[rank] || SILVER;
 
   return (
-    <div style={{
-      background: isLeader
-        ? 'linear-gradient(135deg, rgba(251,191,36,0.07) 0%, rgba(30,27,75,0.95) 100%)'
-        : `linear-gradient(135deg, ${meta.bg} 0%, rgba(13,17,23,0.95) 100%)`,
-      border: `1px solid ${isLeader ? 'rgba(251,191,36,0.4)' : meta.border}`,
-      borderRadius: 12,
-      padding: '14px 16px',
-      position: 'relative',
-      transition: 'all 0.3s ease',
-    }}>
+    <div
+      className={isLeader ? 'leader-card' : ''}
+      style={{
+        background: isLeader
+          ? 'linear-gradient(135deg, rgba(251,191,36,0.09) 0%, rgba(30,27,75,0.95) 100%)'
+          : `linear-gradient(135deg, ${meta.bg} 0%, rgba(13,17,23,0.95) 100%)`,
+        border: `1px solid ${isLeader ? 'rgba(251,191,36,0.5)' : meta.border}`,
+        borderRadius: 12,
+        padding: '14px 16px',
+        position: 'relative',
+        transition: 'border-color 0.3s ease',
+      }}
+    >
       {/* Rank badge */}
       <div style={{
         position: 'absolute', top: 10, right: 12,
@@ -264,10 +277,12 @@ export default function StrategyArena() {
 
   const totalPnl = strategies.reduce((sum, s) => sum + (s.total_pnl ?? 0), 0);
   const totalEquity = strategies.reduce((sum, s) => sum + (s.equity ?? 1000), 0);
-  const totalReturn = ((totalEquity - 4000) / 4000 * 100);
+  const totalInitial = strategies.length * 1000;
+  const totalReturn = totalInitial > 0 ? ((totalEquity - totalInitial) / totalInitial * 100) : 0;
 
   return (
     <div style={{ padding: '16px', maxWidth: 900, margin: '0 auto' }}>
+      <style>{LEADER_PULSE_CSS}</style>
 
       {/* ─── Header ─── */}
       <div style={{
@@ -373,7 +388,7 @@ export default function StrategyArena() {
       </div>
 
       {/* ─── Strategy cards ─── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
         {sorted.map((strategy, rank) => (
           <StrategyCard
             key={strategy.name}

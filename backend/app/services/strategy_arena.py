@@ -1,13 +1,15 @@
 """
-Strategy Arena — 4 mini-portfolios competing on live data all day.
+Strategy Arena — 6 mini-portfolios competing on live data all day.
 Each gets $1,000 virtual capital. No AI calls — fast rule-based scoring.
 At 16:05 ET: winner's params are written to ai_learning.json.
 
 Strategies:
-  Balanced       — balanced quality filters
-  HighConviction — only the best setups, higher R:R
-  SqueezeHunter  — requires short squeeze setup (short_float > 12%)
-  Scalper        — high volume + fast moves, tight stop/target
+  Balanced        — balanced quality filters
+  HighConviction  — only the best setups, higher R:R
+  SqueezeHunter   — requires short squeeze setup (short_float > 12%)
+  Scalper         — high volume + fast moves, tight stop/target
+  MomentumBreaker — explosive movers, rvol >= 2.5, chg > 2%
+  SwingSetup      — quality swings, bigger targets, patient entries
 """
 
 import json
@@ -77,6 +79,32 @@ STRATEGY_CONFIGS = {
         "requires_short_float": None,
         "requires_min_chg": 1.5,
         "max_positions": 4,
+    },
+    "MomentumBreaker": {
+        "label": "🚀 Momentum Breaker",
+        "description": "פורצים עם נפח פנומנלי — rvol ≥ 2.5, תנועה > 2%",
+        "min_health": 48,
+        "min_conf": 55,
+        "min_rvol": 2.5,
+        "stop_pct": 3.5,
+        "target_pct": 11.0,
+        "max_day_chg": 15.0,
+        "requires_short_float": None,
+        "requires_min_chg": 2.0,
+        "max_positions": 4,
+    },
+    "SwingSetup": {
+        "label": "🌊 Swing Setup",
+        "description": "כניסות איכותיות, יעדים גדולים — סבלנות ומשמעת",
+        "min_health": 62,
+        "min_conf": 68,
+        "min_rvol": 0.6,
+        "stop_pct": 5.0,
+        "target_pct": 20.0,
+        "max_day_chg": 3.0,
+        "requires_short_float": None,
+        "requires_min_chg": None,
+        "max_positions": 2,
     },
 }
 
