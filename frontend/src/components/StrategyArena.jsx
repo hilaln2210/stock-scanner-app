@@ -464,7 +464,6 @@ function WeeklyHistory({ history = [], strategies = [] }) {
 export default function StrategyArena() {
   const [data, setData]             = useState(null);
   const [loading, setLoading]       = useState(true);
-  const [thinking, setThinking]     = useState(false);
   const [declaring, setDeclaring]   = useState(false);
   const [lastMsg, setLastMsg]       = useState(null);
   const [countdown, setCountdown]   = useState('');
@@ -560,16 +559,6 @@ export default function StrategyArena() {
     return () => clearInterval(iv);
   }, [data, fetchLivePrices]);
 
-  const triggerThink = async () => {
-    setThinking(true); setLastMsg(null);
-    try {
-      const r = await axios.post('/api/smart-portfolio/arena/think');
-      setLastMsg({ ok: true, text: `✅ עדכון הצליח · ${r.data?.tick_count ?? ''} ticks` });
-      fetchStatus();
-    } catch (e) { setLastMsg({ ok: false, text: e.message }); }
-    setThinking(false);
-  };
-
   const declareDaily = async () => {
     if (!confirm('להכריז על מנצחת היום?')) return;
     setDeclaring(true); setLastMsg(null);
@@ -631,17 +620,23 @@ export default function StrategyArena() {
               ⏰ {countdown}
             </div>
           )}
-          {lastPriceUpdate && (
-            <div style={{ fontSize: 9, padding: '4px 8px', borderRadius: 6, background: 'rgba(74,222,128,0.07)', border: '1px solid rgba(74,222,128,0.2)', color: '#4ade80', fontFamily: 'monospace' }}>
-              📡 {lastPriceUpdate.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-            </div>
-          )}
-          <button onClick={triggerThink} disabled={thinking} style={{
-            fontSize: 11, padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700,
-            background: thinking ? '#1e1b4b' : 'linear-gradient(135deg,#4338ca,#6366f1)', color: '#fff', opacity: thinking ? 0.6 : 1,
+          {/* LIVE indicator */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 8,
+            background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.3)', color: '#4ade80',
           }}>
-            {thinking ? '⏳ חושב...' : '🧠 עדכן'}
-          </button>
+            <span className="session-dot" style={{ width: 7, height: 7, borderRadius: '50%', background: '#4ade80', display: 'inline-block' }} />
+            LIVE
+            {lastPriceUpdate && (
+              <span style={{ fontFamily: 'monospace', fontWeight: 400, color: '#64748b', fontSize: 9 }}>
+                {lastPriceUpdate.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 9, color: '#475569', padding: '4px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            tick כל 30s
+          </div>
           <button onClick={declareDaily} disabled={declaring} style={{
             fontSize: 11, padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 700,
             background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.35)', color: GOLD, opacity: declaring ? 0.6 : 1,
@@ -747,7 +742,7 @@ export default function StrategyArena() {
 
       {/* ── Footer ── */}
       <div style={{ marginTop: 12, fontSize: 9, color: '#334155', textAlign: 'center' }}>
-        עדכון כל 15 שניות · פועל בפרי-מרקט / מסחר / אפטר-מרקט · מנצחת יום: 16:05 · מנצחת שבוע: שישי 16:05 · פרמטרים → AI ראשי
+        ⚙️ אוטונומי 24/7 · Arena tick כל 30s · מחירים כל 30s · מנצחת יום: 16:05 ET · מנצחת שבוע: שישי · ללא תלות בדפדפן
       </div>
     </div>
   );

@@ -92,47 +92,62 @@ async def lifespan(app: FastAPI):
     # Smart Portfolio AI Brain — runs every 5 minutes during market hours only
     async def _smart_portfolio_tick():
         from datetime import datetime, timezone, timedelta
-        from app.services.strategy_arena import get_session_type
-        session = get_session_type()
-
-        # Main brain: regular hours only (9:25-16:05 ET, weekdays)
         et_offset = timedelta(hours=-4)
         now_et = datetime.now(timezone.utc) + et_offset
         is_weekday = now_et.weekday() < 5
         market_open  = now_et.replace(hour=9,  minute=25, second=0, microsecond=0)
         market_close = now_et.replace(hour=16, minute=5,  second=0, microsecond=0)
         in_regular_hours = is_weekday and market_open <= now_et <= market_close
-
+        if not in_regular_hours:
+            return
         try:
             import httpx
             async with httpx.AsyncClient(timeout=60) as client:
-                # Main brain only during regular hours
-                if in_regular_hours:
-                    r = await client.post("http://localhost:8000/api/smart-portfolio/think")
-                    data = r.json()
-                    d = data.get('decision', {})
-                    if d and d.get('action') != 'HOLD':
-                        print(f"[Brain] {d.get('action')} {d.get('ticker')} (confidence: {d.get('confidence')}%)")
-                    else:
-                        print(f"[Brain] HOLD — {d.get('reason', 'no decision') if d else 'no data'}")
-
-                # Arena: runs in all sessions (pre/regular/after), closed = skip
-                if session != "closed":
-                    try:
-                        ra = await client.post("http://localhost:8000/api/smart-portfolio/arena/think",
-                                               timeout=httpx.Timeout(30.0))
-                        lb = ra.json().get("leaderboard", [])
-                        if lb:
-                            leader = lb[0]
-                            print(f"[Arena:{session}] Leader: {leader['name']} "
-                                  f"${leader.get('pnl', 0):+.2f} ({leader.get('pnl_pct', 0):+.1f}%)")
-                    except Exception as ae:
-                        print(f"[Arena] Error: {ae}")
+                r = await client.post("http://localhost:8000/api/smart-portfolio/think")
+                data = r.json()
+                d = data.get('decision', {})
+                if d and d.get('action') != 'HOLD':
+                    print(f"[Brain] {d.get('action')} {d.get('ticker')} (confidence: {d.get('confidence')}%)")
+                else:
+                    print(f"[Brain] HOLD — {d.get('reason', 'no decision') if d else 'no data'}")
         except Exception as e:
             print(f"[Brain] Error: {e}")
 
     scheduler.add_job(_smart_portfolio_tick, "interval", minutes=5, id="brain_job")
-    print("Smart Portfolio Brain + Arena: scheduled every 5 minutes")
+
+    # Arena — autonomous tick every 1 minute, all sessions (pre/regular/after)
+    async def _arena_tick():
+        from datetime import datetime, timezone, timedelta
+        from app.services.strategy_arena import get_session_type
+        import time as _t
+        session = get_session_type()
+        if session == "closed":
+            return
+        try:
+            import httpx
+            async with httpx.AsyncClient() as client:
+                # Refresh finviz-table cache if stale (>90s) — arena is self-sufficient
+                from app.api.routes import _FV_TABLE_CACHE, _FV_TABLE_CACHE_TIME
+                cache_age = _t.time() - _FV_TABLE_CACHE_TIME
+                if cache_age > 90 or not _FV_TABLE_CACHE.get('data', {}).get('stocks'):
+                    try:
+                        await client.get("http://localhost:8000/api/screener/finviz-table",
+                                         timeout=httpx.Timeout(90.0))
+                    except Exception:
+                        pass  # arena/think has its own fallbacks
+
+                ra = await client.post("http://localhost:8000/api/smart-portfolio/arena/think",
+                                       timeout=httpx.Timeout(30.0))
+                lb = ra.json().get("leaderboard", [])
+                if lb:
+                    leader = lb[0]
+                    print(f"[Arena:{session}] #{1} {leader['name']} "
+                          f"${leader.get('equity', 1000):.0f} ({leader.get('pnl_pct', 0):+.2f}%)")
+        except Exception as e:
+            print(f"[Arena] tick error: {e}")
+
+    scheduler.add_job(_arena_tick, "interval", seconds=30, id="arena_tick_job")
+    print("Smart Portfolio Brain: every 5min | Arena: autonomous every 30s")
 
     # Arena daily winner at 16:05 ET (Mon-Fri), weekly winner on Fridays
     async def _arena_eod_check():
