@@ -1,5 +1,6 @@
 # Stock Scanner Dashboard
 
+[![CI](https://github.com/hilaln2210/stock-scanner-app/actions/workflows/ci.yml/badge.svg)](https://github.com/hilaln2210/stock-scanner-app/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A real-time stock market intelligence platform built with **FastAPI** + **React**. Combines technical analysis, FDA catalyst tracking, social trending data, and AI-assisted briefings into a single Hebrew/English dashboard.
