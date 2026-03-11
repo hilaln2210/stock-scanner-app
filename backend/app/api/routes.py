@@ -1359,6 +1359,10 @@ async def ib_connect(body: dict = Body(default={})):
     return await ib_service.connect(host=host, port=port, client_id=client_id)
 
 
+@router.post("/ib/disconnect")
+async def ib_disconnect():
+    return await ib_service.disconnect()
+
 @router.get("/ib/account")
 async def ib_account():
     return await ib_service.get_account_summary()

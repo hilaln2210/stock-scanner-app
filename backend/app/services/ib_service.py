@@ -180,9 +180,13 @@ class IBService:
     # ── Connection ────────────────────────────────────────────────────────
 
     def is_connected(self) -> bool:
-        return _IB_AVAILABLE and self._connected and (
-            self._ib is not None and self._ib.isConnected()
-        )
+        if not (_IB_AVAILABLE and self._connected and self._ib is not None):
+            return False
+        try:
+            return self._ib.isConnected()
+        except Exception:
+            self._connected = False
+            return False
 
     def status(self) -> Dict:
         return {
@@ -191,9 +195,32 @@ class IBService:
             "ib_available": _IB_AVAILABLE,
         }
 
+    def _force_disconnect(self):
+        """Force-close stale IB connection so clientId can be reused."""
+        with self._lock:
+            old_ib = self._ib
+            self._ib = None
+            self._connected = False
+        if old_ib:
+            try:
+                old_ib.disconnect()
+            except Exception:
+                pass
+            # Force-close the underlying socket if disconnect didn't work
+            try:
+                if hasattr(old_ib, 'client') and old_ib.client:
+                    sock = getattr(old_ib.client, '_socket', None)
+                    if sock:
+                        sock.close()
+            except Exception:
+                pass
+
     async def connect(self, host="127.0.0.1", port=4002, client_id=20) -> Dict:
         if not _IB_AVAILABLE:
             return {"connected": False, "error": "ib_insync לא מותקן"}
+
+        # Disconnect stale connection first — frees clientId
+        self._force_disconnect()
 
         import asyncio
         loop = asyncio.get_running_loop()
@@ -206,11 +233,6 @@ class IBService:
         if not ib.isConnected():
             return {"connected": False, "error": "חיבור נכשל"}
         with self._lock:
-            if self._ib and self._ib.isConnected():
-                try:
-                    self._ib.disconnect()
-                except Exception:
-                    pass
             self._ib = ib
             self._account = account
             self._host = host
@@ -218,6 +240,10 @@ class IBService:
             self._connected = True
             self._ever_connected = True
         return {"connected": True, "account": self._account, "host": host, "port": port}
+
+    async def disconnect(self) -> Dict:
+        self._force_disconnect()
+        return {"disconnected": True}
 
     # ── Account Summary ───────────────────────────────────────────────────
 
