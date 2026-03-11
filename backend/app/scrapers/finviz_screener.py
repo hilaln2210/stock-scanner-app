@@ -149,6 +149,61 @@ class FinvizScreener:
 
         return stocks_list
 
+    # Cache for live prices batch (short TTL for live feel)
+    _price_cache: Dict[str, float] = {}
+    _price_cache_time: float = 0
+    _PRICE_CACHE_TTL = 15  # seconds
+
+    async def get_live_prices_batch(self, tickers: List[str]) -> Dict[str, float]:
+        """
+        Fetch live prices for a list of tickers directly from Finviz screener.
+        Uses Finviz's ?t=TICK1,TICK2,... filter for a single batch request.
+        Returns dict: {ticker: price}
+        """
+        if not tickers:
+            return {}
+
+        now = time.time()
+        # Return cached result if fresh
+        if self._price_cache and (now - self._price_cache_time) < self._PRICE_CACHE_TTL:
+            # Return only tickers that are in cache
+            cached = {t: self._price_cache[t] for t in tickers if t in self._price_cache}
+            if len(cached) == len(tickers):
+                return cached
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                }
+
+                if self.email and self.password and not self.cookie:
+                    self.cookie = await self._login(session)
+                if self.cookie:
+                    headers["Cookie"] = self.cookie
+
+                use_elite = bool(self.cookie)
+                base = self.BASE_URL if use_elite else self.PUBLIC_URL
+                ticker_str = ','.join(tickers[:200])  # Finviz cap
+                url = f"{base}?v=111&t={ticker_str}"
+
+                timeout = aiohttp.ClientTimeout(total=12)
+                async with session.get(url, headers=headers, timeout=timeout) as response:
+                    if response.status != 200:
+                        print(f"Finviz prices batch: status {response.status}")
+                        return {}
+                    html = await response.text()
+                    soup = BeautifulSoup(html, "html.parser")
+                    stocks = self._parse_screener_table(soup, 'price_batch')
+                    result = {s['ticker']: s['price'] for s in stocks if s.get('price', 0) > 0}
+                    # Update cache
+                    self._price_cache.update(result)
+                    self._price_cache_time = now
+                    return result
+        except Exception as e:
+            print(f"Finviz prices batch error: {e}")
+            return {}
+
     async def _scrape_screener(self, filters: Dict, source_label: str) -> List[Dict]:
         """Scrape a single Finviz screener page with given filters."""
         results = []

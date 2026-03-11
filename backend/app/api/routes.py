@@ -538,6 +538,20 @@ async def scan_momentum(lang: Optional[str] = Query('en')):
             if ticker and ticker in move_data:
                 stock['move'] = move_data[ticker]
 
+        # Override prices with live Finviz prices (most accurate, in sync with Finviz UI)
+        try:
+            finviz_prices = await finviz_screener.get_live_prices_batch(tickers)
+            for stock in enriched_opportunities:
+                ticker = stock.get('ticker')
+                fv_price = finviz_prices.get(ticker, 0)
+                if fv_price > 0:
+                    if stock.get('move'):
+                        stock['move']['price'] = fv_price
+                    if stock.get('live_data'):
+                        stock['live_data']['price'] = fv_price
+        except Exception as e:
+            print(f"Finviz price override error (non-fatal): {e}")
+
         # Translate to Hebrew if requested
         if lang == 'he':
             translated_opps = await translation_service.translate_stocks(enriched_opportunities, 'he')
