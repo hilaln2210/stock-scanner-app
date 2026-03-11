@@ -321,11 +321,7 @@ class IBService:
 
         account = self._account
 
-        def _fetch_persistent():
-            _ensure_event_loop()
-            ib = self._ib
-            if not ib or not ib.client.isConnected():
-                return None
+        def _fetch(ib: "_ib.IB"):
             ib.reqAccountUpdates(True)
             ib.sleep(2)
             vals = {}
@@ -349,7 +345,7 @@ class IBService:
 
         import asyncio
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, _fetch_persistent)
+        result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_fetch, timeout=15))
         if result:
             self._account_cache = result
             self._account_cache_time = time.time()
@@ -368,12 +364,8 @@ class IBService:
         if time.time() - self._positions_cache_time < self._CACHE_TTL and self._positions_cache:
             return self._positions_cache
 
-        def _fetch_raw_persistent():
-            """Get raw positions from persistent IB connection."""
-            _ensure_event_loop()
-            ib = self._ib
-            if not ib or not ib.client.isConnected():
-                return None
+        def _fetch_raw(ib: "_ib.IB"):
+            """Get raw positions from IB."""
             ib.reqPositions()
             ib.sleep(3)
             raw = ib.positions()
@@ -481,8 +473,8 @@ class IBService:
 
         import asyncio
         loop = asyncio.get_running_loop()
-        # Step 1: get raw positions from persistent IB connection
-        raw = await loop.run_in_executor(None, _fetch_raw_persistent)
+        # Step 1: get raw positions from IB
+        raw = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_fetch_raw, timeout=12))
         if raw is None:
             return self._positions_cache
         # Step 2: enrich with yfinance (no semaphore, separate thread)
@@ -503,11 +495,7 @@ class IBService:
         if time.time() - self._orders_cache_time < self._CACHE_TTL:
             return self._orders_cache
 
-        def _fetch_persistent():
-            _ensure_event_loop()
-            ib = self._ib
-            if not ib or not ib.client.isConnected():
-                return None
+        def _fetch(ib: "_ib.IB"):
             trades = ib.reqAllOpenOrders()
             ib.sleep(1)
             seen = set()
@@ -537,7 +525,7 @@ class IBService:
 
         import asyncio
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, _fetch_persistent)
+        result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_fetch, timeout=12))
         if result is not None:
             self._orders_cache = result
             self._orders_cache_time = time.time()
@@ -585,12 +573,7 @@ class IBService:
         if not self.is_connected():
             return {"error": "לא מחובר ל-IB"}
 
-        def _do_on_persistent():
-            """Use the persistent connection (clientId=20) for orders — no new connect needed."""
-            _ensure_event_loop()
-            ib = self._ib
-            if not ib or not ib.client.isConnected():
-                return {"error": "חיבור IB לא פעיל"}
+        def _do(ib: "_ib.IB"):
             contract = _ib.Stock(ticker.upper(), "SMART", "USD")
             ib.qualifyContracts(contract)
             if order_type == "MKT":
@@ -621,7 +604,7 @@ class IBService:
 
         import asyncio
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, _do_on_persistent)
+        result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_do, timeout=20, priority=True))
         if result and "order_id" in result:
             self._orders_cache_time = 0
             self._positions_cache_time = 0
@@ -645,11 +628,7 @@ class IBService:
         if not self.is_connected():
             return {"error": "לא מחובר ל-IB"}
 
-        def _do_persistent():
-            _ensure_event_loop()
-            ib = self._ib
-            if not ib or not ib.client.isConnected():
-                return {"error": "חיבור IB לא פעיל"}
+        def _do(ib: "_ib.IB"):
             trades = ib.reqAllOpenOrders()
             ib.sleep(0.5)
             target = next((t for t in trades if t.order.orderId == order_id), None)
@@ -661,7 +640,7 @@ class IBService:
 
         import asyncio
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, _do_persistent)
+        result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_do, timeout=12, priority=True))
         if result and result.get("cancelled"):
             self._orders_cache_time = 0
         return result or {"error": "timeout"}
