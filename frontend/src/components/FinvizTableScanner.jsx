@@ -3450,6 +3450,11 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
         <FilterItem label="RSI (14)" options={RSI_OPTS} value={rsi} onChange={v => { setRsi(v); setExpanded(new Set()); }} />
         <FilterItem label="Inst. Own." options={INST_OPTS} value={inst} onChange={v => { setInst(v); setExpanded(new Set()); }} />
         <FilterItem label="Gap %" options={GAP_OPTS} value={gap} onChange={v => { setGap(v); setExpanded(new Set()); }} />
+        <FilterItem label="ATR%"
+          options={COL_FILTER_OPTS.atr}
+          value={colFilter.atr?.[0] || ''}
+          onChange={v => { setColFilter(prev => v ? { ...prev, atr: [v] } : { ...prev, atr: [] }); setExpanded(new Set()); }}
+        />
         <FilterItem label="MA50"  options={SMA50_OPTS}  value={sma50}  onChange={v => { setSma50(v);  setExpanded(new Set()); }} />
         <FilterItem label="MA200" options={SMA200_OPTS} value={sma200} onChange={v => { setSma200(v); setExpanded(new Set()); }} />
         <FilterItem label="📊 דוח" options={EARNINGS_OPTS} value={earnings} onChange={v => { setEarnings(v); setExpanded(new Set()); }} />
