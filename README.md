@@ -125,3 +125,76 @@ Data aggregated from 6 sources:
 ## Disclaimer
 
 For educational and informational purposes only. Not financial advice.
+
+---
+
+## 🇮🇱 תיעוד בעברית
+
+### מה הפרויקט עושה
+
+פלטפורמת מודיעין שוק מניות בזמן אמת, המשלבת ניתוח טכני, מעקב אחר קטליסטים (FDA, רווחים), נתוני סנטימנט חברתי ובריפינג בוקר יומי — הכול בממשק אחד.
+
+האפליקציה מיועדת לטריידרים פעילים ומאפשרת סריקת מניות, זיהוי הזדמנויות מסחר, ומעקב אחר אירועים קטליטיים חשובים.
+
+**טאבים ראשיים בממשק:**
+- **☀️ בריפינג יומי** — סיכום בוקר: 5 המניות המובילות לפי ביצועי רווחים + RSI
+- **🔥 הכי מדוברות** — מניות טרנדיות ברשתות חברתיות (Reddit, StockTwits)
+- **💊 FDA** — לוח קטליסטים של FDA: תאריכי PDUFA, הגשות NDA/BLA, תוצאות ניסויי שלב 3
+- **📈 סיגנלים טכניים** — סריקת MACD + RSI + Bollinger Bands
+- **🎯 ניתוח יומי** — ניקוד 0–100 לכל מניה עם רמות כניסה/עצירה/מטרה
+- **🏦 חשבון IB** — חיבור ל-Interactive Brokers לצפייה בפוזיציות בזמן אמת
+
+### טכנולוגיות
+
+| שכבה | טכנולוגיה |
+|------|-----------|
+| Backend | Python 3.11, FastAPI, uvicorn |
+| Frontend | React 18, Vite, TailwindCSS, TanStack Query |
+| נתוני שוק | yfinance, Finviz, ClinicalTrials.gov, מקורות FDA |
+| ברוקר | Interactive Brokers (IB Gateway) |
+| Cache | זיכרון פנימי (per-ticker 120s, סריקה מלאה 90s, API 60s) |
+
+### הוראות התקנה והפעלה
+
+**הרצת ה-Backend:**
+
+```bash
+cd backend
+source venv/bin/activate
+python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**הרצת ה-Frontend:**
+
+```bash
+# דרוש Node דרך nvm
+export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh"
+cd frontend
+npx vite --host 0.0.0.0
+```
+
+- ממשק משתמש: `http://localhost:3000`
+- תיעוד API: `http://localhost:8000/docs`
+
+### מבנה הפרויקט
+
+```
+stock-scanner-app/
+├── backend/
+│   └── app/
+│       ├── main.py           # נקודת כניסה FastAPI + כל ה-endpoints
+│       ├── momentum/         # סורק מומנטום
+│       ├── screener/         # סורק VWAP
+│       ├── catalyst/         # FDA וקטליסטים טכנולוגיים
+│       ├── signals/          # סיגנלים טכניים (MACD+RSI+BB)
+│       ├── analysis/         # ניתוח יומי מרוכב
+│       ├── trending/         # מגמות חברתיות
+│       └── briefing/         # בריפינג בוקר
+└── frontend/
+    └── src/
+        ├── components/       # רכיבי React לכל טאב
+        └── App.jsx           # ניתוב ראשי בין הטאבים
+```
+
+**מקורות נתוני FDA (6 מקורות):**
+BioPharmCatalyst, RTTNews, Drugs.com, ClinicalTrials.gov, CheckRare, FDATracker
