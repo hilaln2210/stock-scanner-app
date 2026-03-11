@@ -2861,6 +2861,7 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 from app.services.smart_portfolio import smart_portfolio
+from app.services.strategy_arena import arena_singleton, STRATEGY_CONFIGS as _ARENA_STRATEGY_CONFIGS
 from app.services.alerts_service import send_signal_alert, send_telegram, get_signal_log
 from app.services.gemini_brain import get_ai_decision, post_mortem, _load_strategy, detect_market_regime, evaluate_exits, _load_regime, _safe_float
 
@@ -3223,6 +3224,96 @@ async def get_market_regime():
     if stocks:
         return detect_market_regime(stocks)
     return _load_regime()
+
+
+@router.get("/smart-portfolio/arena/status")
+async def smart_portfolio_arena_status():
+    """Live arena leaderboard — 4 strategies competing, ranked by P&L."""
+    cached = _FV_TABLE_CACHE.get('data', {})
+    live_prices = {
+        s['ticker']: _safe_float(s.get('price'))
+        for s in cached.get('stocks', [])
+        if s.get('ticker') and _safe_float(s.get('price')) > 0
+    }
+    return arena_singleton.get_status(live_prices)
+
+
+@router.post("/smart-portfolio/arena/think")
+async def smart_portfolio_arena_think():
+    """One arena tick — all 4 strategies analyze the same current market data."""
+    cached = _FV_TABLE_CACHE.get('data', {})
+    stocks = cached.get('stocks', [])
+    if not stocks:
+        return {"error": "No stock data yet", "tick_count": arena_singleton.tick_count}
+    live_prices = {
+        s['ticker']: _safe_float(s.get('price'))
+        for s in stocks
+        if s.get('ticker') and _safe_float(s.get('price')) > 0
+    }
+    candidate_stocks = [s for s in stocks if s.get('ticker', '').upper() in _SMART_PORTFOLIO_UNIVERSE]
+    if not candidate_stocks:
+        candidate_stocks = stocks[:30]
+    return arena_singleton.think(candidate_stocks, live_prices)
+
+
+@router.post("/smart-portfolio/arena/declare-winner")
+async def smart_portfolio_arena_declare_winner():
+    """16:05 ET — declare winner, write to ai_learning.json, send Telegram alert."""
+    from app.services.alerts_service import send_telegram
+    if arena_singleton.winner:
+        return {"already_declared": True, "winner": arena_singleton.winner}
+    cached = _FV_TABLE_CACHE.get('data', {})
+    live_prices = {
+        s['ticker']: _safe_float(s.get('price'))
+        for s in cached.get('stocks', [])
+        if s.get('ticker') and _safe_float(s.get('price')) > 0
+    }
+    result = arena_singleton.declare_winner(live_prices)
+    winner_label = _ARENA_STRATEGY_CONFIGS.get(result.get("winner", ""), {}).get("label", result.get("winner", ""))
+    pnl = result.get("pnl", 0)
+    pnl_pct = result.get("pnl_pct", 0)
+    scores = result.get("final_scores", {})
+    lines = [
+        "🏆 <b>Arena Winner!</b>",
+        f"<b>{winner_label}</b> — ${pnl:+.2f} ({pnl_pct:+.1f}%)",
+        "פרמטרים הועברו ל-AI הראשי ✅\n",
+        "תוצאות יום:",
+    ]
+    for name, score in sorted(scores.items(), key=lambda x: -x[1]):
+        label = _ARENA_STRATEGY_CONFIGS.get(name, {}).get("label", name)
+        lines.append(f"  {label}: ${score:+.2f}")
+    await send_telegram("\n".join(lines))
+    return result
+
+
+@router.post("/smart-portfolio/arena/preview-alert")
+async def smart_portfolio_arena_preview_alert():
+    """15:45 ET preview — send Telegram with leaderboard + predicted winner."""
+    from app.services.alerts_service import send_telegram
+    cached = _FV_TABLE_CACHE.get('data', {})
+    live_prices = {
+        s['ticker']: _safe_float(s.get('price'))
+        for s in cached.get('stocks', [])
+        if s.get('ticker') and _safe_float(s.get('price')) > 0
+    }
+    status = arena_singleton.get_status(live_prices)
+    lb = status.get("leaderboard", [])
+    if not lb:
+        return {"sent": False, "reason": "no data"}
+    leader = lb[0]
+    lines = ["📊 <b>Arena — Preview 15:45 ET</b>\n"]
+    rank_emojis = ["🥇", "🥈", "🥉", "4️⃣"]
+    for i, entry in enumerate(lb):
+        emoji = rank_emojis[i] if i < len(rank_emojis) else "•"
+        color = "🟢" if entry["pnl"] >= 0 else "🔴"
+        lines.append(
+            f"{emoji} <b>{entry['label']}</b> {color} "
+            f"${entry['pnl']:+.2f} ({entry['pnl_pct']:+.1f}%) "
+            f"| WR {entry['win_rate']:.0f}% | {entry['trades']} עסקאות"
+        )
+    lines.append(f"\n🏆 צפי מנצח: <b>{leader['label']}</b>")
+    await send_telegram("\n".join(lines))
+    return {"sent": True, "leader": leader["name"]}
 
 
 @router.get("/alerts/log")

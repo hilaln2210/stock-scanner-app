@@ -112,11 +112,47 @@ async def lifespan(app: FastAPI):
                     print(f"[Brain] {d.get('action')} {d.get('ticker')} (confidence: {d.get('confidence')}%)")
                 else:
                     print(f"[Brain] HOLD — {d.get('reason', 'no decision') if d else 'no data'}")
+
+                # Arena tick — same data, 4 strategies competing
+                try:
+                    ra = await client.post("http://localhost:8000/api/smart-portfolio/arena/think",
+                                           timeout=httpx.Timeout(20.0))
+                    lb = ra.json().get("leaderboard", [])
+                    if lb:
+                        leader = lb[0]
+                        print(f"[Arena] Leader: {leader['name']} "
+                              f"${leader.get('pnl', 0):+.2f} ({leader.get('pnl_pct', 0):+.1f}%)")
+                except Exception as ae:
+                    print(f"[Arena] Error: {ae}")
         except Exception as e:
             print(f"[Brain] Error: {e}")
 
     scheduler.add_job(_smart_portfolio_tick, "interval", minutes=5, id="brain_job")
-    print("Smart Portfolio Brain: scheduled every 5 minutes")
+    print("Smart Portfolio Brain + Arena: scheduled every 5 minutes")
+
+    # Arena preview alert at 15:45 ET and winner declaration at 16:05 ET
+    async def _arena_eod_check():
+        """Runs every 5 min — fires preview at 15:45 and winner at 16:05 ET."""
+        from datetime import datetime, timezone, timedelta
+        et_offset = timedelta(hours=-4)
+        now_et = datetime.now(timezone.utc) + et_offset
+        if now_et.weekday() >= 5:
+            return
+        hour, minute = now_et.hour, now_et.minute
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=15) as client:
+                # Preview: 15:45–15:49
+                if hour == 15 and 45 <= minute < 50:
+                    await client.post("http://localhost:8000/api/smart-portfolio/arena/preview-alert")
+                # Declare winner: 16:05–16:09
+                elif hour == 16 and 5 <= minute < 10:
+                    await client.post("http://localhost:8000/api/smart-portfolio/arena/declare-winner")
+        except Exception as e:
+            print(f"[Arena EOD] Error: {e}")
+
+    scheduler.add_job(_arena_eod_check, "interval", minutes=1, id="arena_eod_job")
+    print("Arena EOD: preview at 15:45, winner at 16:05 ET")
 
     # Pre-warm briefing cache in background
     async def _prewarm_briefing():

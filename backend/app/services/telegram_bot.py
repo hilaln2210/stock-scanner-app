@@ -33,6 +33,14 @@ from app.services.alerts_service import send_telegram as _send_telegram_raw, _sa
 _LAST_UPDATE_ID = 0
 _BOT_RUNNING = False
 
+# ─── Arena strategy labels ────────────────────────────────────────────────────
+_ARENA_LABELS = {
+    "Balanced":       "⚖️ Balanced",
+    "HighConviction": "🎯 High Conviction",
+    "SqueezeHunter":  "🩳 Squeeze Hunter",
+    "Scalper":        "⚡ Scalper",
+}
+
 # ─── Conversation memory ────────────────────────────────────────────────────
 _CHAT_HISTORY: deque = deque(maxlen=12)
 
@@ -710,6 +718,7 @@ async def _handle_command(text: str) -> tuple:
             "🩳 /squeeze — סקוויזים פעילים + קטליסטים\n"
             "📰 /news — חדשות אחרונות (או /news TTD)\n"
             "💬 /ask שאלה — שאלה ישירה ל-AI (מהיר)\n"
+            "🏆 /arena — 4 אסטרטגיות מתחרות בזמן אמת\n"
             "📈 /ta TICKER — ניתוח טכני (סיגנל, צפי עלייה/ירידה, תמיכה/התנגדות)\n"
             "🏷️ /insider — פעילות אנשי פנים\n"
             "🔍 /force TICKER — ניתוח מניה ספציפית\n"
@@ -739,6 +748,9 @@ async def _handle_command(text: str) -> tuple:
         # Direct free-text AI question without stock context fetching — fastest response
         question = ' '.join(args)
         return (await _chat_with_ai(question), None)
+
+    if cmd == '/arena':
+        return (await _cmd_arena(), None)
 
     if cmd == '/news':
         ticker = _resolve_ticker(' '.join(args)) if args else None
@@ -1354,6 +1366,79 @@ async def _cmd_force(ticker: str) -> str:
         context,
         stock_data=stock
     )
+
+
+async def _cmd_arena() -> str:
+    """Show live Arena leaderboard — 4 strategies competing."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                "http://localhost:8000/api/smart-portfolio/arena/status",
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                data = await resp.json()
+
+        lb = data.get("leaderboard", [])
+        winner = data.get("winner")
+        session_date = data.get("session_date", "?")
+        tick_count = data.get("tick_count", 0)
+        last_tick = data.get("last_tick", "")
+
+        if not lb:
+            return (
+                "🏆 <b>Strategy Arena</b>\n\n"
+                "הארנה לא התחיל עדיין — פותח בפעמון פתיחה 9:25 ET.\n"
+                "4 אסטרטגיות יתחרו על $1,000 ויקח עד 16:05 ET."
+            )
+
+        last_tick_str = ""
+        if last_tick:
+            try:
+                from datetime import datetime
+                lt = datetime.fromisoformat(last_tick)
+                last_tick_str = lt.strftime("%H:%M")
+            except Exception:
+                last_tick_str = last_tick[:5]
+
+        lines = [f"🏆 <b>Strategy Arena</b> — {session_date}"]
+        if last_tick_str:
+            lines.append(f"עדכון אחרון: {last_tick_str} | Ticks: {tick_count}\n")
+
+        rank_emojis = ["🥇", "🥈", "🥉", "4️⃣"]
+        for i, entry in enumerate(lb):
+            emoji = rank_emojis[i] if i < len(rank_emojis) else "•"
+            pnl = entry.get("pnl", 0)
+            pnl_pct = entry.get("pnl_pct", 0)
+            color = "🟢" if pnl >= 0 else "🔴"
+            wr = entry.get("win_rate", 0)
+            trades = entry.get("trades", 0)
+            open_pos = entry.get("open_positions", 0)
+            label = _ARENA_LABELS.get(entry["name"], entry["name"])
+            lines.append(
+                f"{emoji} <b>{label}</b> {color} ${pnl:+.2f} ({pnl_pct:+.1f}%)\n"
+                f"   WR: {wr:.0f}% | עסקאות: {trades} | פתוחות: {open_pos}"
+            )
+            # Show open positions
+            for ticker, pos in entry.get("positions", {}).items():
+                pos_pnl = pos.get("pnl_pct", 0)
+                pos_color = "🟢" if pos_pnl >= 0 else "🔴"
+                trail = " 🔄" if pos.get("trailing") else ""
+                lines.append(f"   └ {ticker} {pos_color}{pos_pnl:+.1f}%{trail}")
+
+        leader = lb[0]
+        leader_label = _ARENA_LABELS.get(leader["name"], leader["name"])
+
+        if winner:
+            winner_label = _ARENA_LABELS.get(winner, winner)
+            lines.append(f"\n🏆 <b>מנצח יום: {winner_label}</b> ✅")
+            lines.append("פרמטרים הועברו ל-AI הראשי.")
+        else:
+            lines.append(f"\n🔥 מוביל כרגע: <b>{leader_label}</b>")
+            lines.append("הכרזה ב-16:05 ET 🕐")
+
+        return "\n".join(lines)
+    except Exception as e:
+        return f"❌ שגיאה בטעינת Arena: {e}"
 
 
 # ─── Main bot loop ───────────────────────────────────────────────────────────
