@@ -266,26 +266,32 @@ class IBService:
                 try:
                     import yfinance as yf
                     data = yf.download(
-                        tickers_needed if len(tickers_needed) > 1 else tickers_needed[0],
+                        tickers_needed,
                         period="2d", interval="1m",
-                        progress=False, auto_adjust=True, timeout=8,
-                        group_by="ticker" if len(tickers_needed) > 1 else "column",
+                        progress=False, auto_adjust=True, timeout=10,
+                        group_by="ticker",
                     )
                     for tk in tickers_needed:
                         try:
-                            close_series = data["Close"] if len(tickers_needed) == 1 else data[tk]["Close"]
-                            close_series = close_series.dropna()
+                            # group_by="ticker" → data[tk]["Close"] for all cases
+                            close_col = data[tk]["Close"]
+                            # Handle DataFrame (squeeze to Series) if needed
+                            if hasattr(close_col, 'columns'):
+                                close_col = close_col.iloc[:, 0]
+                            close_series = close_col.dropna()
                             if close_series.empty:
+                                log.warning(f"[IB] yfinance: no close data for {tk}")
                                 continue
                             yf_prices[tk] = float(close_series.iloc[-1])
                             today = close_series.index[-1].date()
                             prev = close_series[close_series.index.date < today]
                             if not prev.empty:
                                 yf_prev_close[tk] = float(prev.iloc[-1])
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            log.warning(f"[IB] yfinance parse error for {tk}: {e}")
                 except Exception as e:
                     log.warning(f"[IB] yfinance price fetch failed: {e}")
+                log.info(f"[IB] yfinance prices fetched: {yf_prices}")
 
             result = []
             for sym, currency, qty, avg, acct in raw_positions:
