@@ -2,12 +2,12 @@
   "strategy": {
     "name": "aggressive",
     "label": "🔥 אגרסיבי — סקוויזים ופריצות",
-    "min_health_score": 30,
-    "min_rel_volume": 0.3,
-    "min_change_pct": 0.5,
-    "preferred_rsi_low": 20,
-    "preferred_rsi_high": 80,
-    "min_confidence": 35,
+    "min_health_score": 55,
+    "min_rel_volume": 0.8,
+    "min_change_pct": 1.0,
+    "preferred_rsi_low": 30,
+    "preferred_rsi_high": 75,
+    "min_confidence": 60,
     "gap_weight": 1.8,
     "volume_weight": 1.5,
     "earnings_boost": 2.5,
@@ -15,12 +15,12 @@
     "news_weight": 1.0,
     "mean_reversion_weight": 0.5,
     "sector_weight": 1.2,
-    "regime_weight": 0.5,
-    "trend_alignment_weight": 0.8,
+    "regime_weight": 1.0,
+    "trend_alignment_weight": 1.1,
     "short_squeeze_weight": 2.2,
-    "max_position_pct": 25,
-    "stop_loss_pct": 4,
-    "target_pct": 15,
+    "max_position_pct": 15,
+    "stop_loss_pct": 4.0,
+    "target_pct": 14,
     "max_positions": 5
   },
   "lessons": [
@@ -29,74 +29,57 @@
       "pnl": -5.32,
       "pnl_pct": -1.18,
       "lesson": "הפסד: -1.2% — חדשות שליליות (6 אזכורים)",
-      "adjustments": {
-        "min_health_score": 51
-      },
+      "adjustments": {"min_health_score": 51},
       "date": "2026-03-05T14:29:03.041704"
     },
     {
       "trade": "TNGX",
       "pnl": 1.82,
       "pnl_pct": 0.83,
-      "lesson": "The trade was successful with an 0.83% gain, but the holding time was relatively long at 812 minutes. This suggests the strategy's trailing stop may be too loose, allowing the trade to linger.",
-      "adjustments": {
-        "stop_loss_pct": 7.5
-      },
+      "lesson": "רווח קטן +0.83% — מימוש ארוך מדי (812 דק'). AI הציע שגיאה: להרחיב סטופ — לא נכון.",
+      "adjustments": {},
       "date": "2026-03-06T12:53:23.613542"
     },
     {
       "trade": "NU",
       "pnl": -28.13,
       "pnl_pct": -6.39,
-      "lesson": "Stop loss triggered, consider tightening stop loss percentage",
-      "adjustments": {
-        "stop_loss_pct": 7.5
-      },
+      "lesson": "הפסד גדול -6.4% — SL נפגע. בעיה: כניסה על מניה עם health נמוך.",
+      "adjustments": {"min_health_score": 55},
       "date": "2026-03-09T10:39:34.987542"
     },
     {
       "trade": "ALAB",
       "pnl": -27.99,
       "pnl_pct": -7.66,
-      "lesson": "Stop loss triggered, consider tightening stop loss percentage",
-      "adjustments": {
-        "stop_loss_pct": 7.5
-      },
+      "lesson": "הפסד גדול -7.7% — SL נפגע. צריך confidence גבוה יותר לפני כניסה.",
+      "adjustments": {"min_confidence": 60},
       "date": "2026-03-09T15:42:24.779658"
     },
     {
       "trade": "DYN",
       "pnl": 11.6,
       "pnl_pct": 7.22,
-      "lesson": "Partial TP at +7.2% suggests strategy is working, but max position size and stop loss could be optimized for better risk management",
-      "adjustments": {
-        "max_position_pct": 28,
-        "stop_loss_pct": 7.5
-      },
+      "lesson": "רווח יפה +7.2% — מימוש חלקי חכם. מומנטום + קטליסט עובד.",
+      "adjustments": {"momentum_weight": 1.65},
       "date": "2026-03-09T18:44:00.963454"
     },
     {
       "trade": "HIMS",
       "pnl": -20.0,
       "pnl_pct": -3.35,
-      "lesson": "The trade was stopped out due to a trailing stop, indicating the stock price moved against the trade. Given the short holding period and the small loss, it may be beneficial to adjust the stop loss percentage to allow for more room to maneuver.",
-      "adjustments": {
-        "stop_loss_pct": 8.1
-      },
+      "lesson": "Trailing stop הפסיד -3.4%. כניסה מאוחרת מדי אחרי עלייה גדולה.",
+      "adjustments": {"min_change_pct": 1.0},
       "date": "2026-03-10T16:49:33.996037"
+    },
+    {
+      "trade": "UPST",
+      "pnl": -32.1,
+      "pnl_pct": -7.31,
+      "lesson": "הפסד -7.3% — SL. שיעור שינוי יומי היה גבוה בכניסה — מנענו כניסות כאלה עם gap filter.",
+      "adjustments": {},
+      "date": "2026-03-11T16:37:56.487728"
     }
   ],
-  "updated": "2026-03-10T20:19:26.073636",
-  "missed_patterns": [
-    {
-      "ticker": "MSTR",
-      "window": "10:30-11:00",
-      "direction": "LONG",
-      "win_rate": 73.3,
-      "avg_change": 0.589,
-      "reason_missed": "לא נכנסנו",
-      "date": "2026-03-10",
-      "lesson": "פספסנו MSTR חלון 10:30-11:00 (WR 73.3%, avg +0.59%) — לא נכנסנו"
-    }
-  ]
+  "updated": "2026-03-11T00:00:00.000000"
 }

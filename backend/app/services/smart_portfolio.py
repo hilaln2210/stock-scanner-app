@@ -111,8 +111,11 @@ class SmartPortfolio:
         return True
 
     def open_position(self, ticker: str, side: str, price: float, qty: int,
-                      stop_loss: float, target: float, reason: str) -> dict:
-        equity = self.cash
+                      stop_loss: float, target: float, reason: str,
+                      equity: float = 0) -> dict:
+        # Use real equity (cash + open positions) — not just cash balance
+        if equity <= 0:
+            equity = self.get_total_equity({ticker: price})
         cost = price * qty
         if cost > equity * MAX_POSITION_PCT:
             qty = int((equity * MAX_POSITION_PCT) / price)
@@ -151,9 +154,11 @@ class SmartPortfolio:
         self.cash += pos['entry_price'] * close_qty + pnl
         self.daily_pnl += pnl
         self.total_pnl += pnl
-        self.total_trades += 1
-        if pnl > 0:
-            self.winning_trades += 1
+        # Only count full closes as a completed trade (not partial TPs)
+        if partial_pct == 0:
+            self.total_trades += 1
+            if pnl > 0:
+                self.winning_trades += 1
 
         trade_record = {
             'ticker': ticker, 'side': pos['side'],
@@ -359,6 +364,14 @@ class SmartPortfolio:
         return _load_json(TRADE_HISTORY_FILE, [])
 
     def reset(self):
+        # Archive existing history before wiping — never lose trade memory
+        existing = _load_json(TRADE_HISTORY_FILE, [])
+        if existing:
+            archive_file = DATA_DIR / f"trade_history_archive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            try:
+                _save_json(archive_file, existing)
+            except OSError:
+                pass
         self.cash = INITIAL_CAPITAL
         self.positions = {}
         self.equity_history = [{'date': datetime.now().isoformat(), 'equity': INITIAL_CAPITAL}]

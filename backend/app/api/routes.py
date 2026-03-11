@@ -3044,7 +3044,7 @@ async def smart_portfolio_think():
         else:
             break
 
-    # Close stale positions (>48h old with <2% gain — not working)
+    # Close stale positions: >4h old with <1% gain, or >8h with <3% gain
     _now = _dt.now()
     for ticker in list(smart_portfolio.positions.keys()):
         pos = smart_portfolio.positions.get(ticker)
@@ -3057,8 +3057,9 @@ async def smart_portfolio_think():
         price = live_prices.get(ticker, 0)
         entry = pos.get('entry_price', 0)
         pnl_pct = (price - entry) / entry * 100 if (price and entry) else 0
-        if age_h > 48 and pnl_pct < 2:
-            reason = f'Stale {age_h:.0f}h — {pnl_pct:.1f}%'
+        stale = (age_h > 4 and pnl_pct < 1) or (age_h > 8 and pnl_pct < 3)
+        if stale:
+            reason = f'Stale {age_h:.1f}h — {pnl_pct:.1f}%'
             r = smart_portfolio.close_position(ticker, price or entry, reason)
             if r.get('success'):
                 await send_signal_alert({'action': 'CLOSED', 'ticker': ticker,
@@ -3117,7 +3118,7 @@ async def smart_portfolio_think():
 
     result = {'decision': decision, 'executed': False, 'closed_trades': closed}
 
-    if decision.get('action') in ('BUY', 'SHORT') and decision.get('confidence', 0) >= 55:
+    if decision.get('action') in ('BUY', 'SHORT') and decision.get('confidence', 0) >= 60:
         ticker = decision.get('ticker', '').upper()
         # Only trade tickers in our high-liquidity universe
         if not ticker or ticker in smart_portfolio.positions or ticker not in _SMART_PORTFOLIO_UNIVERSE:
@@ -3128,6 +3129,19 @@ async def smart_portfolio_think():
             result['error'] = 'Daily loss limit reached'
             smart_portfolio.record_equity(live_prices)
             return result
+
+        # Gap/chasing filter: skip if stock already up >5% on the day (chasing tops)
+        stock_info = next((s for s in stocks if s.get('ticker', '').upper() == ticker), None)
+        if stock_info:
+            day_chg = 0.0
+            try:
+                day_chg = float(str(stock_info.get('change_pct', '0')).replace('%', '').replace(',', ''))
+            except (ValueError, TypeError):
+                pass
+            if decision['action'] == 'BUY' and day_chg > 5:
+                result['error'] = f'Gap filter: {ticker} already +{day_chg:.1f}% today — too late to chase'
+                smart_portfolio.record_equity(live_prices)
+                return result
 
         # Fetch price via yfinance if not in live_prices (new entry)
         price = live_prices.get(ticker, 0)
@@ -3145,9 +3159,12 @@ async def smart_portfolio_think():
         position_pct = min(decision.get('position_pct', 15), 25) / 100
         qty = max(1, int((equity * position_pct) / price))
         # Stop loss: AI suggestion, cap at 6% (3% minimum — tight stops)
-        sl_pct = max(0.03, min(decision.get('stop_loss_pct', 4), 6)) / 100
+        sl_pct = max(0.03, min(decision.get('stop_loss_pct', 4), 5)) / 100   # cap stop at 5%
         # Target: AI suggestion, at least 12%, up to 50% for squeeze plays
         tgt_pct = max(0.12, min(decision.get('target_pct', 15), 50)) / 100
+        # Minimum R:R 2.5:1 — skip trade if target doesn't justify the risk
+        if tgt_pct / sl_pct < 2.5:
+            tgt_pct = sl_pct * 2.5
 
         if decision['action'] == 'BUY':
             stop = round(price * (1 - sl_pct), 2)
@@ -3158,7 +3175,8 @@ async def smart_portfolio_think():
 
         trade_result = smart_portfolio.open_position(
             ticker, 'long' if decision['action'] == 'BUY' else 'short',
-            price, qty, stop, target, decision.get('reason', '')
+            price, qty, stop, target, decision.get('reason', ''),
+            equity=equity
         )
         result['executed'] = trade_result.get('success', False)
         result['trade'] = trade_result

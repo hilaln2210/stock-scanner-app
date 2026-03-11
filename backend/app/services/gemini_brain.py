@@ -105,26 +105,26 @@ If no good trade exists, return: {{"action": "HOLD", "reason": "אין הזדמ�
 AGGRESSIVE_STRATEGY = {
     'name': 'aggressive',
     'label': '🔥 אגרסיבי — סקוויזים ופריצות',
-    'min_health_score': 30,          # was 40 — take riskier plays
-    'min_rel_volume': 0.3,           # was 0.4 — wider net
-    'min_change_pct': 0.5,           # was 1.0 — catch earlier
-    'preferred_rsi_low': 20,         # was 25
-    'preferred_rsi_high': 80,        # was 75 — ride overbought momentum
-    'min_confidence': 35,            # was 45 — enter more aggressively
-    'gap_weight': 1.8,               # was 1.5
-    'volume_weight': 1.5,            # was 1.3
-    'earnings_boost': 2.5,           # was 2.0
-    'momentum_weight': 1.6,          # was 1.4
+    'min_health_score': 55,          # raised from 30 — only quality setups
+    'min_rel_volume': 0.8,           # raised from 0.3 — need real volume
+    'min_change_pct': 1.0,           # raised from 0.5 — need real move
+    'preferred_rsi_low': 30,         # was 20
+    'preferred_rsi_high': 75,        # was 80 — avoid extreme overbought entries
+    'min_confidence': 60,            # raised from 35 — only high-conviction trades
+    'gap_weight': 1.8,
+    'volume_weight': 1.5,
+    'earnings_boost': 2.5,
+    'momentum_weight': 1.6,
     'news_weight': 1.0,
-    'mean_reversion_weight': 0.5,    # was 0.8
-    'sector_weight': 1.2,            # was 1.0
-    'regime_weight': 0.5,            # was 0.8 — less scared of regime
-    'trend_alignment_weight': 0.8,   # was 1.1 — squeeze stocks fight trends
-    'short_squeeze_weight': 2.2,     # was 1.8 — max squeeze priority
-    'max_position_pct': 15,          # capped at 15% — focused bets
+    'mean_reversion_weight': 0.5,
+    'sector_weight': 1.2,
+    'regime_weight': 1.0,            # raised from 0.5 — respect market regime
+    'trend_alignment_weight': 1.1,   # raised from 0.8 — trade with the trend
+    'short_squeeze_weight': 2.2,
+    'max_position_pct': 15,
     'stop_loss_pct': 4,              # tight 4% stops — cut losses fast
-    'target_pct': 12,                # 12% target — realistic
-    'max_positions': 5,              # 5 positions max
+    'target_pct': 14,                # raised from 12 — need 3.5:1 R:R minimum
+    'max_positions': 5,
 }
 
 CONSERVATIVE_STRATEGY = {
@@ -1632,7 +1632,18 @@ Only suggest adjustments if the lesson clearly supports them. Small incremental 
         for key, val in result['adjustments'].items():
             if key in strategy and isinstance(val, (int, float)):
                 old = strategy[key]
-                strategy[key] = round(old + (val - old) * 0.2, 3)
+                new_val = round(old + (val - old) * 0.2, 3)
+                # Hard guards: never let stop widen beyond 5% or target shrink below 10%
+                if key == 'stop_loss_pct':
+                    new_val = min(new_val, 5.0)
+                elif key == 'target_pct':
+                    new_val = max(new_val, 10.0)
+                # Confidence/health: keep within sensible bounds
+                elif key == 'min_confidence':
+                    new_val = max(50.0, min(new_val, 80.0))
+                elif key == 'min_health_score':
+                    new_val = max(45.0, min(new_val, 75.0))
+                strategy[key] = new_val
 
         lessons = []
         try:
