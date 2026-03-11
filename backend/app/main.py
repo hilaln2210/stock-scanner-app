@@ -89,16 +89,16 @@ async def lifespan(app: FastAPI):
         await scheduled_scrape()
     asyncio.create_task(_delayed_scrape())
 
-    # Smart Portfolio AI Brain — runs every 5 minutes during market hours only
+    # Smart Portfolio AI Brain — runs every 5 minutes during all trading sessions
     async def _smart_portfolio_tick():
         from datetime import datetime, timezone, timedelta
         et_offset = timedelta(hours=-4)
         now_et = datetime.now(timezone.utc) + et_offset
         is_weekday = now_et.weekday() < 5
-        market_open  = now_et.replace(hour=9,  minute=25, second=0, microsecond=0)
-        market_close = now_et.replace(hour=16, minute=5,  second=0, microsecond=0)
-        in_regular_hours = is_weekday and market_open <= now_et <= market_close
-        if not in_regular_hours:
+        # Extended hours: 4:00 AM – 20:00 PM ET (pre-market through after-hours)
+        total_min = now_et.hour * 60 + now_et.minute
+        in_trading_hours = is_weekday and (4 * 60 <= total_min <= 20 * 60)
+        if not in_trading_hours:
             return
         try:
             import httpx
