@@ -1,5 +1,7 @@
 # Stock Scanner Dashboard
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A real-time stock market intelligence platform built with **FastAPI** + **React**. Combines technical analysis, FDA catalyst tracking, social trending data, and AI-assisted briefings into a single Hebrew/English dashboard.
 
 **📱 זמין לנייד כ־PWA · 🚀 ניתן לפריסה 24/7** – ראה [DEPLOY.md](DEPLOY.md)
