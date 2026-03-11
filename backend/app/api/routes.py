@@ -3305,12 +3305,65 @@ async def smart_portfolio_arena_think():
     if not stocks:
         return {"error": "No stock data yet", "tick_count": arena_singleton.tick_count}
 
+    import time as _arena_t
+    global _ARENA_SEASONAL_TICKERS, _ARENA_SEASONAL_UPDATED, _ARENA_PATTERN_SIGNALS, _ARENA_PATTERN_UPDATED
+
+    # Refresh seasonal cache every 2h
+    if _arena_t.time() - _ARENA_SEASONAL_UPDATED > 7200:
+        try:
+            import httpx as _hx
+            today = datetime.now().strftime("%Y-%m-%d")
+            async with _hx.AsyncClient() as _c:
+                _r = await _c.get(
+                    f"http://localhost:8000/api/seasonality?market=ndx100&start_date={today}"
+                    f"&min_win_pct=70&years=10&days_min=5&days_max=30",
+                    timeout=60
+                )
+                _pats = _r.json()
+            _ARENA_SEASONAL_TICKERS = {
+                p["ticker"]: p.get("win_ratio", 0)
+                for p in (_pats if isinstance(_pats, list) else [])
+                if p.get("win_ratio", 0) >= 70
+            }
+            _ARENA_SEASONAL_UPDATED = _arena_t.time()
+            print(f"[Arena:Seasonal] {len(_ARENA_SEASONAL_TICKERS)} tickers loaded")
+        except Exception as _e:
+            print(f"[Arena:Seasonal] refresh error: {_e}")
+
+    # Refresh pattern signals every 1h
+    if _arena_t.time() - _ARENA_PATTERN_UPDATED > 3600:
+        try:
+            import httpx as _hx
+            async with _hx.AsyncClient() as _c:
+                _r = await _c.get(
+                    "http://localhost:8000/api/pattern/scan?limit=20&days=45&interval=5m",
+                    timeout=120
+                )
+                _pdata = _r.json()
+            _sigs = _pdata.get("signals", []) if isinstance(_pdata, dict) else []
+            _ARENA_PATTERN_SIGNALS = {
+                s["ticker"]: s.get("win_rate", 0)
+                for s in _sigs
+                if s.get("win_rate", 0) >= 65 and s.get("direction") == "LONG"
+            }
+            _ARENA_PATTERN_UPDATED = _arena_t.time()
+            print(f"[Arena:Pattern] {len(_ARENA_PATTERN_SIGNALS)} signals loaded")
+        except Exception as _e:
+            print(f"[Arena:Pattern] refresh error: {_e}")
+
+    # Augment stocks with seasonal/pattern flags
+    for s in stocks:
+        t = s.get("ticker", "")
+        if t in _ARENA_SEASONAL_TICKERS:
+            s["seasonal_score"] = _ARENA_SEASONAL_TICKERS[t]
+        if t in _ARENA_PATTERN_SIGNALS:
+            s["pattern_win_rate"] = _ARENA_PATTERN_SIGNALS[t]
+
     live_prices = {
         s['ticker']: _safe_float(s.get('price'))
         for s in stocks
         if s.get('ticker') and _safe_float(s.get('price')) > 0
     }
-    # Use all stocks as candidates (arena filters internally)
     return arena_singleton.think(stocks, live_prices)
 
 
@@ -3592,6 +3645,12 @@ _MARKET_TICKERS = {
         'AFL','MET','SLB','CPRT','MSCI','DHI','WDAY','STZ','IDXX','KMB',
     ],
 }
+
+# Arena special-strategy caches
+_ARENA_SEASONAL_TICKERS: dict = {}   # {ticker: win_ratio}
+_ARENA_SEASONAL_UPDATED: float = 0.0
+_ARENA_PATTERN_SIGNALS: dict  = {}   # {ticker: win_rate}
+_ARENA_PATTERN_UPDATED: float  = 0.0
 
 _seasonality_cache: dict = {}
 _SEASONALITY_CACHE_TTL = 7200  # 2 hours

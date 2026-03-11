@@ -100,6 +100,24 @@ STRATEGY_CONFIGS = {
         "max_day_chg": 4.0, "requires_short_float": None,
         "requires_min_chg": None, "max_positions": 2,
     },
+    "SeasonalityTrader": {
+        "label": "📅 Seasonality",
+        "description": "עונתיות היסטורית — win rate > 70% על עשור נתונים",
+        "min_health": 28, "min_conf": 22, "min_rvol": 0.3,
+        "stop_pct": 5.0, "target_pct": 15.0,
+        "max_day_chg": 10.0, "requires_short_float": None,
+        "requires_min_chg": None, "max_positions": 2,
+        "requires_seasonal": True,
+    },
+    "PatternTrader": {
+        "label": "🔁 Pattern Bot",
+        "description": "דפוסים תוך-יומיים — win rate > 65% על חלון ספציפי",
+        "min_health": 25, "min_conf": 22, "min_rvol": 0.4,
+        "stop_pct": 2.5, "target_pct": 7.0,
+        "max_day_chg": 20.0, "requires_short_float": None,
+        "requires_min_chg": None, "max_positions": 2,
+        "requires_pattern": True,
+    },
 }
 
 _ARENA_TO_BRAIN_PARAMS = {
@@ -475,6 +493,10 @@ class StrategyArena:
                         continue
                     if not ov["skip_min_chg"] and cfg["requires_min_chg"]:
                         if chg < cfg["requires_min_chg"]:  continue
+                    if cfg.get("requires_seasonal") and not _safe_float(stock.get("seasonal_score")):
+                        continue
+                    if cfg.get("requires_pattern") and _safe_float(stock.get("pattern_win_rate", 0)) < 60:
+                        continue
 
                     stop_override = cfg["stop_pct"] + extra_stop if extra_stop else None
                     if pf.open_position(ticker, price, stop_override=stop_override):
@@ -584,16 +606,18 @@ class StrategyArena:
                 "trade_log":      pf.trades[-10:],   # last 10 closed trades per strategy
                 "positions": {
                     t: {
-                        "entry":   pos["entry_price"],
-                        "stop":    pos["stop_loss"],
-                        "target":  pos["target"],
-                        "current": live_prices.get(t) or pos["entry_price"],
-                        "pnl_pct": round(
+                        "entry":      pos["entry_price"],
+                        "entry_price": pos["entry_price"],
+                        "entry_time": pos.get("entry_time", ""),
+                        "stop":       pos["stop_loss"],
+                        "target":     pos["target"],
+                        "current":    live_prices.get(t) or pos["entry_price"],
+                        "pnl_pct":    round(
                             ((live_prices.get(t) or pos["entry_price"]) - pos["entry_price"])
                             / pos["entry_price"] * 100, 2
                         ),
-                        "trailing": pos.get("trailing_active", False),
-                        "session":  pos.get("session", "regular"),
+                        "trailing":   pos.get("trailing_active", False),
+                        "session":    pos.get("session", "regular"),
                     }
                     for t, pos in pf.positions.items()
                 },

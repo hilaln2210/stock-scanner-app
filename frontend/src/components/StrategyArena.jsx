@@ -43,7 +43,7 @@ const STYLES = `
 /* ── Constants ───────────────────────────────────────────────────────────── */
 const W = '#4ade80', L = '#f87171', A = '#818cf8';
 const GOLD = '#fbbf24', SILVER = '#94a3b8', BRONZE = '#f97316';
-const RANK_COLORS = [GOLD, SILVER, BRONZE, L, '#64748b', '#64748b'];
+const RANK_COLORS = [GOLD, SILVER, BRONZE, L, '#64748b', '#64748b', '#475569', '#475569'];
 
 const SESSION_META = {
   premarket:   { label: 'PRE-MARKET',  icon: '🌅', color: '#f59e0b', dot: '#f59e0b' },
@@ -59,6 +59,8 @@ const STRATEGY_META = {
   Scalper:         { emoji: '⚡', color: '#34d399', bg: 'rgba(52,211,153,0.08)',  border: 'rgba(52,211,153,0.25)'  },
   MomentumBreaker: { emoji: '🚀', color: '#f43f5e', bg: 'rgba(244,63,94,0.08)',   border: 'rgba(244,63,94,0.25)'   },
   SwingSetup:      { emoji: '🌊', color: '#22d3ee', bg: 'rgba(34,211,238,0.08)', border: 'rgba(34,211,238,0.25)'  },
+  SeasonalityTrader: { emoji: '📅', color: '#38bdf8', bg: 'rgba(56,189,248,0.08)',  border: 'rgba(56,189,248,0.25)'  },
+  PatternTrader:     { emoji: '🔁', color: '#e879f9', bg: 'rgba(232,121,249,0.08)', border: 'rgba(232,121,249,0.25)' },
 };
 
 /* ── Strategy detailed info (for popover) ────────────────────────────────── */
@@ -98,6 +100,18 @@ const STRATEGY_INFO = {
     rules: ['Health ≥ 50 | Confidence ≥ 50 — איכות גבוהה', 'rvol ≥ 0.4 | שינוי יומי מקס׳ 4%', 'ללא תנאי מינימום שינוי'],
     exit:  ['Stop 5% | Target 18%', 'Trailing stop מ-4% | TP חלקי ב-5%', 'סגירה אחרי 2 ימים אם < +2%'],
     max_positions: 2, stop_pct: 5.0, target_pct: 18.0,
+  },
+  SeasonalityTrader: {
+    style: 'מניות עם דפוס עונתי חזק — win rate > 70% על עשור נתונים מ-Seasonax',
+    rules: ['Win ratio היסטורי ≥ 70% לחלון הנוכחי', 'נתוני 10 שנים | חלון 5-30 ימים', 'מניות NASDAQ 100 בלבד'],
+    exit:  ['Stop 5% | Target 15%', 'Trailing stop מ-4% | TP חלקי ב-5%', 'סגירה אחרי 2 ימים אם < +2%'],
+    max_positions: 2, stop_pct: 5.0, target_pct: 15.0,
+  },
+  PatternTrader: {
+    style: 'דפוסים תוך-יומיים — חלונות זמן עם win rate > 65% מהיסטוריה של 45 ימים',
+    rules: ['Win rate ≥ 65% על חלון תוך-יומי ספציפי', 'כיוון LONG בלבד | interval 5 דקות', 'מניות ATR > $2, נפח > 5M'],
+    exit:  ['Stop 2.5% | Target 7%', 'Trailing stop מ-4% | TP חלקי ב-5%', 'סגירה אחרי 2 ימים אם < +2%'],
+    max_positions: 2, stop_pct: 2.5, target_pct: 7.0,
   },
 };
 
@@ -880,7 +894,7 @@ export default function StrategyArena() {
 
       {/* ── Footer ── */}
       <div style={{ marginTop: 12, fontSize: 9, color: '#334155', textAlign: 'center' }}>
-        ⚙️ אוטונומי 24/7 · Arena tick כל 30s · מחירים כל 30s · מנצחת יום: 16:05 ET · מנצחת שבוע: שישי · ללא תלות בדפדפן
+        ⚙️ אוטונומי 24/7 · 8 אסטרטגיות · tick כל 30s · מחירים כל 30s · Seasonality ו-Pattern Bot בזמן אמת
       </div>
 
       {/* ── Toast notifications ── */}
