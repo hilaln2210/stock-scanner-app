@@ -650,6 +650,13 @@ const COL_FILTER_OPTS = {
     { label: '◆ -1% – 1%', value: 'mom_flat' },
     { label: '🔻 <-1%', value: 'mom_neg' },
   ],
+  atr: [
+    { label: 'הכל', value: '' },
+    { label: '🔥 ATR% >5% (נפיץ)', value: 'atr_explosive' },
+    { label: '📈 ATR% 3–5%', value: 'atr_high' },
+    { label: '📊 ATR% 1.5–3%', value: 'atr_mid' },
+    { label: '📉 ATR% <1.5% (שקט)', value: 'atr_low' },
+  ],
 };
 
 function SqueezeCell({ s }) {
@@ -3212,6 +3219,22 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
         });
       });
     }
+    const atrArr = arr('atr');
+    if (atrArr.length > 0) {
+      list = list.filter(s => {
+        const atrVal = parseFloat(s.atr);
+        const priceVal = parseFloat(s.price);
+        if (isNaN(atrVal) || atrVal === 0 || isNaN(priceVal) || priceVal === 0) return false;
+        const atrPct = s.tech_indicators?.atr_pct_1h || (atrVal / priceVal * 100);
+        return atrArr.some(f => {
+          if (f === 'atr_explosive') return atrPct > 5;
+          if (f === 'atr_high')      return atrPct >= 3 && atrPct <= 5;
+          if (f === 'atr_mid')       return atrPct >= 1.5 && atrPct < 3;
+          if (f === 'atr_low')       return atrPct < 1.5;
+          return false;
+        });
+      });
+    }
     // ── Sort ──────────────────────────────────────────────────────────────────
     return list.sort((a, b) => {
       let av = a[sort.col], bv = b[sort.col];
@@ -3607,7 +3630,12 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                   filterOpen={colFilterOpen === 'health_score'}
                   onFilterOpen={setColFilterOpen} />
                 <SortTh label="טווח"   col="atr"          sort={sort} onSort={handleSort} style={{ width: 56 }}
-                  title={"טווח תנועה ממוצע יומי בדולרים (14 ימים)\nמקור: Finviz + yfinance\nמודד תנודתיות — כמה המניה זזה ביום\nגבוה = הזדמנויות גדולות, אך סיכון גדול\nשורה שנייה: טווח תוך-יומי אחוזי (נרות שעתיים)"} />
+                  title={"טווח תנועה ממוצע יומי בדולרים (14 ימים)\nמקור: Finviz + yfinance\nמודד תנודתיות — כמה המניה זזה ביום\nגבוה = הזדמנויות גדולות, אך סיכון גדול\nשורה שנייה: טווח תוך-יומי אחוזי (נרות שעתיים)"}
+                  filterOpts={COL_FILTER_OPTS.atr}
+                  filterValue={colFilter.atr || ''}
+                  onFilter={handleColFilterToggle}
+                  filterOpen={colFilterOpen === 'atr'}
+                  onFilterOpen={setColFilterOpen} />
               </tr>
             </thead>
 

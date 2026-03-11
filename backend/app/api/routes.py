@@ -1381,6 +1381,7 @@ def _fetch_alert_ticker_sync(ticker: str) -> Optional[dict]:
         # Get company name & sector quickly
         company = ticker
         sector = ''
+        info = {}   # initialize before inner try — used later in _classify_move_reason
         try:
             with _TPE(max_workers=1) as ex:
                 info = ex.submit(lambda: stk.info or {}).result(timeout=3)
