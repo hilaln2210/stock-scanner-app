@@ -299,12 +299,8 @@ async def _tick():
         else:
             loss_pct = (cur - entry) / entry * 100
         if loss_pct >= STOP_LOSS_PCT:
-            await send_telegram(
-                f"🛑 <b>Stop Loss — {trade['ticker']}</b>\n"
-                f"כניסה: ${entry} → עכשיו: ${cur:.2f}\n"
-                f"הפסד: -{loss_pct:.1f}% (מגבלה: -{STOP_LOSS_PCT}%)"
-            )
-            await _exit_trade(trade, reason="stop_loss")
+            # Pass cur directly so _exit_trade uses the real stop price, not a re-fetch
+            await _exit_trade(trade, reason="stop_loss", known_exit_price=cur)
 
     # ── Daily loss limit ────────────────────────────────────────────────────
     if _state["daily_pnl"] <= DAILY_LOSS_LIMIT and not _state["daily_loss_hit"]:
@@ -422,19 +418,19 @@ async def _enter_trade(pick: dict, window_label: str):
     }
     _state["active_trades"].append(trade)
 
-    ib_tag = "✅ נכנס דרך IB" if ib_result else "⚡ ידני (IB לא מחובר)"
     arrow = "📈" if pick["direction"] == "LONG" else "📉"
-    msg = (
-        f"{arrow} <b>כניסה — {ticker}</b>\n"
-        f"חלון: <b>{window_label}</b>  |  {pick['direction']}\n"
-        f"מחיר: ${price}  |  {shares} מניות\n"
-        f"WR: {pick['win_rate']}%  |  avg {'+' if pick['avg_change']>0 else ''}{pick['avg_change']}%\n"
-        f"{ib_tag}"
-    )
-    await send_telegram(msg)
+    ib_line = "🤖 הוזמן דרך IB" if ib_result else "📊 ניטור בלבד (IB לא מחובר)"
+    lines = [
+        f"{arrow} <b>כניסה — {ticker}</b>",
+        f"חלון: <b>{window_label}</b>  |  {pick['direction']}",
+        f"מחיר: ${price:.2f}  |  {shares} מניות  |  ${amount:.0f}",
+        f"WR {pick['win_rate']}%  |  avg {'+' if pick['avg_change']>0 else ''}{pick['avg_change']:.2f}%",
+        ib_line,
+    ]
+    await send_telegram("\n".join(lines))
 
 
-async def _exit_trade(trade: dict, reason: str = "window_close"):
+async def _exit_trade(trade: dict, reason: str = "window_close", known_exit_price: float = None):
     if trade not in _state["active_trades"]:
         return
     _state["active_trades"].remove(trade)
@@ -443,11 +439,20 @@ async def _exit_trade(trade: dict, reason: str = "window_close"):
     direction = trade["direction"]
     exit_action = "SELL" if direction == "LONG" else "BUY"
 
-    ib_result = await asyncio.get_event_loop().run_in_executor(
-        None, _place_ib_order, ticker, exit_action, trade["amount"]
-    )
+    # Determine exit price: known (stop-loss) > IB fill > live price > entry fallback
+    if known_exit_price is not None:
+        exit_price = known_exit_price
+        ib_result = None
+    else:
+        ib_result = await asyncio.get_event_loop().run_in_executor(
+            None, _place_ib_order, ticker, exit_action, trade["amount"]
+        )
+        if ib_result:
+            exit_price = ib_result["price"]
+        else:
+            live = await asyncio.get_event_loop().run_in_executor(None, _get_current_price, ticker)
+            exit_price = live if live else trade["entry_price"]
 
-    exit_price = ib_result["price"] if ib_result else trade["entry_price"]
     if direction == "LONG":
         pnl = (exit_price - trade["entry_price"]) * trade["shares"]
     else:
@@ -460,17 +465,21 @@ async def _exit_trade(trade: dict, reason: str = "window_close"):
     _state["trade_history"].insert(0, closed)
     _state["trade_history"] = _state["trade_history"][:20]
 
-    emoji = "✅" if pnl >= 0 else "❌"
-    reason_tag = "🛑 Stop Loss" if reason == "stop_loss" else "⏰ סוף חלון"
-    ib_tag = "✅ יצא דרך IB" if ib_result else "⚡ ידני"
-    msg = (
-        f"{emoji} <b>יציאה — {ticker}</b> ({reason_tag})\n"
-        f"חלון: {trade['window']}\n"
-        f"כניסה: ${trade['entry_price']}  →  יציאה: ${exit_price}\n"
-        f"P&L: <b>{'+'if pnl>=0 else ''}${pnl}</b>  |  יומי: {'+'if _state['daily_pnl']>=0 else ''}${_state['daily_pnl']}\n"
-        f"{ib_tag}"
-    )
-    await send_telegram(msg)
+    pnl_sign = "+" if pnl >= 0 else ""
+    daily_sign = "+" if _state["daily_pnl"] >= 0 else ""
+    emoji = "✅" if pnl >= 0 else "🔴"
+    reason_he = "🛑 Stop Loss" if reason == "stop_loss" else "⏰ סוף חלון"
+    ib_line = "🤖 בוצע דרך IB" if ib_result else ""
+
+    lines = [
+        f"{emoji} <b>יציאה — {ticker}</b>  |  {reason_he}",
+        f"חלון: {trade['window']}  |  {direction}",
+        f"כניסה ${trade['entry_price']}  →  יציאה ${exit_price:.2f}",
+        f"P&L: <b>{pnl_sign}${pnl}</b>   יומי: {daily_sign}${_state['daily_pnl']}",
+    ]
+    if ib_line:
+        lines.append(ib_line)
+    await send_telegram("\n".join(lines))
 
 
 # ── Background loop ────────────────────────────────────────────────────────────
