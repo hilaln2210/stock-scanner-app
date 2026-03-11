@@ -332,10 +332,25 @@ class MiniPortfolio:
         }
 
     def restore(self, state: dict):
-        self.cash          = state.get("cash", ARENA_INITIAL_CAPITAL)
-        self.positions     = state.get("positions", {})
-        self.trades        = state.get("trades", [])
-        self.partial_taken = set(state.get("partial_taken", []))
+        self.cash      = state.get("cash", ARENA_INITIAL_CAPITAL)
+        self.trades    = state.get("trades", [])
+        max_pos        = self.config.get("max_positions", 5)
+        all_positions  = state.get("positions", {})
+        # Enforce max_positions — keep oldest entries (sorted by entry_time)
+        if len(all_positions) > max_pos:
+            sorted_items = sorted(
+                all_positions.items(),
+                key=lambda kv: kv[1].get("entry_time", "")
+            )
+            # Refund the excess positions back to cash
+            excess = sorted_items[max_pos:]
+            for ticker, pos in excess:
+                self.cash += pos["entry_price"] * pos["qty"]
+                print(f"[Arena:{self.name}] Trimmed excess position {ticker} "
+                      f"(max_positions={max_pos}) → refunded ${pos['entry_price'] * pos['qty']:.2f}")
+            all_positions = dict(sorted_items[:max_pos])
+        self.positions     = all_positions
+        self.partial_taken = set(state.get("partial_taken", [])) & set(all_positions.keys())
 
 
 # ─── StrategyArena ────────────────────────────────────────────────────────────
