@@ -94,12 +94,17 @@ STRATEGY_CONFIGS = {
         "requires_min_chg": 0.8, "max_positions": 3,
     },
     "SwingSetup": {
-        "label": "⚡ Breakout Rider",
-        "description": "פריצות עם נפח — rvol ≥ 1.0, תנועה > 0.5%, כמו Balanced אבל עם מומנטום חזק יותר",
-        "min_health": 25, "min_conf": 30, "min_rvol": 1.0,
-        "stop_pct": 5.0, "target_pct": 18.0,
-        "max_day_chg": 25.0, "requires_short_float": None,
-        "requires_min_chg": 0.5, "max_positions": 3,
+        "label": "⚡ Lightning Squeeze",
+        "description": "כניסה בסקוויז פורץ — שורט float ≥ 25%, rvol ≥ 3.0, מחיר < $30, לוקח רווח מהיר ובורח",
+        "min_health": 10, "min_conf": 12, "min_rvol": 3.0,
+        "stop_pct": 8.0, "target_pct": 30.0,
+        "max_day_chg": 999.0, "requires_short_float": 25.0,
+        "requires_min_chg": 2.0, "max_positions": 3,
+        "small_cap_only": True,
+        "max_price": 30.0,
+        "partial_tp_trigger": 8.0,   # קח 40% ב +8%
+        "trailing_trigger": 6.0,      # הפעל trailing ב +6%
+        "trail_pct": 0.92,            # trailing הדוק — נועל רווחים מהר
     },
     "SeasonalityTrader": {
         "label": "🌪️ Gap & Squeeze",
