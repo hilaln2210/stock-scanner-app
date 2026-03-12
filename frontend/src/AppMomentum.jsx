@@ -54,16 +54,16 @@ function getReasonFromTitle(title) {
 // Hidden tabs (disabled to save server resources):
 // { key: 'briefing',        label: '☀️ בריפינג',            accent: '#f59e0b' },
 // { key: 'smart-portfolio', label: '🧠 תיק חכם',            accent: '#818cf8' },
+// { key: 'fda',             label: '💊 FDA',                  accent: '#22c55e' },
+// { key: 'news',            label: '📰 חדשות',               accent: '#3b82f6' },
 const TABS = [
   { key: 'arena',           label: '🏆 ארנה',                accent: '#fbbf24' },
-  { key: 'fda',             label: '💊 FDA',                  accent: '#22c55e' },
   { key: 'tech-signals',    label: '📈 סיגנלים',             accent: '#6366f1' },
   { key: 'daily-analysis',  label: '🎯 ניתוח יומי',           accent: '#8b5cf6' },
   { key: 'ib',              label: '🏦 IB חשבון',             accent: '#3b82f6' },
   { key: 'pattern-bot',     label: '🤖 Pattern Bot',           accent: '#a78bfa' },
   { key: 'seasonality',     label: '📅 עונתיות',               accent: '#06b6d4' },
   { key: 'finviz-table',    label: '📋 סורק בסיסי',           accent: '#14b8a6' },
-  { key: 'news',            label: '📰 חדשות',               accent: '#3b82f6' },
 ];
 
 // האפליקציה המלאה: כל הסורקים
