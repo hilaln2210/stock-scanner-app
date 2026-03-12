@@ -95,16 +95,17 @@ STRATEGY_CONFIGS = {
     },
     "SwingSetup": {
         "label": "⚡ Lightning Squeeze",
-        "description": "כניסה בסקוויז פורץ — שורט float ≥ 25%, rvol ≥ 3.0, מחיר < $30, לוקח רווח מהיר ובורח",
-        "min_health": 10, "min_conf": 12, "min_rvol": 3.0,
-        "stop_pct": 8.0, "target_pct": 30.0,
-        "max_day_chg": 999.0, "requires_short_float": 20.0,
-        "requires_min_chg": 2.0, "max_positions": 3,
-        "small_cap_only": True,
-        "max_price": 30.0,
-        "partial_tp_trigger": 8.0,   # קח 40% ב +8%
-        "trailing_trigger": 6.0,      # הפעל trailing ב +6%
-        "trail_pct": 0.92,            # trailing הדוק — נועל רווחים מהר
+        "description": "Float<50M, שורט≥10%, מחיר<$50, נפח>2x, GAP UP — סקוויז קלאסי עם float קטן",
+        "min_health": 10, "min_conf": 12, "min_rvol": 2.0,
+        "stop_pct": 8.0, "target_pct": 35.0,
+        "max_day_chg": 999.0, "requires_short_float": 10.0,
+        "requires_min_chg": 1.0, "max_positions": 3,
+        "max_price": 50.0,
+        "requires_gap": True,
+        "requires_float_shares_max": 50_000_000,
+        "partial_tp_trigger": 10.0,
+        "trailing_trigger": 8.0,
+        "trail_pct": 0.93,
     },
     "SeasonalityTrader": {
         "label": "🌪️ Gap & Squeeze",

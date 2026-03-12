@@ -161,17 +161,22 @@ async def lifespan(app: FastAPI):
             return
         try:
             from app.api.routes import finviz_screener
-            # Finviz filters: Small+Micro cap, short float > 20%, sorted by change
-            # sh_short_o20 ensures stocks qualify for Hard/Gap/Nano Squeeze (≥20% requirement)
-            pages = await __import__('asyncio').gather(*[
+            # Two scans merged: sh_short_o20 (Hard/Gap/Nano ≥20%) +
+            # sh_short_o10 (Lightning Squeeze ≥10%), wider net
+            _sc_tasks = [
                 finviz_screener._scrape_screener(
-                    {'v': '111',
-                     'f': 'cap_smallover,sh_short_o20,sh_price_o2',
+                    {'v': '111', 'f': 'cap_smallover,sh_short_o20,sh_price_o2',
                      'o': '-changeopen', 'r': str(r)},
-                    'smallcap-squeeze',
+                    'smallcap-20',
+                ) for r in [1, 21]
+            ] + [
+                finviz_screener._scrape_screener(
+                    {'v': '111', 'f': 'cap_smallover,sh_short_o10,sh_price_o2',
+                     'o': '-changeopen', 'r': '1'},
+                    'smallcap-10',
                 )
-                for r in [1, 21, 41]
-            ], return_exceptions=True)
+            ]
+            pages = await __import__('asyncio').gather(*_sc_tasks, return_exceptions=True)
             seen, result = set(), []
             for page in pages:
                 if isinstance(page, Exception):
@@ -180,14 +185,12 @@ async def lifespan(app: FastAPI):
                     t = s.get('ticker')
                     if t and t not in seen:
                         seen.add(t)
-                        # These stocks passed sh_short_o10 filter — inject floor values
-                        # so squeeze strategy filters can score them correctly.
-                        # short_float floor=12 (they passed ≥10% filter, estimate conservatively)
-                        # health_score=20 (enough to pass min_health=8-15 for squeeze strategies)
-                        # rel_volume: use change_pct as proxy — high movers imply high rel_vol
+                        source = s.get('scan_sources', [''])[0]
                         chg = abs(float(s.get('change_pct') or 0))
-                        rvol_est = max(1.5, min(chg * 0.8, 8.0))  # 1.5–8x estimate
-                        s.setdefault('short_float', 22.0)  # floor — passed sh_short_o20 filter
+                        rvol_est = max(1.5, min(chg * 0.8, 8.0))
+                        # floor depends on which scan the stock came from
+                        sf_floor = 22.0 if 'smallcap-20' in source else 11.0
+                        s.setdefault('short_float', sf_floor)
                         s.setdefault('health_score', 20)
                         s.setdefault('rel_volume', rvol_est)
                         s.setdefault('squeeze_total_score', 55)  # bonus for being in squeeze scan
