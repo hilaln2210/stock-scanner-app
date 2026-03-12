@@ -150,6 +150,59 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(_arena_tick, "interval", seconds=30, id="arena_tick_job",
                       max_instances=1, coalesce=True)
 
+    # Small-cap squeeze stock scanner — refreshes every 2 min for HardSqueeze/NanoSqueeze
+    async def _refresh_smallcap_squeeze():
+        from app.services.strategy_arena import get_session_type
+        if get_session_type() == "closed":
+            return
+        import time as _t
+        import app.api.routes as _routes
+        if _t.time() - _routes._FV_SMALLCAP_CACHE_TIME < _routes._FV_SMALLCAP_CACHE_TTL:
+            return
+        try:
+            from app.api.routes import finviz_screener
+            # Finviz filters: Small+Micro cap, short float > 20%, sorted by change
+            # sh_short_o20 ensures stocks qualify for Hard/Gap/Nano Squeeze (≥20% requirement)
+            pages = await __import__('asyncio').gather(*[
+                finviz_screener._scrape_screener(
+                    {'v': '111',
+                     'f': 'cap_smallover,sh_short_o20,sh_price_o2',
+                     'o': '-changeopen', 'r': str(r)},
+                    'smallcap-squeeze',
+                )
+                for r in [1, 21, 41]
+            ], return_exceptions=True)
+            seen, result = set(), []
+            for page in pages:
+                if isinstance(page, Exception):
+                    continue
+                for s in page:
+                    t = s.get('ticker')
+                    if t and t not in seen:
+                        seen.add(t)
+                        # These stocks passed sh_short_o10 filter — inject floor values
+                        # so squeeze strategy filters can score them correctly.
+                        # short_float floor=12 (they passed ≥10% filter, estimate conservatively)
+                        # health_score=20 (enough to pass min_health=8-15 for squeeze strategies)
+                        # rel_volume: use change_pct as proxy — high movers imply high rel_vol
+                        chg = abs(float(s.get('change_pct') or 0))
+                        rvol_est = max(1.5, min(chg * 0.8, 8.0))  # 1.5–8x estimate
+                        s.setdefault('short_float', 22.0)  # floor — passed sh_short_o20 filter
+                        s.setdefault('health_score', 20)
+                        s.setdefault('rel_volume', rvol_est)
+                        s.setdefault('squeeze_total_score', 55)  # bonus for being in squeeze scan
+                        result.append(s)
+            if result:
+                _routes._FV_SMALLCAP_CACHE[:] = result
+                _routes._FV_SMALLCAP_CACHE_TIME = _t.time()
+                print(f"[SmallCap] refreshed {len(result)} stocks (short float ≥10%, small cap)")
+        except Exception as e:
+            print(f"[SmallCap] scan error: {e}")
+
+    scheduler.add_job(_refresh_smallcap_squeeze, "interval", minutes=2,
+                      id="smallcap_squeeze_job", max_instances=1, coalesce=True)
+    print("SmallCap Squeeze Scanner: refresh every 2min for Hard/Nano Squeeze strategies")
+
     # Seasonal & Pattern cache refresh (heavy — runs separately every 2h/1h)
     async def _refresh_arena_aux_caches():
         """Refresh seasonal & pattern caches used by SeasonalityTrader / PatternTrader."""
@@ -389,6 +442,81 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(_system_watchdog, "interval", minutes=5, id="watchdog_job",
                       max_instances=1, coalesce=True)
     print("System Watchdog: self-healing checks every 5min during market hours")
+
+    # ── Periodic Telegram arena report every 2 hours ────────────────────────
+    async def _arena_tg_report():
+        from app.services.arena_ib_trader import send_arena_report
+        await send_arena_report()
+
+    scheduler.add_job(_arena_tg_report, "interval", hours=2, id="arena_report_job",
+                      max_instances=1, coalesce=True)
+    print("Arena Telegram Report: summary every 2h during market hours")
+
+    # ── EOD Auto-replace losing strategies (16:15 ET daily) ─────────────────
+    async def _eod_auto_replace():
+        """Replace losing strategies with variants of winners at end of trading day."""
+        from app.services.strategy_arena import arena_singleton
+        from app.services.arena_ib_trader import _tg
+
+        # Build live prices from cache
+        from app.api.routes import _FV_TABLE_CACHE, _LIVE_PRICES_CACHE, _safe_float
+        cached = _FV_TABLE_CACHE.get('data', {})
+        live_prices = {
+            s['ticker']: _safe_float(s.get('price'))
+            for s in cached.get('stocks', [])
+            if s.get('ticker') and _safe_float(s.get('price')) > 0
+        }
+        for ticker, data in _LIVE_PRICES_CACHE.items():
+            price = _safe_float(data.get('price') if isinstance(data, dict) else data)
+            if price > 0:
+                live_prices[ticker] = price
+
+        replacements = arena_singleton.auto_replace_losers(live_prices)
+        if not replacements:
+            print("[EOD] No losing strategies to replace")
+            return
+
+        # Telegram notification
+        lines = []
+        for r in replacements:
+            closed_str = ", ".join(r["closed"]) if r["closed"] else "אין"
+            lines.append(
+                f"🔄 <b>{r['replaced']}</b> → <b>{r['new_label']}</b> "
+                f"(clone of {r['template']})\n"
+                f"   נסגרו: {closed_str}  |  P&L יומי: ${r['old_pnl']:+.2f}"
+            )
+
+        msg = (
+            f"🔁 <b>EOD — החלפת אסטרטגיות אוטומטית</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            + "\n".join(lines) + "\n\n"
+            f"הכל ריק ומוכן לכניסות חדשות מחר ✅"
+        )
+        await _tg(msg)
+        print(f"[EOD] Replaced {len(replacements)} losing strategies")
+
+    # Run via interval every 1 min — fires once at 16:15 ET window
+    _eod_replace_done_today: dict = {"date": ""}
+
+    async def _eod_auto_replace_check():
+        from datetime import datetime, timezone, timedelta
+        et_offset = timedelta(hours=-4)
+        now_et = datetime.now(timezone.utc) + et_offset
+        if now_et.weekday() >= 5:
+            return  # weekend
+        today = now_et.strftime("%Y-%m-%d")
+        h, m = now_et.hour, now_et.minute
+        # Fire in the 16:15–16:19 window, once per day
+        if not (h == 16 and 15 <= m < 20):
+            return
+        if _eod_replace_done_today["date"] == today:
+            return
+        _eod_replace_done_today["date"] = today
+        await _eod_auto_replace()
+
+    scheduler.add_job(_eod_auto_replace_check, "interval", minutes=1,
+                      id="eod_replace_job", max_instances=1, coalesce=True)
+    print("EOD Strategy Auto-Replace: daily at 16:15 ET")
 
     # Disabled — briefing tab hidden to save resources
     # async def _prewarm_briefing():

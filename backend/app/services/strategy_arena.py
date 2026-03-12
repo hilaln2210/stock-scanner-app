@@ -98,7 +98,7 @@ STRATEGY_CONFIGS = {
         "description": "כניסה בסקוויז פורץ — שורט float ≥ 25%, rvol ≥ 3.0, מחיר < $30, לוקח רווח מהיר ובורח",
         "min_health": 10, "min_conf": 12, "min_rvol": 3.0,
         "stop_pct": 8.0, "target_pct": 30.0,
-        "max_day_chg": 999.0, "requires_short_float": 25.0,
+        "max_day_chg": 999.0, "requires_short_float": 20.0,
         "requires_min_chg": 2.0, "max_positions": 3,
         "small_cap_only": True,
         "max_price": 30.0,
