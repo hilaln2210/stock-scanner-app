@@ -282,6 +282,91 @@ async def lifespan(app: FastAPI):
                       max_instances=1, coalesce=True)
     print("IB Auto-Reconnect: checks every 60s when arena trader is enabled")
 
+    # ── System Watchdog — self-healing monitor every 5 min ─────────────────
+    async def _system_watchdog():
+        """
+        Checks full system health during market hours.
+        If something is broken, fixes it automatically.
+        """
+        from app.services.strategy_arena import get_session_type
+        session = get_session_type()
+        if session == "closed":
+            return
+
+        from app.services.ib_service import ib_service
+        from app.services.arena_ib_trader import arena_ib_trader
+        issues = []
+        fixes = []
+
+        # 1. Check arena is ticking
+        from app.services.strategy_arena import arena_singleton
+        last_tick = getattr(arena_singleton, 'last_tick', None)
+        tick_count = getattr(arena_singleton, 'tick_count', 0)
+        if last_tick:
+            from datetime import datetime
+            try:
+                lt = datetime.fromisoformat(str(last_tick))
+                age_s = (datetime.now() - lt).total_seconds()
+                if age_s > 120:  # no tick in 2+ minutes
+                    issues.append(f"Arena stale — last tick {int(age_s)}s ago")
+                    # Force a tick
+                    try:
+                        import httpx
+                        async with httpx.AsyncClient(timeout=30) as c:
+                            await c.post("http://localhost:8000/api/smart-portfolio/arena/think")
+                        fixes.append("Forced arena tick")
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        elif session in ("premarket", "regular", "aftermarket"):
+            issues.append("Arena never ticked")
+
+        # 2. Check IB connection
+        if ib_service._ever_connected and not ib_service.is_connected():
+            issues.append("IB disconnected")
+            try:
+                result = await ib_service.connect(
+                    host=ib_service._host, port=ib_service._port, client_id=20
+                )
+                if result.get("connected"):
+                    fixes.append(f"IB reconnected to {result.get('account', '?')}")
+                else:
+                    issues.append(f"IB reconnect failed: {result.get('error', '?')}")
+            except Exception as e:
+                issues.append(f"IB reconnect error: {e}")
+
+        # 3. Check arena IB trader
+        if arena_ib_trader.enabled:
+            if not arena_ib_trader.active_strategy and session in ("premarket", "regular"):
+                issues.append("Arena IB trader has no active strategy")
+                # Trigger tick to pick leader
+                try:
+                    import httpx
+                    async with httpx.AsyncClient(timeout=30) as c:
+                        await c.post("http://localhost:8000/api/smart-portfolio/arena/think")
+                    fixes.append("Triggered tick to pick leader")
+                except Exception:
+                    pass
+
+        # Log results
+        if issues:
+            print(f"[Watchdog:{session}] Issues: {'; '.join(issues)}")
+            if fixes:
+                print(f"[Watchdog:{session}] Fixed: {'; '.join(fixes)}")
+        else:
+            # Quiet log every 30 min (every 6th check)
+            import time
+            if int(time.time()) % 1800 < 300:
+                ib_ok = "IB=" + ("OK" if ib_service.is_connected() else "OFF")
+                arena_ok = f"Arena=tick#{tick_count}"
+                trader_ok = f"Trader={'ON:' + arena_ib_trader.active_strategy if arena_ib_trader.enabled else 'OFF'}"
+                print(f"[Watchdog:{session}] All OK — {ib_ok} {arena_ok} {trader_ok}")
+
+    scheduler.add_job(_system_watchdog, "interval", minutes=5, id="watchdog_job",
+                      max_instances=1, coalesce=True)
+    print("System Watchdog: self-healing checks every 5min during market hours")
+
     # Disabled — briefing tab hidden to save resources
     # async def _prewarm_briefing():
     #     import httpx
