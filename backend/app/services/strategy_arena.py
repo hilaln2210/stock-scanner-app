@@ -68,12 +68,13 @@ STRATEGY_CONFIGS = {
         "requires_min_chg": None, "max_positions": 2,
     },
     "SqueezeHunter": {
-        "label": "🔥 Squeeze Hunter",
-        "description": "מניות עם שורט גבוה — לחץ כיסוי שורטים",
-        "min_health": 25, "min_conf": 30, "min_rvol": 0.4,
-        "stop_pct": 6.0, "target_pct": 30.0,
-        "max_day_chg": 999.0, "requires_short_float": 8.0,
-        "requires_min_chg": None, "max_positions": 3,
+        "label": "🔥 Hard Squeeze",
+        "description": "שורט סקוויז אגרסיבי — שורט float ≥ 20%, rvol ≥ 1.5, Small+Micro Cap, יעד +40%",
+        "min_health": 12, "min_conf": 15, "min_rvol": 1.5,
+        "stop_pct": 8.0, "target_pct": 40.0,
+        "max_day_chg": 999.0, "requires_short_float": 20.0,
+        "requires_min_chg": 2.0, "max_positions": 2,
+        "small_cap_only": True,
     },
     "Scalper": {
         "label": "⚡ Scalper",
@@ -93,30 +94,33 @@ STRATEGY_CONFIGS = {
         "requires_min_chg": 0.8, "max_positions": 3,
     },
     "SwingSetup": {
-        "label": "🌊 Swing Setup",
-        "description": "כניסות איכותיות, יעדים גדולים — סבלנות ומשמעת",
-        "min_health": 38, "min_conf": 40, "min_rvol": 0.3,
-        "stop_pct": 7.0, "target_pct": 28.0,
-        "max_day_chg": 6.0, "requires_short_float": None,
-        "requires_min_chg": None, "max_positions": 2,
+        "label": "⚡ Breakout Rider",
+        "description": "פריצות עם נפח — rvol ≥ 1.0, תנועה > 0.5%, כמו Balanced אבל עם מומנטום חזק יותר",
+        "min_health": 25, "min_conf": 30, "min_rvol": 1.0,
+        "stop_pct": 5.0, "target_pct": 18.0,
+        "max_day_chg": 25.0, "requires_short_float": None,
+        "requires_min_chg": 0.5, "max_positions": 3,
     },
     "SeasonalityTrader": {
-        "label": "📅 Seasonality",
-        "description": "עונתיות היסטורית — win rate > 70% על עשור נתונים",
-        "min_health": 20, "min_conf": 18, "min_rvol": 0.2,
-        "stop_pct": 7.0, "target_pct": 22.0,
-        "max_day_chg": 15.0, "requires_short_float": None,
-        "requires_min_chg": None, "max_positions": 2,
-        "requires_seasonal": True,
+        "label": "🌪️ Gap & Squeeze",
+        "description": "גאפ + שורט סקוויז — float<30M, שורט≥20%, מחיר<$20, נפח>5x, GAP UP + פריצה intraday",
+        "min_health": 8, "min_conf": 10, "min_rvol": 5.0,
+        "stop_pct": 10.0, "target_pct": 60.0,
+        "max_day_chg": 999.0, "requires_short_float": 20.0,
+        "requires_min_chg": 1.0, "max_positions": 2,
+        "small_cap_only": True,
+        "max_price": 20.0,
+        "requires_gap": True,
+        "requires_float_shares_max": 30_000_000,
     },
     "PatternTrader": {
-        "label": "🔁 Pattern Bot",
-        "description": "דפוסים תוך-יומיים — win rate > 65% על חלון ספציפי",
-        "min_health": 18, "min_conf": 18, "min_rvol": 0.3,
-        "stop_pct": 4.0, "target_pct": 12.0,
-        "max_day_chg": 30.0, "requires_short_float": None,
-        "requires_min_chg": None, "max_positions": 2,
-        "requires_pattern": True,
+        "label": "💥 Nano Squeeze",
+        "description": "מיקרו שורט סקוויז — שורט float ≥ 15%, rvol ≥ 2.0, לוטרי Small Cap, יעד +50%",
+        "min_health": 10, "min_conf": 12, "min_rvol": 2.0,
+        "stop_pct": 10.0, "target_pct": 50.0,
+        "max_day_chg": 999.0, "requires_short_float": 15.0,
+        "requires_min_chg": 1.0, "max_positions": 2,
+        "small_cap_only": True,
     },
 }
 
@@ -204,10 +208,15 @@ class MiniPortfolio:
 
     def open_position(self, ticker: str, price: float,
                       stop_override: float = None) -> bool:
-        if price <= 0 or ticker in self.positions:
+        import math
+        if not price or price <= 0 or math.isnan(price) or math.isinf(price):
+            return False
+        if ticker in self.positions:
             return False
         cfg        = self.config
         equity     = self.get_equity({ticker: price})
+        if math.isnan(equity) or equity <= 0:
+            return False
         slot_size  = equity / cfg["max_positions"]   # equal-weight slots
         qty        = max(1, int(slot_size / price))
         cost       = price * qty
@@ -424,6 +433,111 @@ class StrategyArena:
         except OSError:
             pass
 
+    def force_close_and_reset(self, strategy_name: str, live_prices: dict = None) -> dict:
+        """
+        Force-close all positions for a strategy at current prices,
+        and reload its config from STRATEGY_CONFIGS (picks up any config changes).
+        Returns summary of closed trades.
+        """
+        live_prices = live_prices or {}
+        with self._lock:
+            pf = self.portfolios.get(strategy_name)
+            if not pf:
+                return {"error": f"Unknown strategy: {strategy_name}"}
+            closed = []
+            for ticker in list(pf.positions.keys()):
+                price = live_prices.get(ticker) or pf.positions[ticker].get("entry_price", 0)
+                trade = pf.close_position(ticker, price, "force_reset")
+                if trade:
+                    closed.append(trade)
+                    self._add_event("SELL", strategy_name, ticker, price,
+                                    trade.get("pnl_pct", 0), "force_reset")
+            # Reload config from STRATEGY_CONFIGS (picks up new params)
+            new_cfg = STRATEGY_CONFIGS.get(strategy_name, pf.config)
+            pf.config = new_cfg
+            self._save(live_prices)
+            print(f"[Arena] force_reset {strategy_name}: closed {len(closed)} positions, new config: {new_cfg.get('label')}")
+            return {"strategy": strategy_name, "closed": len(closed), "trades": closed}
+
+    def auto_replace_losers(self, live_prices: dict = None) -> list:
+        """
+        EOD automatic strategy replacement.
+        Strategies with negative P&L get their config replaced with a variant
+        of the day's top-performing strategy. Called automatically at 16:15 ET.
+        Returns list of replacement actions for Telegram report.
+        """
+        live_prices = live_prices or {}
+        replacements = []
+
+        with self._lock:
+            # Rank by P&L
+            ranked = sorted(
+                self.portfolios.items(),
+                key=lambda kv: kv[1].get_pnl(live_prices),
+                reverse=True,
+            )
+
+            # Top 2 winners — use as templates
+            winners = [(name, pf) for name, pf in ranked if pf.get_pnl(live_prices) > 0]
+            if not winners:
+                return []  # no positive strategy to clone from
+
+            # Losers = negative P&L
+            losers = [(name, pf) for name, pf in ranked if pf.get_pnl(live_prices) < 0]
+            if not losers:
+                return []
+
+            for i, (loser_name, loser_pf) in enumerate(losers):
+                # Pick template: cycle through winners
+                template_name, template_pf = winners[i % len(winners)]
+                base_cfg = dict(template_pf.config)
+
+                # Vary slightly so strategies diverge from each other
+                variation = i + 1
+                new_cfg = dict(base_cfg)
+                new_cfg["min_rvol"]   = round(base_cfg["min_rvol"] + variation * 0.15, 2)
+                new_cfg["min_conf"]   = base_cfg["min_conf"] + variation * 2
+                new_cfg["stop_pct"]   = round(base_cfg["stop_pct"] + variation * 0.3, 1)
+                new_cfg["target_pct"] = round(base_cfg["target_pct"] + variation * 1.5, 1)
+                new_cfg["max_positions"] = base_cfg.get("max_positions", 3)
+                # Remove special requirements from clone (keeps it general)
+                new_cfg["requires_pattern"]  = None
+                new_cfg["requires_seasonal"] = None
+                new_cfg["requires_short_float"] = None
+                new_cfg["label"] = f"{base_cfg.get('label','?')} v{variation+1}"
+                new_cfg["description"] = (
+                    f"Clone of {template_name} (variation {variation}) — "
+                    f"auto-replaced {loser_name} at EOD"
+                )
+
+                # Force close loser positions
+                closed_tickers = []
+                for ticker in list(loser_pf.positions.keys()):
+                    price = live_prices.get(ticker) or loser_pf.positions[ticker].get("entry_price", 0)
+                    trade = loser_pf.close_position(ticker, price, "eod_replace")
+                    if trade:
+                        closed_tickers.append(ticker)
+                        self._add_event("SELL", loser_name, ticker, price,
+                                        trade.get("pnl_pct", 0), "eod_replace")
+
+                # Apply new config
+                STRATEGY_CONFIGS[loser_name] = new_cfg
+                loser_pf.config = new_cfg
+                pnl = loser_pf.get_pnl(live_prices)
+
+                replacements.append({
+                    "replaced":   loser_name,
+                    "template":   template_name,
+                    "new_label":  new_cfg["label"],
+                    "old_pnl":    round(pnl, 2),
+                    "closed":     closed_tickers,
+                })
+                print(f"[Arena] EOD replace: {loser_name} → clone of {template_name} "
+                      f"({new_cfg['label']}) | closed: {closed_tickers}")
+
+            self._save(live_prices)
+        return replacements
+
     def _reset_week(self):
         self.week_start       = _week_start()
         self.current_day      = _today()
@@ -457,11 +571,12 @@ class StrategyArena:
 
             # Pre-score all stocks
             scored = []
+            import math as _math
             for s in stocks:
                 ticker = s.get("ticker", "").upper()
                 if not ticker: continue
                 price = _safe_float(s.get("price"))
-                if price <= 0: continue
+                if price <= 0 or _math.isnan(price) or _math.isinf(price): continue
                 scored.append((ticker, price, _arena_score(s), s))
             scored.sort(key=lambda x: -x[2])
 
@@ -498,7 +613,10 @@ class StrategyArena:
                     rvol   = _safe_float(stock.get("rel_volume"))
                     chg    = _safe_float(stock.get("change_pct"))
                     sf     = _safe_float(stock.get("short_float"))
-                    conf   = min(95, int(score * CONF_MULTIPLIER))
+                    raw_conf = score * CONF_MULTIPLIER
+                    if _math.isnan(raw_conf) or _math.isinf(raw_conf):
+                        continue
+                    conf   = min(95, int(raw_conf))
 
                     if health < cfg["min_health"]:          continue
                     if conf   < cfg["min_conf"]:            continue
@@ -512,6 +630,26 @@ class StrategyArena:
                         continue
                     if cfg.get("requires_pattern") and _safe_float(stock.get("pattern_win_rate", 0)) < 60:
                         continue
+                    # max_price filter (e.g. Gap & Squeeze requires price < $20)
+                    if cfg.get("max_price") and price > cfg["max_price"]:
+                        continue
+                    # requires_gap: stock must have gapped up (gap_pct > 0, or change_pct > 3% as proxy)
+                    if cfg.get("requires_gap"):
+                        gap = _safe_float(stock.get("gap_pct", stock.get("gap", 0)))
+                        if gap <= 0:
+                            # fallback: use change_pct as gap proxy (must be up >3% on day open)
+                            if chg < 3.0:
+                                continue
+                    # requires_float_shares_max: float shares < threshold (e.g. 30M)
+                    if cfg.get("requires_float_shares_max"):
+                        float_shares = _safe_float(stock.get("float_shares", stock.get("float_shares_num", 0)))
+                        if float_shares > 0 and float_shares > cfg["requires_float_shares_max"]:
+                            continue
+                    # small_cap_only: market cap < $2B or price ≤ $50 (proxy for small cap)
+                    if cfg.get("small_cap_only"):
+                        cap = _safe_float(stock.get("market_cap", stock.get("cap", 0)))
+                        if cap > 2_000_000_000 and price > 50:
+                            continue
 
                     stop_override = cfg["stop_pct"] + extra_stop if extra_stop else None
                     if pf.open_position(ticker, price, stop_override=stop_override):

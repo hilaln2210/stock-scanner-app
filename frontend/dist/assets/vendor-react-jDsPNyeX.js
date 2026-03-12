@@ -1,4 +1,4 @@
-import{r as _a,g as Na}from"./vendor-query-CpZv7N-n.js";var Co={exports:{}},ve={},xo={exports:{}},_o={};/**
+import{r as _a,g as Na}from"./vendor-query-DMo53PIp.js";var Co={exports:{}},ve={},xo={exports:{}},_o={};/**
  * @license React
  * scheduler.production.min.js
  *
