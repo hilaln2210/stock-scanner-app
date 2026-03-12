@@ -120,6 +120,12 @@ class ArenaIBTrader:
         if not ib_svc.is_connected():
             return
 
+        # Only trade during market sessions (not "closed")
+        from app.services.strategy_arena import get_session_type
+        session = get_session_type()
+        if session == "closed":
+            return
+
         if self._pending_orders:
             return  # previous batch still running
 

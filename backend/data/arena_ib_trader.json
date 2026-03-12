@@ -1,63 +1,10 @@
 {
   "enabled": true,
   "strategy_name": "__auto__",
-  "active_strategy": "Scalper",
+  "active_strategy": "",
   "trade_amount": 500.0,
   "seen_event_ids": [],
-  "ib_positions": {
-    "HIMS": {
-      "qty": 19,
-      "entry_price": 25.88,
-      "entry_time": "2026-03-12T02:08:46.286313",
-      "order_id": 24,
-      "strategy": "Scalper"
-    },
-    "NBIS": {
-      "qty": 4,
-      "entry_price": 112.0,
-      "entry_time": "2026-03-12T02:08:49.711315",
-      "order_id": 4,
-      "strategy": "Scalper"
-    },
-    "CF": {
-      "qty": 4,
-      "entry_price": 120.08,
-      "entry_time": "2026-03-12T02:08:52.696160",
-      "order_id": 4,
-      "strategy": "Scalper"
-    }
-  },
-  "trade_log": [
-    {
-      "action": "BUY",
-      "ticker": "HIMS",
-      "qty": 19,
-      "price": 25.88,
-      "time": "2026-03-12T02:08:46.286336",
-      "order_id": 24,
-      "strategy": "Scalper",
-      "reason": "sync"
-    },
-    {
-      "action": "BUY",
-      "ticker": "NBIS",
-      "qty": 4,
-      "price": 112.0,
-      "time": "2026-03-12T02:08:49.711333",
-      "order_id": 4,
-      "strategy": "Scalper",
-      "reason": "sync"
-    },
-    {
-      "action": "BUY",
-      "ticker": "CF",
-      "qty": 4,
-      "price": 120.08,
-      "time": "2026-03-12T02:08:52.696176",
-      "order_id": 4,
-      "strategy": "Scalper",
-      "reason": "sync"
-    }
-  ],
-  "updated": "2026-03-12T02:09:52.848557"
+  "ib_positions": {},
+  "trade_log": [],
+  "updated": "2026-03-12T02:20:00.000000"
 }

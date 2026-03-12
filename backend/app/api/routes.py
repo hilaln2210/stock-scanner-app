@@ -1421,6 +1421,10 @@ async def ib_place_order(body: dict = Body(...)):
 async def ib_cancel_order(order_id: int):
     return await ib_service.cancel_order(order_id)
 
+@router.delete("/ib/orders/all")
+async def ib_cancel_all_orders():
+    return await ib_service.cancel_all_orders()
+
 
 # ── Arena → IB Live Trader ──────────────────────────────────────────────────
 

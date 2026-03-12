@@ -503,9 +503,10 @@ class IBService:
             _MAX = 1.7976931348623157e+308
             for trade in trades:
                 o = trade.order
-                if o.orderId in seen:
+                key = (getattr(o, 'clientId', 0), o.orderId)
+                if key in seen:
                     continue
-                seen.add(o.orderId)
+                seen.add(key)
                 c = trade.contract
                 s = trade.orderStatus
                 result.append({
@@ -642,6 +643,23 @@ class IBService:
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_do, timeout=12, priority=True))
         if result and result.get("cancelled"):
+            self._orders_cache_time = 0
+        return result or {"error": "timeout"}
+
+    async def cancel_all_orders(self) -> Dict:
+        """Cancel all open orders on the account using reqGlobalCancel."""
+        if not self.is_connected():
+            return {"error": "לא מחובר ל-IB"}
+
+        def _do(ib: "_ib.IB"):
+            ib.reqGlobalCancel()
+            ib.sleep(2)
+            return {"cancelled": True}
+
+        import asyncio
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, lambda: _run_in_ib_thread(_do, timeout=15, priority=True))
+        if result:
             self._orders_cache_time = 0
         return result or {"error": "timeout"}
 
