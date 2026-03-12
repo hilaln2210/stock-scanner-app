@@ -24,7 +24,6 @@ DATA_DIR = Path(__file__).parent.parent.parent / "data"
 IB_TRADER_FILE = DATA_DIR / "arena_ib_trader.json"
 
 AUTO_FOLLOW = "__auto__"
-MIN_BALANCE  = 800.0   # don't trade if IB cash drops below this
 
 
 def _strategy_label(strategy_name: str) -> str:
@@ -251,20 +250,6 @@ class ArenaIBTrader:
 
             if not orders:
                 return
-
-            # ── Balance check: don't trade if cash < $800 ────────────────────
-            try:
-                account = await ib_svc.get_account_summary()
-                cash = account.get("cash", 0) or account.get("net_liquidation", 0)
-                if cash < MIN_BALANCE:
-                    msg = (f"⚠️ <b>ארנה IB — יתרה נמוכה</b>\n"
-                           f"יתרה: ${cash:.0f} (מינימום ${MIN_BALANCE:.0f})\n"
-                           f"לא בוצעו עסקאות.")
-                    print(f"[ArenaIB] Balance ${cash:.0f} < ${MIN_BALANCE} — skipping orders")
-                    await _tg(msg)
-                    return
-            except Exception as e:
-                print(f"[ArenaIB] Balance check failed: {e} — proceeding anyway")
 
             # ── Execute orders ────────────────────────────────────────────────
             for action, ticker, qty, price, strategy, reason in orders:

@@ -2,13 +2,13 @@
   "enabled": true,
   "strategy_name": "__auto__",
   "active_strategy": "Scalper",
-  "trade_amount": 500.0,
+  "trade_amount": 800.0,
   "seen_event_ids": [
-    "Scalper-CF-2026-03-12T11:54:12",
-    "MomentumBreaker-HIMS-2026-03-12T11:25:43",
+    "Balanced-CF-2026-03-12T11:54:12",
     "SqueezeHunter-HIMS-2026-03-12T11:11:12",
+    "MomentumBreaker-HIMS-2026-03-12T11:25:43",
     "MomentumBreaker-CF-2026-03-12T11:54:12",
-    "Balanced-CF-2026-03-12T11:54:12"
+    "Scalper-CF-2026-03-12T11:54:12"
   ],
   "ib_positions": {
     "HIMS": {
@@ -86,5 +86,5 @@
       "reason": "sync"
     }
   ],
-  "updated": "2026-03-12T12:07:12.386338"
+  "updated": "2026-03-12T12:10:00.335792"
 }
