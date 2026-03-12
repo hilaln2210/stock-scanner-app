@@ -284,9 +284,9 @@ class MiniPortfolio:
     def check_stops(self, live_prices: dict) -> list:
         closed = []
         now    = datetime.now()
-        partial_tp_trigger = self.config.get("partial_tp_trigger", 5.0)
-        trailing_trigger   = self.config.get("trailing_trigger",   4.0)
-        trail_pct          = self.config.get("trail_pct",          0.97)
+        partial_tp_trigger = self.config.get("partial_tp_trigger", 12.0)  # was 5% — too early
+        trailing_trigger   = self.config.get("trailing_trigger",    8.0)  # was 4% — activated too soon
+        trail_pct          = self.config.get("trail_pct",           0.91)  # was 0.97 — too tight for volatile stocks
         for ticker in list(self.positions.keys()):
             pos   = self.positions[ticker]
             price = live_prices.get(ticker)
@@ -516,10 +516,14 @@ class StrategyArena:
                     f"auto-replaced {loser_name} at EOD"
                 )
 
-                # Force close loser positions
+                # Force close losing positions only — keep profitable ones running
                 closed_tickers = []
                 for ticker in list(loser_pf.positions.keys()):
                     price = live_prices.get(ticker) or loser_pf.positions[ticker].get("entry_price", 0)
+                    pos_pnl_pct = (price - loser_pf.positions[ticker]["entry_price"]) / loser_pf.positions[ticker]["entry_price"] * 100
+                    if pos_pnl_pct > 0:
+                        print(f"[Arena] EOD: keeping {ticker} (pnl={pos_pnl_pct:+.1f}%) — profitable, not closing")
+                        continue  # don't kill winning positions
                     trade = loser_pf.close_position(ticker, price, "eod_replace")
                     if trade:
                         closed_tickers.append(ticker)
