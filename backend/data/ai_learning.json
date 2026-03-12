@@ -163,8 +163,38 @@
       "date": "2026-03-12T00:24:27.182607"
     }
   ],
-  "updated": "2026-03-13T01:45:15.695664",
+  "updated": "2026-03-13T01:57:27.894120",
   "missed_patterns": [
+    {
+      "ticker": "RGTI",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 66.7,
+      "avg_change": 0.625,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו RGTI חלון 15:30-16:00 (WR 66.7%, avg +0.62%) — לא נכנסנו"
+    },
+    {
+      "ticker": "RKLB",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 75.6,
+      "avg_change": 0.648,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו RKLB חלון 15:30-16:00 (WR 75.6%, avg +0.65%) — לא נכנסנו"
+    },
+    {
+      "ticker": "MSTR",
+      "window": "10:30-11:00",
+      "direction": "LONG",
+      "win_rate": 71.1,
+      "avg_change": 0.564,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו MSTR חלון 10:30-11:00 (WR 71.1%, avg +0.56%) — לא נכנסנו"
+    },
     {
       "ticker": "RGTI",
       "window": "15:30-16:00",
