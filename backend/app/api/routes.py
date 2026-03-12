@@ -1702,7 +1702,10 @@ async def get_live_prices(tickers: str = Query(...)):
 
 _FV_TABLE_CACHE: dict = {}
 _FV_TABLE_CACHE_TIME: float = 0.0
-_FV_TABLE_CACHE_TTL: int = 25       # price/change: 25 s (frontend polls every 30 s)
+_FV_TABLE_CACHE_TTL: int = 18       # price/change: 18 s (arena ticks every 10s, refreshes every 20s)
+_FV_SMALLCAP_CACHE: list = []       # small/micro cap high-short-float stocks for squeeze strategies
+_FV_SMALLCAP_CACHE_TIME: float = 0.0
+_FV_SMALLCAP_CACHE_TTL: int = 120   # refresh every 2 min
 _FV_FUND_CACHE: dict = {}           # {ticker: fund_data}
 _FV_FUND_CACHE_TIME: float = 0.0
 _FV_FUND_CACHE_TTL: int = 1800      # fundamentals: 30 min
@@ -3358,6 +3361,22 @@ async def smart_portfolio_arena_status():
     return arena_singleton.get_status(live_prices)
 
 
+@router.post("/smart-portfolio/arena/force-reset/{strategy_name}")
+async def arena_force_reset_strategy(strategy_name: str):
+    """Force-close all positions for a strategy and reload its config."""
+    cached = _FV_TABLE_CACHE.get('data', {})
+    live_prices = {
+        s['ticker']: _safe_float(s.get('price'))
+        for s in cached.get('stocks', [])
+        if s.get('ticker') and _safe_float(s.get('price')) > 0
+    }
+    for ticker, data in _LIVE_PRICES_CACHE.items():
+        price = _safe_float(data.get('price') if isinstance(data, dict) else data)
+        if price > 0:
+            live_prices[ticker] = price
+    return arena_singleton.force_close_and_reset(strategy_name, live_prices)
+
+
 @router.post("/smart-portfolio/arena/think")
 async def smart_portfolio_arena_think():
     """One arena tick — all 4 strategies analyze the same current market data."""
@@ -3402,6 +3421,13 @@ async def smart_portfolio_arena_think():
 
     if not stocks:
         return {"error": "No stock data yet", "tick_count": arena_singleton.tick_count}
+
+    # Merge small-cap squeeze stocks (for HardSqueeze / NanoSqueeze strategies)
+    if _FV_SMALLCAP_CACHE:
+        existing_tickers = {s.get('ticker') for s in stocks}
+        for sc in _FV_SMALLCAP_CACHE:
+            if sc.get('ticker') not in existing_tickers:
+                stocks.append(sc)
 
     # Augment stocks with seasonal/pattern flags (caches refreshed by background job)
     for s in stocks:

@@ -116,38 +116,75 @@ async def lifespan(app: FastAPI):
     # Disabled — smart portfolio tab hidden to save resources
     # scheduler.add_job(_smart_portfolio_tick, "interval", minutes=5, id="brain_job")
 
-    # Arena — autonomous tick every 1 minute, all sessions (pre/regular/after)
+    # Arena — live tick every 10s: fresh Finviz scan every 20s + live prices every tick
+    _arena_fv_last_refresh: list = [0.0]   # mutable container for closure
+
     async def _arena_tick():
-        from datetime import datetime, timezone, timedelta
-        from app.services.strategy_arena import get_session_type
+        from app.services.strategy_arena import get_session_type, arena_singleton
         import time as _t
         session = get_session_type()
         if session == "closed":
             return
         try:
             import httpx
+            import app.api.routes as _routes
+
             async with httpx.AsyncClient() as client:
-                # Refresh finviz-table cache if stale (>90s) — arena is self-sufficient
-                from app.api.routes import _FV_TABLE_CACHE, _FV_TABLE_CACHE_TIME
-                cache_age = _t.time() - _FV_TABLE_CACHE_TIME
-                if cache_age > 90 or not _FV_TABLE_CACHE.get('data', {}).get('stocks'):
+                # 1. Refresh Finviz scan every 20s (respects 25s cache TTL — won't double-fetch)
+                fv_age = _t.time() - _routes._FV_TABLE_CACHE_TIME
+                if fv_age > 20 or not _routes._FV_TABLE_CACHE.get('data', {}).get('stocks'):
                     try:
                         await client.get("http://localhost:8000/api/screener/finviz-table",
-                                         timeout=httpx.Timeout(90.0))
+                                         timeout=httpx.Timeout(30.0))
                     except Exception:
-                        pass  # arena/think has its own fallbacks
+                        pass
 
+                # 2. Fetch live prices for open positions (yfinance, fast)
+                open_tickers = set()
+                for pf in arena_singleton.portfolios.values():
+                    open_tickers.update(pf.positions.keys())
+                if open_tickers:
+                    tickers_param = ','.join(sorted(open_tickers))
+                    try:
+                        lp_resp = await client.get(
+                            f"http://localhost:8000/api/screener/live-prices?tickers={tickers_param}",
+                            timeout=httpx.Timeout(8.0))
+                        lp_data = lp_resp.json()
+                        # Inject fresh prices into FV_TABLE_CACHE so think() sees them
+                        cached_stocks = _routes._FV_TABLE_CACHE.get('data', {}).get('stocks', [])
+                        # live-prices returns {ticker: {price, change_pct, ...}}
+                        price_map = {}
+                        for t, v in lp_data.items():
+                            try:
+                                p = float(v['price']) if isinstance(v, dict) else float(v)
+                                if p > 0:
+                                    price_map[t] = p
+                            except (TypeError, ValueError, KeyError):
+                                pass
+                        for s in cached_stocks:
+                            t = s.get('ticker')
+                            if t in price_map:
+                                s['price'] = price_map[t]
+                        # Also inject into smallcap cache
+                        for s in _routes._FV_SMALLCAP_CACHE:
+                            t = s.get('ticker')
+                            if t in price_map:
+                                s['price'] = price_map[t]
+                    except Exception:
+                        pass
+
+                # 3. Run arena think with up-to-date data
                 ra = await client.post("http://localhost:8000/api/smart-portfolio/arena/think",
-                                       timeout=httpx.Timeout(60.0))
+                                       timeout=httpx.Timeout(15.0))
                 lb = ra.json().get("leaderboard", [])
                 if lb:
                     leader = lb[0]
-                    print(f"[Arena:{session}] #{1} {leader['name']} "
-                          f"${leader.get('equity', 1000):.0f} ({leader.get('pnl_pct', 0):+.2f}%)")
+                    print(f"[Arena:{session}] {leader['label']} "
+                          f"${leader.get('equity',1000):.0f} ({leader.get('pnl_pct',0):+.2f}%)")
         except Exception as e:
             print(f"[Arena] tick error: {e}")
 
-    scheduler.add_job(_arena_tick, "interval", seconds=30, id="arena_tick_job",
+    scheduler.add_job(_arena_tick, "interval", seconds=10, id="arena_tick_job",
                       max_instances=1, coalesce=True)
 
     # Small-cap squeeze stock scanner — refreshes every 2 min for HardSqueeze/NanoSqueeze
