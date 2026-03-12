@@ -349,6 +349,29 @@ async def lifespan(app: FastAPI):
                 except Exception:
                     pass
 
+        # 4. Kill zombie uvicorn processes (leftover from --reload restarts)
+        import subprocess
+        try:
+            out = subprocess.check_output(
+                ["pgrep", "-f", "uvicorn.*app.main"], text=True
+            ).strip().split("\n")
+            my_pid = os.getpid()
+            my_parent = os.getppid()
+            zombie_pids = [
+                int(p) for p in out if p.strip()
+                and int(p) != my_pid and int(p) != my_parent
+            ]
+            if zombie_pids:
+                for zp in zombie_pids:
+                    try:
+                        os.kill(zp, 9)
+                    except ProcessLookupError:
+                        pass
+                issues.append(f"Killed {len(zombie_pids)} zombie uvicorn(s): {zombie_pids}")
+                fixes.append("Zombie cleanup done")
+        except (subprocess.CalledProcessError, Exception):
+            pass  # no matches = no zombies
+
         # Log results
         if issues:
             print(f"[Watchdog:{session}] Issues: {'; '.join(issues)}")
