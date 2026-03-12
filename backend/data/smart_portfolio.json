@@ -1,59 +1,6 @@
 {
-  "cash": 1397.779980163574,
-  "positions": {
-    "NIO": {
-      "side": "long",
-      "qty": 91,
-      "entry_price": 5.57,
-      "entry_time": "2026-03-11T13:54:10.095616",
-      "stop_loss": 5.35,
-      "target": 6.68,
-      "highest_price": 5.66,
-      "lowest_price": 5.549699783325195,
-      "trailing_active": false,
-      "partial_taken": false,
-      "reason": "DTC 3.3d | \u05e6\u05de\u05d9\u05d7\u05ea EPS +101% | \u05d3\u05d5\u05d7 \u05e8\u05d1\u05e2\u05d5\u05e0\u05d9 | \u05e1\u05e7\u05d8\u05d5\u05e8 AI | \u05e1\u05e0\u05d8\u05d9\u05de\u05e0\u05d8 \u05d7\u05d9\u05d5\u05d1\u05d9 (7\ud83d\udfe2)"
-    },
-    "SMCI": {
-      "side": "long",
-      "qty": 13,
-      "entry_price": 32.35,
-      "entry_time": "2026-03-11T14:24:10.188002",
-      "stop_loss": 31.38,
-      "target": 41.41,
-      "highest_price": 32.5,
-      "lowest_price": 32.0,
-      "trailing_active": false,
-      "partial_taken": false,
-      "reason": "DTC 2.9d | \u05e9\u05d5\u05e8\u05d8 \u05d2\u05d1\u05d5\u05d4 17% | RSI 52 \u2014 \u05d7\u05dc\u05d5\u05df \u05db\u05e0\u05d9\u05e1\u05d4 \u05dc\u05e1\u05e7\u05d5\u05d5\u05d9\u05d6 | \u05d0\u05d9\u05db\u05d5\u05ea \u05d2\u05d1\u05d5\u05d4\u05d4 (100) | \u05e9\u05d5\u05e8\u05d8 \u05d2\u05d1\u05d5\u05d4 17%"
-    },
-    "HIMS": {
-      "side": "long",
-      "qty": 15,
-      "entry_price": 26.3,
-      "entry_time": "2026-03-11T16:37:56.681206",
-      "stop_loss": 24.72,
-      "target": 36.82,
-      "highest_price": 26.792600631713867,
-      "lowest_price": 26.13629913330078,
-      "trailing_active": false,
-      "partial_taken": false,
-      "reason": "DTC 3.0d | \ud83e\ude78 \u05e9\u05d5\u05e8\u05d8\u05d9\u05dd \u05de\u05d3\u05de\u05de\u05d9\u05dd (DTC 3.0 + \u05e2\u05dc\u05d9\u05d9\u05d4 +12.0%) | \ud83d\udcc9 \u05de\u05d5\u05de\u05e0\u05d8\u05d5\u05dd \u05d3\u05d5\u05e2\u05da (+3.8\u2192-0.1%) | \u05e9\u05d5\u05e8\u05d8 \u05e7\u05d9\u05e6\u05d5\u05e0\u05d9 41% \u2014 \u05e4\u05d5\u05d8\u05e0\u05e6\u05d9\u05d0\u05dc \u05e1\u05e7\u05d5\u05d5\u05d9\u05d6 | \u05e1\u05e7\u05d5\u05d5\u05d9\u05d6 \u05e4\u05e2\u05d9\u05dc! (\u05e2\u05dc\u05d9\u05d9\u05d4 +12.0% \u05e2\u05dd \u05e9\u05d5\u05e8\u05d8 41%)"
-    },
-    "AAOI": {
-      "side": "long",
-      "qty": 2,
-      "entry_price": 124.1,
-      "entry_time": "2026-03-11T16:47:55.052382",
-      "stop_loss": 116.65,
-      "target": 155.12,
-      "highest_price": 128.4199981689453,
-      "lowest_price": 124.1,
-      "trailing_active": false,
-      "partial_taken": false,
-      "reason": "\ud83d\udcc8 \u05de\u05d0\u05d9\u05e5 (+0.9\u2192+0.9%) | \u05de\u05db\u05d9\u05e8\u05d5\u05ea \u05e4\u05e0\u05d9\u05dd -6% | \u05e2\u05dc\u05d9\u05d9\u05d4 +3.0% | \u05e0\u05e4\u05d7 \u05d2\u05d1\u05d5\u05d4 x2.3 | RSI \u05de\u05db\u05d5\u05e8-\u05d9\u05ea\u05e8 (81)"
-    }
-  },
+  "cash": 2959.8599801635737,
+  "positions": {},
   "equity_history": [
     {
       "date": "2026-03-11T12:19:02.913166",
@@ -174,12 +121,132 @@
     {
       "date": "2026-03-11T17:34:25.341614",
       "equity": 2965.55
+    },
+    {
+      "date": "2026-03-11T17:51:12.406854",
+      "equity": 2964.56
+    },
+    {
+      "date": "2026-03-11T17:56:29.742174",
+      "equity": 2969.29
+    },
+    {
+      "date": "2026-03-11T18:01:12.239031",
+      "equity": 2969.59
+    },
+    {
+      "date": "2026-03-11T18:06:23.052471",
+      "equity": 2967.49
+    },
+    {
+      "date": "2026-03-11T18:11:12.257357",
+      "equity": 2967.79
+    },
+    {
+      "date": "2026-03-11T18:16:21.107669",
+      "equity": 2967.49
+    },
+    {
+      "date": "2026-03-11T18:21:12.213329",
+      "equity": 2965.84
+    },
+    {
+      "date": "2026-03-11T18:31:14.145413",
+      "equity": 2967.64
+    },
+    {
+      "date": "2026-03-11T18:36:26.854672",
+      "equity": 2966.89
+    },
+    {
+      "date": "2026-03-11T18:41:12.170223",
+      "equity": 2969.14
+    },
+    {
+      "date": "2026-03-11T18:51:12.183859",
+      "equity": 2970.04
+    },
+    {
+      "date": "2026-03-11T19:36:07.931277",
+      "equity": 2977.98
+    },
+    {
+      "date": "2026-03-11T19:46:07.905487",
+      "equity": 2970.61
+    },
+    {
+      "date": "2026-03-11T19:51:16.614026",
+      "equity": 2970.61
+    },
+    {
+      "date": "2026-03-11T19:56:07.813484",
+      "equity": 2970.61
+    },
+    {
+      "date": "2026-03-11T20:06:07.875638",
+      "equity": 2965.71
+    },
+    {
+      "date": "2026-03-11T20:16:09.813744",
+      "equity": 2958.66
+    },
+    {
+      "date": "2026-03-11T20:21:16.574273",
+      "equity": 2962.68
+    },
+    {
+      "date": "2026-03-11T20:26:07.859089",
+      "equity": 2961.58
+    },
+    {
+      "date": "2026-03-11T20:59:06.697881",
+      "equity": 2963.47
+    },
+    {
+      "date": "2026-03-11T21:04:44.832567",
+      "equity": 2962.8
+    },
+    {
+      "date": "2026-03-11T21:09:57.690548",
+      "equity": 2963.34
+    },
+    {
+      "date": "2026-03-11T21:14:44.917866",
+      "equity": 2959.87
+    },
+    {
+      "date": "2026-03-11T21:19:54.911544",
+      "equity": 2958.6
+    },
+    {
+      "date": "2026-03-11T21:24:45.000731",
+      "equity": 2958.6
+    },
+    {
+      "date": "2026-03-11T21:34:44.819465",
+      "equity": 2963.14
+    },
+    {
+      "date": "2026-03-12T00:24:29.341655",
+      "equity": 2959.86
+    },
+    {
+      "date": "2026-03-12T00:58:57.113671",
+      "equity": 2959.86
+    },
+    {
+      "date": "2026-03-12T01:16:25.170240",
+      "equity": 2959.86
+    },
+    {
+      "date": "2026-03-12T01:52:13.899828",
+      "equity": 2959.86
     }
   ],
-  "daily_pnl": -32.10001983642581,
-  "last_reset_date": "2026-03-11",
-  "total_trades": 2,
-  "winning_trades": 0,
-  "total_pnl": -32.10001983642581,
+  "daily_pnl": 0,
+  "last_reset_date": "2026-03-12",
+  "total_trades": 8,
+  "winning_trades": 3,
+  "total_pnl": -40.14001983642587,
   "peak_equity": 3006.2941307830806
 }

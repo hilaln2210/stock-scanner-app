@@ -1,0 +1,101 @@
+[
+  {
+    "time": "2026-03-12T00:15:19.260570",
+    "order_id": 16,
+    "ticker": "SOFI",
+    "action": "BUY",
+    "qty": 1.0,
+    "order_type": "LMT",
+    "limit_price": 18.8,
+    "status": "Filled",
+    "tif": "GTC"
+  },
+  {
+    "time": "2026-03-12T00:15:26.962097",
+    "order_id": 16,
+    "ticker": "SOFI",
+    "action": "SELL",
+    "qty": 1.0,
+    "order_type": "LMT",
+    "limit_price": 18.4,
+    "status": "Filled",
+    "tif": "GTC"
+  },
+  {
+    "time": "2026-03-12T00:19:49.735528",
+    "order_id": 20,
+    "ticker": "SOFI",
+    "action": "BUY",
+    "qty": 2.0,
+    "order_type": "LMT",
+    "limit_price": 18.8,
+    "status": "Filled",
+    "tif": "GTC"
+  },
+  {
+    "time": "2026-03-12T00:20:00.042723",
+    "order_id": 16,
+    "ticker": "SOFI",
+    "action": "SELL",
+    "qty": 2.0,
+    "order_type": "LMT",
+    "limit_price": 18.4,
+    "status": "Filled",
+    "tif": "GTC"
+  },
+  {
+    "time": "2026-03-12T01:47:32.610692",
+    "order_id": 20,
+    "ticker": "AAPL",
+    "action": "BUY",
+    "qty": 1.0,
+    "order_type": "MKT",
+    "limit_price": null,
+    "status": "PreSubmitted",
+    "tif": "DAY"
+  },
+  {
+    "time": "2026-03-12T01:48:13.050685",
+    "order_id": 4,
+    "ticker": "AAPL",
+    "action": "SELL",
+    "qty": 1.0,
+    "order_type": "MKT",
+    "limit_price": null,
+    "status": "PreSubmitted",
+    "tif": "DAY"
+  },
+  {
+    "time": "2026-03-12T02:08:46.261047",
+    "order_id": 24,
+    "ticker": "HIMS",
+    "action": "BUY",
+    "qty": 19,
+    "order_type": "MKT",
+    "limit_price": null,
+    "status": "PreSubmitted",
+    "tif": "DAY"
+  },
+  {
+    "time": "2026-03-12T02:08:49.706156",
+    "order_id": 4,
+    "ticker": "NBIS",
+    "action": "BUY",
+    "qty": 4,
+    "order_type": "MKT",
+    "limit_price": null,
+    "status": "PreSubmitted",
+    "tif": "DAY"
+  },
+  {
+    "time": "2026-03-12T02:08:52.695413",
+    "order_id": 4,
+    "ticker": "CF",
+    "action": "BUY",
+    "qty": 4,
+    "order_type": "MKT",
+    "limit_price": null,
+    "status": "PreSubmitted",
+    "tif": "DAY"
+  }
+]

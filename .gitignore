@@ -55,3 +55,4 @@ frontend/frontend.log
 # Runtime data (exclude cache/logs but keep portfolio JSONs)
 backend/data/*.log
 backend/data/market_regime.json
+.ib_credentials

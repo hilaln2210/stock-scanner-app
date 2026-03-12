@@ -1436,13 +1436,15 @@ async def arena_ib_trader_status():
 async def arena_ib_trader_enable(payload: dict = Body({})):
     """Enable Arena→IB live trader for a given strategy."""
     from app.services.arena_ib_trader import arena_ib_trader
-    strategy  = payload.get("strategy_name", "")
+    strategy  = payload.get("strategy_name", "__auto__")
     amount    = float(payload.get("trade_amount", 500.0))
     if not strategy:
         return {"error": "strategy_name חסר"}
-    from app.services.strategy_arena import STRATEGY_CONFIGS
-    if strategy not in STRATEGY_CONFIGS:
-        return {"error": f"אסטרטגיה לא קיימת: {strategy}"}
+    from app.services.arena_ib_trader import AUTO_FOLLOW
+    if strategy != AUTO_FOLLOW:
+        from app.services.strategy_arena import STRATEGY_CONFIGS
+        if strategy not in STRATEGY_CONFIGS:
+            return {"error": f"אסטרטגיה לא קיימת: {strategy}"}
     if not ib_service.is_connected():
         return {"error": "לא מחובר ל-IB Gateway — חבר קודם"}
     arena_ib_trader.enable(strategy, amount)
@@ -3416,7 +3418,8 @@ async def smart_portfolio_arena_think():
     from app.services.arena_ib_trader import arena_ib_trader
     if arena_ib_trader.enabled and ib_service.is_connected():
         await arena_ib_trader.process_arena_tick(
-            result.get("recent_events", []), ib_service
+            result.get("recent_events", []), ib_service,
+            leaderboard=result.get("leaderboard", []),
         )
 
     return result
