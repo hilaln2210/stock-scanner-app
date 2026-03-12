@@ -113,7 +113,8 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[Brain] Error: {e}")
 
-    scheduler.add_job(_smart_portfolio_tick, "interval", minutes=5, id="brain_job")
+    # Disabled — smart portfolio tab hidden to save resources
+    # scheduler.add_job(_smart_portfolio_tick, "interval", minutes=5, id="brain_job")
 
     # Arena — autonomous tick every 1 minute, all sessions (pre/regular/after)
     async def _arena_tick():
@@ -281,17 +282,17 @@ async def lifespan(app: FastAPI):
                       max_instances=1, coalesce=True)
     print("IB Auto-Reconnect: checks every 60s when arena trader is enabled")
 
-    # Pre-warm briefing cache in background
-    async def _prewarm_briefing():
-        import httpx
-        await asyncio.sleep(8)  # wait for server to fully start
-        try:
-            async with httpx.AsyncClient() as client:
-                await client.get("http://127.0.0.1:8000/api/briefing/daily", timeout=60)
-                print("Briefing cache pre-warmed.")
-        except Exception as e:
-            print(f"Briefing pre-warm failed: {e}")
-    asyncio.create_task(_prewarm_briefing())
+    # Disabled — briefing tab hidden to save resources
+    # async def _prewarm_briefing():
+    #     import httpx
+    #     await asyncio.sleep(8)
+    #     try:
+    #         async with httpx.AsyncClient() as client:
+    #             await client.get("http://127.0.0.1:8000/api/briefing/daily", timeout=60)
+    #             print("Briefing cache pre-warmed.")
+    #     except Exception as e:
+    #         print(f"Briefing pre-warm failed: {e}")
+    # asyncio.create_task(_prewarm_briefing())
 
     # Keep-alive self-ping — prevents Render free tier from sleeping (pings every 14 min)
     async def _keep_alive():

@@ -51,10 +51,11 @@ function getReasonFromTitle(title) {
 }
 
 // Tab definitions with accent hex colors for the active underline
+// Hidden tabs (disabled to save server resources):
+// { key: 'briefing',        label: '☀️ בריפינג',            accent: '#f59e0b' },
+// { key: 'smart-portfolio', label: '🧠 תיק חכם',            accent: '#818cf8' },
 const TABS = [
-  { key: 'briefing',        label: '☀️ בריפינג',            accent: '#f59e0b' },
   { key: 'arena',           label: '🏆 ארנה',                accent: '#fbbf24' },
-  { key: 'smart-portfolio', label: '🧠 תיק חכם',            accent: '#818cf8' },
   { key: 'fda',             label: '💊 FDA',                  accent: '#22c55e' },
   { key: 'tech-signals',    label: '📈 סיגנלים',             accent: '#6366f1' },
   { key: 'daily-analysis',  label: '🎯 ניתוח יומי',           accent: '#8b5cf6' },
