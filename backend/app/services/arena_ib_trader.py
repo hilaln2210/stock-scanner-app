@@ -251,9 +251,22 @@ class ArenaIBTrader:
             if not orders:
                 return
 
+            # ── Build a live price map from leaderboard ───────────────────────
+            live_prices: dict = {}
+            if leaderboard:
+                for s in leaderboard:
+                    for t, pos in (s.get("positions") or {}).items():
+                        cur = pos.get("current") or pos.get("entry_price") or pos.get("entry", 0)
+                        if cur and t not in live_prices:
+                            live_prices[t] = float(cur)
+
             # ── Execute orders ────────────────────────────────────────────────
             for action, ticker, qty, price, strategy, reason in orders:
                 try:
+                    # For SELL with price=0, use live price from leaderboard
+                    if action == "SELL" and price <= 0 and ticker in live_prices:
+                        price = live_prices[ticker]
+
                     result = await ib_svc.place_order(ticker, action, qty)
                     if result.get("error"):
                         print(f"[ArenaIB] {action} {ticker} failed: {result['error']}")
@@ -339,3 +352,151 @@ class ArenaIBTrader:
 
 
 arena_ib_trader = ArenaIBTrader()
+
+
+# ── Periodic Telegram Report ────────────────────────────────────────────────
+
+async def send_arena_report():
+    """
+    Comprehensive Telegram report:
+    - Arena leaderboard (all strategies, daily P&L)
+    - IB demo portfolio (positions, total P&L)
+    - What's working / what's not
+    - Smart suggestions to improve performance
+    """
+    try:
+        from app.services.strategy_arena import arena_singleton, get_session_type, STRATEGY_CONFIGS
+
+        session = get_session_type()
+        if session == "closed":
+            return
+
+        # ── Get arena status ─────────────────────────────────────────────────
+        arena_status = arena_singleton.get_status()
+        leaderboard  = arena_status.get("leaderboard", [])
+        week_start   = arena_status.get("week_start", "")
+        if not leaderboard:
+            return
+
+        # ── Arena leaderboard section ────────────────────────────────────────
+        medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣"]
+        lb_lines = []
+        for i, s in enumerate(leaderboard[:8]):
+            pnl     = s.get("pnl", 0)
+            pnl_pct = s.get("pnl_pct", 0)
+            name    = s.get("name", "?")
+            label   = STRATEGY_CONFIGS.get(name, {}).get("label", name)
+            pos_cnt = len(s.get("positions", {}))
+            sign    = "+" if pnl >= 0 else ""
+            medal   = medals[i] if i < len(medals) else "•"
+            lb_lines.append(
+                f"{medal} <b>{label}</b>  {sign}${pnl:.2f} ({sign}{pnl_pct:.1f}%)  [{pos_cnt} פוז׳]"
+            )
+
+        # ── Leader analysis ──────────────────────────────────────────────────
+        leader = leaderboard[0]
+        leader_name  = leader.get("name", "?")
+        leader_label = STRATEGY_CONFIGS.get(leader_name, {}).get("label", leader_name)
+        leader_pnl   = leader.get("pnl", 0)
+        leader_pct   = leader.get("pnl_pct", 0)
+        leader_wr    = leader.get("win_rate", 0)
+        leader_trades = leader.get("total_trades", 0)
+        leader_cfg   = STRATEGY_CONFIGS.get(leader_name, {})
+
+        # Weekly stats — sum all sell trades this week
+        week_pnl = 0.0
+        try:
+            for s in arena_singleton.portfolios.values():
+                for t in s.trades:
+                    if t.get("action") == "SELL" and t.get("time", "")[:10] >= week_start:
+                        week_pnl += t.get("pnl", 0)
+        except Exception:
+            pass
+
+        # ── IB demo section ──────────────────────────────────────────────────
+        state      = arena_ib_trader.get_state()
+        ib_pos     = state.get("ib_positions", {})
+        ib_pnl     = state.get("total_pnl", 0)
+        ib_trades  = state.get("total_trades", 0)
+        ib_enabled = state.get("enabled", False)
+        active_strat = state.get("active_strategy", "—")
+
+        ib_pos_lines = []
+        for ticker, p in ib_pos.items():
+            qty   = p.get("qty", 0)
+            entry = p.get("entry_price", 0)
+            cost  = qty * entry
+            ib_pos_lines.append(f"  • <b>{ticker}</b>  {qty}×${entry:.2f}  = ${cost:.0f}")
+
+        ib_status_icon = "🟢" if ib_enabled else "🔴"
+        ib_section = (
+            f"{ib_status_icon} <b>תיק דמו IB</b> — {active_strat}\n"
+            + (("\n".join(ib_pos_lines) + "\n") if ib_pos_lines else "  אין פוזיציות פתוחות\n")
+            + f"  P&amp;L סה&quot;כ: <b>${ib_pnl:+.2f}</b>  ({ib_trades} עסקאות נסגרו)"
+        )
+
+        # ── Smart suggestions ────────────────────────────────────────────────
+        suggestions = []
+
+        # Suggestion 1: leader win rate
+        if leader_wr < 40 and leader_trades >= 3:
+            suggestions.append(
+                f"⚠️ {leader_label} — win rate נמוך ({leader_wr:.0f}%). "
+                f"שקלי להעלות min_conf ל-{leader_cfg.get('min_conf', 30) + 5}"
+            )
+        elif leader_wr >= 65:
+            suggestions.append(
+                f"✅ {leader_label} — win rate חזק ({leader_wr:.0f}%). "
+                f"ניתן להגדיל trade_amount מ-$800 ל-$1,200"
+            )
+
+        # Suggestion 2: concentration
+        if len(ib_pos) == 0 and ib_enabled:
+            suggestions.append("📭 תיק IB ריק — האסטרטגיה עדיין לא מצאה כניסות. סשן נוכחי: " + session)
+
+        # Suggestion 3: leader momentum
+        if leader_pct > 3.0:
+            suggestions.append(
+                f"🚀 {leader_label} מובילה ב-{leader_pct:.1f}% — "
+                f"שקלי להגדיל חשיפה בחשבון האמיתי"
+            )
+        elif leader_pct < -2.0:
+            suggestions.append(
+                f"🔻 כל האסטרטגיות בירידה ({leader_pct:.1f}%). "
+                f"שקלי להמתין — אין כניסות חדשות"
+            )
+
+        # Suggestion 4: target_pct adjust
+        if leader_trades >= 5 and leader_wr >= 60:
+            cur_target = leader_cfg.get("target_pct", 20)
+            suggestions.append(
+                f"🎯 {leader_label} win rate {leader_wr:.0f}% על {leader_trades} עסקאות — "
+                f"ניתן להגדיל target_pct מ-{cur_target}% ל-{cur_target + 5}%"
+            )
+
+        # Suggestion 5: compare leader vs #2
+        if len(leaderboard) >= 2:
+            gap = leader_pct - leaderboard[1].get("pnl_pct", 0)
+            if gap > 5:
+                suggestions.append(
+                    f"📊 {leader_label} מובילה ב-{gap:.1f}% מעל המקום השני — עקביות חזקה"
+                )
+
+        sugg_text = "\n".join(suggestions) if suggestions else "✔️ הכל נראה תקין — אין המלצות דחופות"
+
+        # ── Assemble full report ─────────────────────────────────────────────
+        report = (
+            f"📊 <b>דוח ארנה — {session.upper()}</b>  (שבוע מ-{week_start})\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🏆 <b>לוח מובילים</b>\n"
+            + "\n".join(lb_lines) + "\n\n"
+            + ib_section + "\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            f"💡 <b>המלצות</b>\n{sugg_text}\n\n"
+            f"📅 P&amp;L שבועי (כל הארנה): <b>${week_pnl:+.2f}</b>"
+        )
+
+        await _tg(report)
+
+    except Exception as e:
+        print(f"[ArenaReport] Error: {e}")

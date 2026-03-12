@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo, lazy, Suspense } fro
 import { useQuery, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RefreshCw, Zap, Search } from 'lucide-react';
 import axios from 'axios';
-import FinvizTableScanner, { SmartPortfolioDashboard } from './components/FinvizTableScanner';
+import FinvizTableScanner from './components/FinvizTableScanner';
 const StrategyArena = lazy(() => import('./components/StrategyArena'));
 const AlertSystem = lazy(() => import('./components/AlertSystem'));
 
@@ -50,10 +50,50 @@ function getReasonFromTitle(title) {
   return null;
 }
 
+// Arena IB Trader status widget for the header
+function ArenaIBWidget() {
+  const { data } = useQuery({
+    queryKey: ['arenaIBStatus'],
+    queryFn: () => api.get('/ib/arena-trader/status').then(r => r.data),
+    refetchInterval: 30000,
+    staleTime: 20000,
+  });
+  if (!data) return null;
+  const pnl = data.total_pnl ?? 0;
+  const positions = Object.keys(data.ib_positions || {}).length;
+  const strategy = data.active_strategy || '—';
+  const connected = data.ib_connected;
+  const enabled = data.enabled;
+  const isLive = connected && enabled;
+  const pnlColor = pnl >= 0 ? '#4ade80' : '#f87171';
+  const borderColor = isLive ? 'rgba(74,222,128,0.3)' : 'rgba(248,113,113,0.3)';
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: '6px',
+      background: '#0f172a', border: `1px solid ${borderColor}`,
+      borderRadius: '8px', padding: '4px 10px', fontSize: '11px', color: '#94a3b8',
+      whiteSpace: 'nowrap',
+    }}>
+      <span style={{
+        fontSize: '9px', fontWeight: 700, letterSpacing: '0.05em',
+        color: isLive ? '#4ade80' : '#f87171',
+        background: isLive ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)',
+        padding: '1px 5px', borderRadius: '4px',
+      }}>
+        {isLive ? 'LIVE' : 'OFFLINE'}
+      </span>
+      <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{strategy}</span>
+      <span style={{ color: '#475569' }}>|</span>
+      <span style={{ color: pnlColor, fontWeight: 600 }}>{pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}</span>
+      <span style={{ color: '#475569' }}>|</span>
+      <span>{positions} פוז׳</span>
+    </div>
+  );
+}
+
 // Tab definitions with accent hex colors for the active underline
 // Hidden tabs (disabled to save server resources):
 // { key: 'briefing',        label: '☀️ בריפינג',            accent: '#f59e0b' },
-// { key: 'smart-portfolio', label: '🧠 תיק חכם',            accent: '#818cf8' },
 // { key: 'fda',             label: '💊 FDA',                  accent: '#22c55e' },
 // { key: 'news',            label: '📰 חדשות',               accent: '#3b82f6' },
 const TABS = [
@@ -237,6 +277,9 @@ function MomentumDashboard() {
           <span className="text-[10px] text-slate-500 hidden sm:inline" title="גרסה נוכחית">v2</span>
         </div>
 
+        {/* Arena IB status */}
+        <ArenaIBWidget />
+
         {/* Search — center */}
         <div className="relative flex-1 max-w-sm mx-auto">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2" size={13}
@@ -256,11 +299,6 @@ function MomentumDashboard() {
             onFocus={e => (e.target.style.borderColor = 'rgba(59,130,246,0.5)')}
             onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.06)')}
           />
-        </div>
-
-        {/* תיק דמו חכם — מיקום אסטרטגי בהדר, תמיד גלוי */}
-        <div className="shrink-0">
-          <SmartPortfolioDashboard placement="header" />
         </div>
 
         {/* Controls */}
@@ -679,8 +717,6 @@ function MomentumDashboard() {
                 <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 160px)' }}>
                   {viewMode === 'arena' ? (
                     <StrategyArena />
-                  ) : viewMode === 'smart-portfolio' ? (
-                    <SmartPortfolioDashboard placement="inline" />
                   ) : viewMode === 'fda' ? (
                     <FDACatalystTracker events={fdaData?.events || []} loading={fdaLoading} viewMode="fda" />
                   ) : viewMode === 'tech-signals' ? (
