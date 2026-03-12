@@ -1,10 +1,90 @@
 {
   "enabled": true,
   "strategy_name": "__auto__",
-  "active_strategy": "",
+  "active_strategy": "Scalper",
   "trade_amount": 500.0,
-  "seen_event_ids": [],
-  "ib_positions": {},
-  "trade_log": [],
-  "updated": "2026-03-12T02:20:00.000000"
+  "seen_event_ids": [
+    "Scalper-CF-2026-03-12T11:54:12",
+    "MomentumBreaker-HIMS-2026-03-12T11:25:43",
+    "SqueezeHunter-HIMS-2026-03-12T11:11:12",
+    "MomentumBreaker-CF-2026-03-12T11:54:12",
+    "Balanced-CF-2026-03-12T11:54:12"
+  ],
+  "ib_positions": {
+    "HIMS": {
+      "qty": 17,
+      "entry_price": 27.84,
+      "entry_time": "2026-03-12T11:25:46.478776",
+      "order_id": 28,
+      "strategy": "Scalper"
+    },
+    "NBIS": {
+      "qty": 4,
+      "entry_price": 108.5,
+      "entry_time": "2026-03-12T11:25:49.034286",
+      "order_id": 28,
+      "strategy": "Scalper"
+    },
+    "CF": {
+      "qty": 3,
+      "entry_price": 125.89,
+      "entry_time": "2026-03-12T11:54:44.965432",
+      "order_id": 4,
+      "strategy": "Scalper"
+    }
+  },
+  "trade_log": [
+    {
+      "action": "BUY",
+      "ticker": "HIMS",
+      "qty": 17,
+      "price": 27.84,
+      "time": "2026-03-12T11:25:46.478796",
+      "order_id": 28,
+      "strategy": "Scalper",
+      "reason": "sync"
+    },
+    {
+      "action": "BUY",
+      "ticker": "NBIS",
+      "qty": 4,
+      "price": 108.5,
+      "time": "2026-03-12T11:25:49.034299",
+      "order_id": 28,
+      "strategy": "Scalper",
+      "reason": "sync"
+    },
+    {
+      "action": "BUY",
+      "ticker": "CF",
+      "qty": 4,
+      "price": 118.15,
+      "time": "2026-03-12T11:25:51.722397",
+      "order_id": 28,
+      "strategy": "Scalper",
+      "reason": "sync"
+    },
+    {
+      "action": "SELL",
+      "ticker": "CF",
+      "qty": 4,
+      "price": 125.89,
+      "pnl": 30.96,
+      "time": "2026-03-12T11:54:14.902618",
+      "order_id": 4,
+      "strategy": "Scalper",
+      "reason": "event"
+    },
+    {
+      "action": "BUY",
+      "ticker": "CF",
+      "qty": 3,
+      "price": 125.89,
+      "time": "2026-03-12T11:54:44.965453",
+      "order_id": 4,
+      "strategy": "Scalper",
+      "reason": "sync"
+    }
+  ],
+  "updated": "2026-03-12T12:07:12.386338"
 }
