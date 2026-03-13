@@ -3688,10 +3688,12 @@ async def arena_hot_movers(min_chg: float = Query(15.0)):
             for src_key, dst_key in [
                 ('enterpriseValue',  '_yf_ev'),
                 ('marketCap',        '_yf_mc'),
-                ('netIncomeToCommon','_yf_net_income'),   # > 0 = profitable
-                ('totalRevenue',     '_yf_revenue'),      # for profit margin calc
-                ('revenueGrowth',    '_yf_rev_growth'),   # YoY e.g. 0.15 = +15%
-                ('trailingEps',      '_yf_eps'),          # > 0 = profitable (fallback)
+                ('netIncomeToCommon','_yf_net_income'),   # absolute net income
+                ('totalRevenue',     '_yf_revenue'),      # for margin calc fallback
+                ('revenueGrowth',    '_yf_rev_growth'),   # YoY growth e.g. 0.15 = +15%
+                ('trailingEps',      '_yf_eps'),          # per-share profit proxy
+                ('profitMargins',    '_yf_profit_margin'),# direct! e.g. 0.23 = 23% — best source
+                ('operatingMargins', '_yf_op_margin'),    # fallback for profit_margin
             ]:
                 v = info.get(src_key)
                 if v is not None:
@@ -3775,42 +3777,46 @@ async def arena_hot_movers(min_chg: float = Query(15.0)):
                 merged['ev_healthy'] = False
             # 4. EV cash-reason classification (only relevant when ev_below_mc=True)
             if merged.get('ev_below_mc'):
-                # Determine WHY the company has so much cash
-                # Priority: yfinance (precise) → Finviz income string
-                net_income = merged.get('_yf_net_income')
-                if net_income is None:
-                    # Finviz 'income' field (already in merged from Finviz fundamentals)
-                    net_income = _parse_fv_num(str(merged.get('income', '') or ''))
-                # Fallback: trailing EPS (positive = profitable)
-                if net_income is None:
-                    eps = merged.get('_yf_eps')
-                    if eps is not None:
-                        net_income = eps  # proxy: positive EPS → positive income
-                rev_growth = merged.get('_yf_rev_growth')  # float e.g. 0.15 = +15%
-                if net_income is not None and net_income > 0:
-                    # Compute profit margin to grade profitability
-                    revenue = merged.get('_yf_revenue') or _parse_fv_num(str(merged.get('sales', '') or ''))
-                    if revenue and revenue > 0:
+                # --- Profit margin (best source first) ---
+                pm = merged.get('_yf_profit_margin')
+                margin = pm if pm is not None else merged.get('_yf_op_margin')
+                # If no direct margin, compute from income / revenue
+                if margin is None:
+                    net_income = (
+                        merged.get('_yf_net_income')               # netIncomeToCommon
+                        or _parse_fv_num(str(merged.get('income', '') or ''))  # Finviz
+                        or merged.get('_yf_eps')                   # trailingEps as proxy
+                    )
+                    revenue = (
+                        merged.get('_yf_revenue')                  # totalRevenue
+                        or _parse_fv_num(str(merged.get('sales', '') or ''))   # Finviz
+                    )
+                    if net_income is not None and revenue and revenue > 0:
                         margin = net_income / revenue
-                        if margin > 0.20:
-                            merged['ev_cash_reason'] = 'profitable_strong'  # >20% margin → +4
-                        elif margin > 0.05:
-                            merged['ev_cash_reason'] = 'profitable'          # 5-20% margin → +3
-                        else:
-                            merged['ev_cash_reason'] = 'profitable_weak'     # 0-5% margin → +2
+                    elif net_income is not None:
+                        # revenue unknown — use sign of net_income only
+                        margin = 1.0 if net_income > 0 else -1.0  # sentinel: +/- direction
+
+                rev_growth = merged.get('_yf_rev_growth')
+
+                if margin is not None and margin > 0:
+                    if margin > 0.20:
+                        merged['ev_cash_reason'] = 'profitable_strong'  # >20% margin → +4
+                    elif margin > 0.05:
+                        merged['ev_cash_reason'] = 'profitable'          # 5-20% → +3
                     else:
-                        merged['ev_cash_reason'] = 'profitable'              # no revenue data → assume ok
-                elif net_income is not None and net_income < 0:
+                        merged['ev_cash_reason'] = 'profitable_weak'     # 0-5% → +2
+                elif margin is not None and margin < 0:
                     if rev_growth is None:
-                        merged['ev_cash_reason'] = 'unknown'  # no revenue data (pre-revenue) → 0
+                        merged['ev_cash_reason'] = 'unknown'             # no rev data → 0
                     elif rev_growth > 0.10:
-                        merged['ev_cash_reason'] = 'growing'  # burning cash but growing fast → +2
+                        merged['ev_cash_reason'] = 'growing'             # losing but scaling → +2
                     elif rev_growth < -0.15:
-                        merged['ev_cash_reason'] = 'distressed'  # declining rev → selling assets → -1
+                        merged['ev_cash_reason'] = 'distressed'          # declining rev → -1
                     else:
-                        merged['ev_cash_reason'] = 'stable'   # roughly flat revenue → +1
+                        merged['ev_cash_reason'] = 'stable'              # flat rev → +1
                 else:
-                    merged['ev_cash_reason'] = 'unknown'      # no income data → 0
+                    merged['ev_cash_reason'] = 'unknown'                 # no data at all → 0
             else:
                 merged['ev_cash_reason'] = None
             # 5. Strategy matching (uses enriched data with real rvol/short_float)
