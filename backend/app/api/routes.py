@@ -3988,6 +3988,13 @@ async def arena_hot_movers(min_chg: float = Query(5.0)):
                     'stop_pct':   int(stop_pct * 100),
                     'rr':         round(tgt_pct / stop_pct, 1),
                 }
+    # Keep strong_conviction only on the single best stock (highest pick_score)
+    conviction_stocks = [m for m in enriched if m.get('strong_conviction')]
+    if conviction_stocks:
+        best = max(conviction_stocks, key=lambda x: x.get('pick_score', 0))
+        for m in enriched:
+            if m.get('strong_conviction') and m is not best:
+                m['strong_conviction'] = False
     # Re-sort by pick_score so best appears first
     enriched.sort(key=lambda x: x.get('pick_score', 0), reverse=True)
 
