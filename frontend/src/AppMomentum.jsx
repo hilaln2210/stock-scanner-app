@@ -277,8 +277,7 @@ function MomentumDashboard() {
           <span className="text-[10px] text-slate-500 hidden sm:inline" title="גרסה נוכחית">v2</span>
         </div>
 
-        {/* Arena IB status */}
-        <ArenaIBWidget />
+        {/* Arena IB status — removed */}
 
         {/* Search — center */}
         <div className="relative flex-1 max-w-sm mx-auto">

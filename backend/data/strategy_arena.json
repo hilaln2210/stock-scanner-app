@@ -1,6 +1,6 @@
 {
   "week_start": "2026-03-09",
-  "current_day": "2026-03-12",
+  "current_day": "2026-03-13",
   "daily_history": [
     {
       "date": "2026-03-12",
@@ -21,41 +21,33 @@
   ],
   "weekly_winner": null,
   "weekly_winner_at": null,
-  "tick_count": 2981,
-  "last_tick": "2026-03-13T01:58:58.214236",
+  "tick_count": 4979,
+  "last_tick": "2026-03-13T22:30:46.557811",
   "portfolios": {
     "Balanced": {
       "name": "Balanced",
-      "cash": 172.26,
-      "equity": 1029.37,
-      "pnl": 29.37,
-      "pnl_pct": 2.94,
+      "cash": 7.69,
+      "equity": 1024.34,
+      "pnl": 24.34,
+      "pnl_pct": 2.43,
       "positions": {
-        "SMCI": {
-          "entry_price": 32.08,
-          "qty": 9,
-          "stop_loss": 30.8,
-          "target": 36.57,
-          "entry_time": "2026-03-11T17:24:08.025414",
-          "highest_price": 32.15,
-          "trailing_active": false
+        "HIMS": {
+          "entry_price": 24.38,
+          "qty": 21,
+          "stop_loss": 22.67,
+          "target": 28.77,
+          "entry_time": "2026-03-13T14:12:22.464188",
+          "highest_price": 24.79,
+          "trailing_active": false,
+          "session": "premarket"
         },
-        "NIO": {
-          "entry_price": 5.59,
-          "qty": 53,
-          "stop_loss": 5.37,
-          "target": 6.37,
-          "entry_time": "2026-03-11T17:26:05.128743",
-          "highest_price": 5.8,
-          "trailing_active": false
-        },
-        "CF": {
-          "entry_price": 132.34,
-          "qty": 2,
-          "stop_loss": 124.4,
-          "target": 156.16,
-          "entry_time": "2026-03-12T16:29:59.188504",
-          "highest_price": 136.91,
+        "NOK": {
+          "entry_price": 8.56,
+          "qty": 58,
+          "stop_loss": 8.05,
+          "target": 10.1,
+          "entry_time": "2026-03-13T15:39:13.344107",
+          "highest_price": 8.65,
           "trailing_active": false,
           "session": "regular"
         }
@@ -86,16 +78,42 @@
           "exit_time": "2026-03-12T16:29:59.188472",
           "was_partial": false,
           "session": "regular"
+        },
+        {
+          "ticker": "NIO",
+          "entry_price": 5.59,
+          "exit_price": 5.7,
+          "qty": 53,
+          "pnl": 5.83,
+          "pnl_pct": 1.97,
+          "reason": "Stale exit (2d < 2%)",
+          "entry_time": "2026-03-11T17:26:05.128743",
+          "exit_time": "2026-03-13T14:12:22.464107",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "SMCI",
+          "entry_price": 32.08,
+          "exit_price": 30.790000915527344,
+          "qty": 9,
+          "pnl": -11.61,
+          "pnl_pct": -4.02,
+          "reason": "Stale exit (2d < 2%)",
+          "entry_time": "2026-03-11T17:24:08.025414",
+          "exit_time": "2026-03-13T15:38:39.334244",
+          "was_partial": false,
+          "session": "regular"
         }
       ],
       "partial_taken": []
     },
     "HighConviction": {
       "name": "HighConviction",
-      "cash": 333.37,
-      "equity": 987.26,
-      "pnl": -12.74,
-      "pnl_pct": -1.27,
+      "cash": 507.87,
+      "equity": 1020.15,
+      "pnl": 20.15,
+      "pnl_pct": 2.01,
       "positions": {
         "BMBL": {
           "entry_price": 3.81,
@@ -103,18 +121,18 @@
           "stop_loss": 3.5,
           "target": 4.69,
           "entry_time": "2026-03-12T22:15:35.182099",
-          "highest_price": 3.81,
+          "highest_price": 3.95,
           "trailing_active": false,
           "session": "aftermarket"
         },
         "WOOF": {
           "entry_price": 3.23,
-          "qty": 101,
-          "stop_loss": 2.97,
+          "qty": 51,
+          "stop_loss": 3.44,
           "target": 3.97,
           "entry_time": "2026-03-12T22:15:40.846352",
-          "highest_price": 3.23,
-          "trailing_active": false,
+          "highest_price": 3.78,
+          "trailing_active": true,
           "session": "aftermarket"
         }
       },
@@ -144,9 +162,25 @@
           "exit_time": "2026-03-12T22:15:30.908572",
           "was_partial": false,
           "session": "regular"
+        },
+        {
+          "ticker": "WOOF",
+          "entry_price": 3.23,
+          "exit_price": 3.49,
+          "qty": 50,
+          "pnl": 13.0,
+          "pnl_pct": 8.05,
+          "reason": "Partial TP1 +8%",
+          "entry_time": "2026-03-12T22:15:40.846352",
+          "exit_time": "2026-03-13T17:48:05.511372",
+          "was_partial": true,
+          "session": "aftermarket"
         }
       ],
-      "partial_taken": []
+      "partial_taken": [
+        "_tp1_WOOF",
+        "WOOF"
+      ]
     },
     "SqueezeHunter": {
       "name": "SqueezeHunter",
@@ -171,7 +205,7 @@
           "stop_loss": 77.48,
           "target": 102.41,
           "entry_time": "2026-03-12T22:15:40.846407",
-          "highest_price": 83.94,
+          "highest_price": 84.75,
           "trailing_active": false,
           "session": "aftermarket"
         }
@@ -325,30 +359,11 @@
     },
     "Scalper": {
       "name": "Scalper",
-      "cash": 257.29,
-      "equity": 1035.82,
-      "pnl": 35.82,
-      "pnl_pct": 3.58,
+      "cash": 251.32,
+      "equity": 991.94,
+      "pnl": -8.06,
+      "pnl_pct": -0.81,
       "positions": {
-        "HIMS": {
-          "entry_price": 26.31,
-          "qty": 11,
-          "stop_loss": 25.65,
-          "target": 28.15,
-          "entry_time": "2026-03-11T17:24:08.025503",
-          "highest_price": 27.95,
-          "trailing_active": false
-        },
-        "NBIS": {
-          "entry_price": 108.5,
-          "qty": 2,
-          "stop_loss": 105.79,
-          "target": 115.01,
-          "entry_time": "2026-03-11T17:50:52.053222",
-          "highest_price": 112.07,
-          "trailing_active": false,
-          "session": "regular"
-        },
         "CF": {
           "entry_price": 125.89,
           "qty": 2,
@@ -357,6 +372,16 @@
           "entry_time": "2026-03-12T11:54:12.429619",
           "highest_price": 136.91,
           "trailing_active": true,
+          "session": "premarket"
+        },
+        "KYIV": {
+          "entry_price": 11.11,
+          "qty": 44,
+          "stop_loss": 10.33,
+          "target": 13.33,
+          "entry_time": "2026-03-13T14:13:06.208553",
+          "highest_price": 11.87,
+          "trailing_active": false,
           "session": "premarket"
         }
       },
@@ -373,45 +398,61 @@
           "exit_time": "2026-03-12T11:54:12.429589",
           "was_partial": false,
           "session": "regular"
+        },
+        {
+          "ticker": "HIMS",
+          "entry_price": 26.31,
+          "exit_price": 23.97,
+          "qty": 11,
+          "pnl": -25.74,
+          "pnl_pct": -8.89,
+          "reason": "Stop loss",
+          "entry_time": "2026-03-11T17:24:08.025503",
+          "exit_time": "2026-03-13T12:10:55.701942",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "NBIS",
+          "entry_price": 108.5,
+          "exit_price": 109.6,
+          "qty": 2,
+          "pnl": 2.2,
+          "pnl_pct": 1.01,
+          "reason": "Stale exit (2d < 2%)",
+          "entry_time": "2026-03-11T17:50:52.053222",
+          "exit_time": "2026-03-13T14:13:06.208509",
+          "was_partial": false,
+          "session": "regular"
         }
       ],
       "partial_taken": []
     },
     "MomentumBreaker": {
       "name": "MomentumBreaker",
-      "cash": 346.56,
-      "equity": 1015.13,
-      "pnl": 15.13,
-      "pnl_pct": 1.51,
+      "cash": 36.49,
+      "equity": 1024.89,
+      "pnl": 24.89,
+      "pnl_pct": 2.49,
       "positions": {
-        "NBIS": {
-          "entry_price": 108.5,
-          "qty": 2,
-          "stop_loss": 104.7,
-          "target": 119.35,
-          "entry_time": "2026-03-11T17:51:12.415753",
-          "highest_price": 112.07,
-          "trailing_active": false,
-          "session": "regular"
-        },
-        "FLY": {
-          "entry_price": 24.27,
-          "qty": 13,
-          "stop_loss": 22.81,
-          "target": 28.15,
-          "entry_time": "2026-03-12T14:43:55.492332",
-          "highest_price": 24.82,
+        "HIMS": {
+          "entry_price": 24.4,
+          "qty": 20,
+          "stop_loss": 22.94,
+          "target": 28.3,
+          "entry_time": "2026-03-13T14:13:06.208624",
+          "highest_price": 24.79,
           "trailing_active": false,
           "session": "premarket"
         },
-        "CF": {
-          "entry_price": 130.37,
-          "qty": 1,
-          "stop_loss": 132.8,
-          "target": 151.23,
-          "entry_time": "2026-03-12T15:40:31.238122",
-          "highest_price": 136.91,
-          "trailing_active": true,
+        "FLY": {
+          "entry_price": 24.65,
+          "qty": 20,
+          "stop_loss": 23.42,
+          "target": 28.59,
+          "entry_time": "2026-03-13T15:32:19.498133",
+          "highest_price": 25.2,
+          "trailing_active": false,
           "session": "regular"
         }
       },
@@ -493,18 +534,42 @@
           "exit_time": "2026-03-12T20:54:45.615240",
           "was_partial": true,
           "session": "regular"
+        },
+        {
+          "ticker": "NBIS",
+          "entry_price": 108.5,
+          "exit_price": 109.6,
+          "qty": 2,
+          "pnl": 2.2,
+          "pnl_pct": 1.01,
+          "reason": "Stale exit (2d < 2%)",
+          "entry_time": "2026-03-11T17:51:12.415753",
+          "exit_time": "2026-03-13T14:13:06.208582",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "FLY",
+          "entry_price": 24.27,
+          "exit_price": 24.72,
+          "qty": 13,
+          "pnl": 5.85,
+          "pnl_pct": 1.85,
+          "reason": "Stale exit (2d < 2%)",
+          "entry_time": "2026-03-12T14:43:55.492332",
+          "exit_time": "2026-03-13T15:30:53.122263",
+          "was_partial": false,
+          "session": "premarket"
         }
       ],
-      "partial_taken": [
-        "CF"
-      ]
+      "partial_taken": []
     },
     "SwingSetup": {
       "name": "SwingSetup",
-      "cash": 0.74,
-      "equity": 968.16,
-      "pnl": -31.84,
-      "pnl_pct": -3.18,
+      "cash": 213.06,
+      "equity": 1022.73,
+      "pnl": 22.73,
+      "pnl_pct": 2.27,
       "positions": {
         "BMBL": {
           "entry_price": 3.81,
@@ -512,28 +577,18 @@
           "stop_loss": 3.34,
           "target": 6.27,
           "entry_time": "2026-03-12T22:15:35.182207",
-          "highest_price": 3.81,
+          "highest_price": 3.95,
           "trailing_active": false,
           "session": "aftermarket"
         },
         "WOOF": {
           "entry_price": 3.23,
-          "qty": 149,
-          "stop_loss": 2.83,
+          "qty": 90,
+          "stop_loss": 3.29,
           "target": 5.31,
           "entry_time": "2026-03-12T22:15:40.846449",
-          "highest_price": 3.23,
-          "trailing_active": false,
-          "session": "aftermarket"
-        },
-        "KOS": {
-          "entry_price": 2.28,
-          "qty": 1,
-          "stop_loss": 2.06,
-          "target": 3.08,
-          "entry_time": "2026-03-13T01:46:20.553361",
-          "highest_price": 2.28,
-          "trailing_active": false,
+          "highest_price": 3.78,
+          "trailing_active": true,
           "session": "aftermarket"
         }
       },
@@ -680,16 +735,32 @@
           "exit_time": "2026-03-12T22:15:30.908617",
           "was_partial": false,
           "session": "regular"
+        },
+        {
+          "ticker": "WOOF",
+          "entry_price": 3.23,
+          "exit_price": 3.56,
+          "qty": 59,
+          "pnl": 19.47,
+          "pnl_pct": 10.22,
+          "reason": "Partial TP1 +10%",
+          "entry_time": "2026-03-12T22:15:40.846449",
+          "exit_time": "2026-03-13T17:54:40.762530",
+          "was_partial": true,
+          "session": "aftermarket"
         }
       ],
-      "partial_taken": []
+      "partial_taken": [
+        "_tp1_WOOF",
+        "WOOF"
+      ]
     },
     "SeasonalityTrader": {
       "name": "SeasonalityTrader",
-      "cash": 4.55,
-      "equity": 1004.66,
-      "pnl": 4.66,
-      "pnl_pct": 0.47,
+      "cash": 4.71,
+      "equity": 966.8,
+      "pnl": -33.2,
+      "pnl_pct": -3.32,
       "positions": {
         "BMBL": {
           "entry_price": 3.79,
@@ -697,18 +768,18 @@
           "stop_loss": 3.41,
           "target": 6.06,
           "entry_time": "2026-03-12T19:53:27.304480",
-          "highest_price": 3.89,
+          "highest_price": 3.95,
           "trailing_active": false,
           "session": "regular"
         },
-        "WTI": {
-          "entry_price": 3.33,
-          "qty": 147,
-          "stop_loss": 3.39,
-          "target": 5.33,
-          "entry_time": "2026-03-12T19:53:49.447702",
-          "highest_price": 3.49,
-          "trailing_active": true,
+        "BTDR": {
+          "entry_price": 8.02,
+          "qty": 59,
+          "stop_loss": 7.22,
+          "target": 12.83,
+          "entry_time": "2026-03-13T16:04:17.576897",
+          "highest_price": 8.03,
+          "trailing_active": false,
           "session": "regular"
         }
       },
@@ -764,6 +835,19 @@
           "exit_time": "2026-03-12T19:44:38.423460",
           "was_partial": false,
           "session": "regular"
+        },
+        {
+          "ticker": "WTI",
+          "entry_price": 3.33,
+          "exit_price": 3.22,
+          "qty": 147,
+          "pnl": -16.17,
+          "pnl_pct": -3.3,
+          "reason": "Trailing stop",
+          "entry_time": "2026-03-12T19:53:49.447702",
+          "exit_time": "2026-03-13T16:04:17.576805",
+          "was_partial": false,
+          "session": "regular"
         }
       ],
       "partial_taken": []
@@ -781,7 +865,7 @@
           "stop_loss": 77.39,
           "target": 100.31,
           "entry_time": "2026-03-12T22:15:35.182263",
-          "highest_price": 83.94,
+          "highest_price": 84.75,
           "trailing_active": false,
           "session": "aftermarket"
         },
@@ -850,6 +934,68 @@
           "session": "regular"
         }
       ],
+      "partial_taken": []
+    },
+    "GapScanner": {
+      "name": "GapScanner",
+      "cash": 9.43,
+      "equity": 1000.0,
+      "pnl": 0.0,
+      "pnl_pct": 0.0,
+      "positions": {
+        "KYIV": {
+          "entry_price": 11.36,
+          "qty": 44,
+          "stop_loss": 10.34,
+          "target": 14.77,
+          "entry_time": "2026-03-13T14:24:44.146674",
+          "highest_price": 11.87,
+          "trailing_active": false,
+          "session": "premarket"
+        },
+        "KLAR": {
+          "entry_price": 15.83,
+          "qty": 31,
+          "stop_loss": 14.56,
+          "target": 20.58,
+          "entry_time": "2026-03-13T15:27:43.392803",
+          "highest_price": 16.64,
+          "trailing_active": false,
+          "session": "regular"
+        }
+      },
+      "trades": [],
+      "partial_taken": []
+    },
+    "GapExplosion": {
+      "name": "GapExplosion",
+      "cash": 21.2,
+      "equity": 1000.0,
+      "pnl": 0.0,
+      "pnl_pct": 0.0,
+      "positions": {
+        "TOI": {
+          "entry_price": 3.34,
+          "qty": 149,
+          "stop_loss": 2.94,
+          "target": 5.34,
+          "entry_time": "2026-03-13T15:42:58.392410",
+          "highest_price": 3.38,
+          "trailing_active": false,
+          "session": "regular"
+        },
+        "NP": {
+          "entry_price": 21.87,
+          "qty": 22,
+          "stop_loss": 18.92,
+          "target": 34.99,
+          "entry_time": "2026-03-13T22:22:28.103665",
+          "highest_price": 21.87,
+          "trailing_active": false,
+          "session": "aftermarket"
+        }
+      },
+      "trades": [],
       "partial_taken": []
     }
   }
