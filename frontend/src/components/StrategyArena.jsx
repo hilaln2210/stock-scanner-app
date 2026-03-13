@@ -597,18 +597,26 @@ function HotMovers() {
           const c30 = m.chg_30m;
           const c1h = m.chg_1h;
           const health = m.health || {};
-          const borderColor = health.color || '#374151';
+          const isTop = m.top_pick;
+          const borderColor = isTop ? '#fbbf24' : (health.color || '#374151');
           const sfloat = typeof m.short_float === 'number' ? m.short_float : parseFloat(m.short_float) || 0;
           const rvol = typeof m.rel_volume === 'number' ? m.rel_volume : parseFloat(m.rel_volume) || 0;
           return (
             <div key={m.ticker} style={{
-              background: 'rgba(17,24,39,0.9)',
-              border: `1.5px solid ${borderColor}`,
+              background: isTop ? 'rgba(251,191,36,0.07)' : 'rgba(17,24,39,0.9)',
+              border: `${isTop ? '2px' : '1.5px'} solid ${borderColor}`,
               borderRadius: 8,
               padding: '8px 12px',
               minWidth: 155,
               maxWidth: 200,
+              boxShadow: isTop ? '0 0 14px rgba(251,191,36,0.25)' : 'none',
             }}>
+              {/* Top pick crown badge */}
+              {isTop && (
+                <div style={{ fontSize: 9, fontWeight: 700, color: '#fbbf24', marginBottom: 3, letterSpacing: 0.5 }}>
+                  👑 TOP PICK
+                </div>
+              )}
               {/* Row 1: ticker + day% */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
                 <span style={{ fontWeight: 800, fontSize: 14, color: '#f9fafb' }}>{m.ticker}</span>

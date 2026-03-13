@@ -3453,6 +3453,86 @@ def _health_label(stock: dict) -> dict:
     return {'label': '🟡 ניטרלי', 'color': '#fbbf24'}
 
 
+_STRATEGY_SCORE = {
+    'GapExplosion': 6, 'SeasonalityTrader': 5, 'SwingSetup': 4, 'SqueezeHunter': 4,
+    'PatternTrader': 3, 'GapScanner': 3, 'MomentumBreaker': 2, 'Scalper': 1,
+    'HighConviction': 1, 'Balanced': 0,
+}
+
+
+def _pick_score(stock: dict) -> float:
+    """
+    Composite score for ranking hot movers.
+    Higher = more recommended.
+    """
+    score = 0.0
+
+    # 1. Strategy specificity (name lookup)
+    top_name = None
+    chg     = _safe_float(stock.get('change_pct'))
+    rvol    = _safe_float(stock.get('rel_volume'))
+    price   = _safe_float(stock.get('price'))
+    short_f = _safe_float(stock.get('short_float'))
+    float_sh = _safe_float(stock.get('float_shares'))
+    if float_sh > 0 and float_sh < 1000:
+        float_sh *= 1_000_000
+    for name, cfg in _ARENA_STRATEGY_CONFIGS.items():
+        if chg < (cfg.get('requires_min_chg') or 0):
+            continue
+        sf_req = cfg.get('requires_short_float')
+        if sf_req and (short_f <= 0 or short_f < sf_req):
+            continue
+        fs_max = cfg.get('requires_float_shares_max')
+        if fs_max and float_sh > 0 and float_sh > fs_max:
+            continue
+        min_p, max_p = cfg.get('min_price', 0), cfg.get('max_price', 99999)
+        if price > 0 and not (min_p <= price <= max_p):
+            continue
+        min_gap = cfg.get('min_gap_pct')
+        if min_gap and chg < min_gap:
+            continue
+        if top_name is None or _STRATEGY_SCORE.get(name, 0) > _STRATEGY_SCORE.get(top_name, 0):
+            top_name = name
+    score += _STRATEGY_SCORE.get(top_name, 0) * 1.5
+
+    # 2. Health bonus
+    h = stock.get('health', {}).get('label', '')
+    if '🟢' in h:
+        score += 3
+    elif '🟡' in h:
+        score += 1
+    elif '🟠' in h:
+        score += 0
+    else:  # red
+        score -= 1
+
+    # 3. Short float (squeeze fuel) — capped at 3
+    if short_f >= 20:
+        score += 3
+    elif short_f >= 10:
+        score += 2
+    elif short_f >= 5:
+        score += 1
+
+    # 4. Rel volume — best in 2x–30x range (penny stocks at 1000x are noise)
+    if 2 <= rvol <= 30:
+        score += min(rvol / 10, 2)
+    elif rvol > 30:
+        score += 0.5  # still bullish but less reliable
+
+    # 5. Continued 30m momentum
+    c30 = stock.get('chg_30m')
+    c1h = stock.get('chg_1h')
+    if c30 is not None and c30 > 1:
+        score += 2
+    elif c30 is not None and c30 > 0:
+        score += 1
+    if c1h is not None and c1h > 1:
+        score += 1
+
+    return round(score, 2)
+
+
 async def _scrape_hot_movers(min_chg: float) -> list:
     """
     Dedicated Finviz scan for stocks up min_chg%+ today.
@@ -3601,9 +3681,18 @@ async def arena_hot_movers(min_chg: float = Query(15.0)):
             merged['top_strategy'] = top_strat
             # 4. Health label
             merged['health'] = _health_label(merged)
+            # 5. Pick score (computed after health is set)
+            merged['pick_score'] = _pick_score(merged)
             return merged
 
-    enriched = await asyncio.gather(*[_enrich(s) for s in top])
+    enriched = list(await asyncio.gather(*[_enrich(s) for s in top]))
+    # Mark the highest-scoring mover as top pick
+    if enriched:
+        best = max(enriched, key=lambda x: x.get('pick_score', 0))
+        for m in enriched:
+            m['top_pick'] = (m is best)
+    # Re-sort by pick_score so best appears first
+    enriched.sort(key=lambda x: x.get('pick_score', 0), reverse=True)
 
     result = {
         'movers': enriched,
