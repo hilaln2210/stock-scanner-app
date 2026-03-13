@@ -3669,7 +3669,7 @@ async def _scrape_hot_movers(min_chg: float) -> list:
                 {'v': '111', 'f': perf_filter, 'o': '-changeopen', 'r': str(r)},
                 'hot-movers',
             )
-            for r in [1, 21]
+            for r in [1, 21, 41, 61, 81]
         ], return_exceptions=True)
         seen = set()
         for page in pages:
@@ -3717,7 +3717,14 @@ async def _scrape_hot_movers(min_chg: float) -> list:
                         'market_cap': s.get('market_cap', ''),
                     })
 
-    result = sorted(raw_stocks, key=lambda x: x['change_pct'], reverse=True)
+    # Pre-sort by momentum signal (change × rel_volume) so top-25 slice
+    # includes strong 5-10% movers, not just the biggest % gainers
+    def _prescore(s):
+        chg  = s.get('change_pct') or 0
+        rvol = s.get('rel_volume') or 1
+        # cap rvol at 20 (penny stocks can have 1000x noise)
+        return chg * min(float(rvol), 20)
+    result = sorted(raw_stocks, key=_prescore, reverse=True)
     # Keep a lightweight raw copy so arena think() can inject these micro-caps
     global _HOT_MOVERS_RAW_CACHE, _HOT_MOVERS_RAW_CACHE_TIME
     if result:
@@ -3730,7 +3737,7 @@ async def _scrape_hot_movers(min_chg: float) -> list:
 async def arena_hot_movers(min_chg: float = Query(5.0)):
     """
     Stocks up min_chg%+ today with intraday momentum (30m + 1h change).
-    Runs a dedicated Finviz scan (ta_perf_d15o) — catches small-cap runners too.
+    Runs a dedicated Finviz scan (ta_perf_d5o) — catches small-cap runners too.
     Cached 90 seconds.
     """
     global _HOT_MOVERS_CACHE, _HOT_MOVERS_CACHE_TIME
@@ -3749,8 +3756,15 @@ async def arena_hot_movers(min_chg: float = Query(5.0)):
     if not candidates:
         return {'movers': [], 'count': 0, 'min_chg': min_chg}  # don't cache empty
 
-    # Take top 10 for intraday enrichment (already sorted by _scrape_hot_movers)
-    top = candidates[:10]
+    # Top 20 by momentum prescore + up to 8 "discovery" slots (5–12% range, sorted by rvol)
+    # This ensures lower-change but high-volume movers appear alongside the big runners
+    seen_top = {c['ticker'] for c in candidates[:20]}
+    discovery = [
+        c for c in candidates
+        if c['ticker'] not in seen_top and (c.get('change_pct') or 0) < 12
+    ]
+    discovery_sorted = sorted(discovery, key=lambda x: float(x.get('rel_volume') or 0), reverse=True)
+    top = candidates[:20] + discovery_sorted[:8]
 
     # Fetch intraday momentum in parallel (max 3 concurrent)
     import yfinance as _yf2
