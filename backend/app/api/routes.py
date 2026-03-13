@@ -3786,18 +3786,18 @@ async def arena_hot_movers(min_chg: float = Query(15.0)):
                         net_income = eps  # proxy: positive EPS → positive income
                 rev_growth = merged.get('_yf_rev_growth')  # float e.g. 0.15 = +15%
                 if net_income is not None and net_income > 0:
-                    # Cash from operations → genuinely cash-rich, strong squeeze fuel
-                    merged['ev_cash_reason'] = 'profitable'
+                    merged['ev_cash_reason'] = 'profitable'   # cash from operations → +3
                 elif net_income is not None and net_income < 0:
-                    if rev_growth is not None and rev_growth < -0.05:
-                        # Losing money AND revenue actually declining → selling assets to survive
-                        merged['ev_cash_reason'] = 'distressed'
+                    if rev_growth is None:
+                        merged['ev_cash_reason'] = 'unknown'  # no revenue data (pre-revenue) → 0
+                    elif rev_growth > 0.10:
+                        merged['ev_cash_reason'] = 'growing'  # burning cash but growing fast → +2
+                    elif rev_growth < -0.15:
+                        merged['ev_cash_reason'] = 'distressed'  # declining rev → selling assets → -1
                     else:
-                        # Losing money but revenue stable/growing or pre-revenue (biotech etc.)
-                        # → cash from capital raise, investing for growth
-                        merged['ev_cash_reason'] = 'raised'
+                        merged['ev_cash_reason'] = 'stable'   # roughly flat revenue → +1
                 else:
-                    merged['ev_cash_reason'] = 'raised'  # unknown → neutral
+                    merged['ev_cash_reason'] = 'unknown'      # no income data → 0
             else:
                 merged['ev_cash_reason'] = None
             # 5. Strategy matching (uses enriched data with real rvol/short_float)
@@ -3810,7 +3810,7 @@ async def arena_hot_movers(min_chg: float = Query(15.0)):
             merged['pick_score'] = _pick_score(merged)
             if merged.get('ev_below_mc'):
                 reason = merged.get('ev_cash_reason')
-                bonus = 3 if reason == 'profitable' else 1 if reason == 'raised' else -1
+                bonus = {'profitable': 3, 'growing': 2, 'stable': 1, 'unknown': 0, 'distressed': -1}.get(reason, 0)
                 merged['pick_score'] = round(merged['pick_score'] + bonus, 2)
             return merged
 

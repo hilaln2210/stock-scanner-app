@@ -642,7 +642,7 @@ function HotMovers() {
                     <span>
                       EV: <span style={{
                         color: m.ev_below_mc
-                          ? (m.ev_cash_reason === 'distressed' ? '#fb923c' : m.ev_cash_reason === 'raised' ? '#94a3b8' : '#4ade80')
+                          ? ({ profitable:'#4ade80', growing:'#a78bfa', stable:'#94a3b8', distressed:'#fb923c', unknown:'#64748b' }[m.ev_cash_reason] || '#94a3b8')
                           : m.ev_healthy ? '#60a5fa' : '#d1d5db',
                         fontWeight: (m.ev_below_mc || m.ev_healthy) ? 700 : 400,
                       }}>
@@ -652,17 +652,24 @@ function HotMovers() {
                   )}
                   {m.ev_below_mc && (() => {
                     const reason = m.ev_cash_reason;
-                    const cfg = reason === 'profitable'
-                      ? { bg: 'rgba(74,222,128,0.18)', color: '#4ade80', border: 'rgba(74,222,128,0.45)',
-                          label: '💰 EV < MC ✓',
-                          tip: 'EV < MC + רווחית — מזומן מצטבר מפעילות. שורט סקוויז חזק במיוחד.' }
-                      : reason === 'distressed'
-                      ? { bg: 'rgba(251,146,60,0.15)', color: '#fb923c', border: 'rgba(251,146,60,0.4)',
-                          label: '⚠️ EV < MC',
-                          tip: 'EV < MC אך הפסדית + הכנסות יורדות — מזומן כנראה ממכירת נכסים. סיגנל חלש.' }
-                      : { bg: 'rgba(148,163,184,0.12)', color: '#94a3b8', border: 'rgba(148,163,184,0.35)',
-                          label: '💰 EV < MC ~',
-                          tip: 'EV < MC — הפסדית אך צומחת, כנראה כסף מגיוס. ניטרלי.' };
+                    const REASON_CFG = {
+                      profitable: { bg: 'rgba(74,222,128,0.18)',  color: '#4ade80', border: 'rgba(74,222,128,0.45)',
+                                    label: '💰 EV < MC ✓',
+                                    tip: 'EV < MC + רווחית — מזומן מצטבר מפעילות. שורט סקוויז חזק במיוחד.' },
+                      growing:    { bg: 'rgba(139,92,246,0.15)',  color: '#a78bfa', border: 'rgba(139,92,246,0.4)',
+                                    label: '🚀 EV < MC ↑',
+                                    tip: 'EV < MC + הפסדית אך הכנסות צומחות >10% — שורפת כסף לצמיחה. סיגנל חיובי.' },
+                      stable:     { bg: 'rgba(148,163,184,0.12)', color: '#94a3b8', border: 'rgba(148,163,184,0.35)',
+                                    label: '💰 EV < MC',
+                                    tip: 'EV < MC + הכנסות יציבות — כנראה כסף מגיוס. ניטרלי.' },
+                      distressed: { bg: 'rgba(251,146,60,0.15)',  color: '#fb923c', border: 'rgba(251,146,60,0.4)',
+                                    label: '⚠️ EV < MC',
+                                    tip: 'EV < MC אך הכנסות יורדות >15% — מזומן ממכירת נכסים? סיגנל חלש.' },
+                      unknown:    { bg: 'rgba(100,116,139,0.12)', color: '#64748b', border: 'rgba(100,116,139,0.3)',
+                                    label: '❓ EV < MC',
+                                    tip: 'EV < MC — אין מידע על הכנסות (חברה pre-revenue?). לא ניתן לסווג.' },
+                    };
+                    const cfg = REASON_CFG[reason] || REASON_CFG.unknown;
                     return (
                       <span title={cfg.tip} style={{
                         fontSize: 9, padding: '1px 5px', borderRadius: 4,
