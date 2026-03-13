@@ -672,39 +672,55 @@ async def lifespan(app: FastAPI):
         if not picks:
             return
 
-        lines = ['🔥 <b>Hot Movers — Top Candidates</b>']
+        _EV_REASON_HE = {
+            'profitable_strong':      'רווחית מאוד — EV נמוך ממחיר השוק',
+            'profitable':             'רווחית — EV נמוך ממחיר השוק',
+            'profitable_weak':        'רווחית בקושי — EV נמוך ממחיר השוק',
+            'breakeven_cash':         'איזון — יש מזומן עודף',
+            'growing':                'גדלה — הכנסות עולות, עדיין בהפסד',
+            'stable_cash':            'יציבה — יש מזומן עודף',
+            'breakeven':              'איזון — הוצאות = הכנסות',
+            'stable':                 'יציבה — הכנסות לא גדלות',
+            'profitable_strong_debt': 'רווחית מאוד — אבל יש חוב',
+            'profitable_debt':        'רווחית — אבל יש חוב',
+            'profitable_weak_debt':   'רווחית בקושי + חוב גבוה',
+            'losing_debt':            'מפסידה + חוב גבוה ⚠️',
+            'distressed_debt':        'מצוקה פיננסית + חוב גבוה 🔴',
+            'distressed':             'הכנסות נמוכות + הפסד גדול ⚠️',
+            'cash_unknown':           'EV נמוך ממחיר השוק — אין מספיק מידע',
+        }
+        lines = ['🔥 <b>מניות חמות — המלצה עכשיו</b>']
         for m, tier in picks:
             ticker  = m['ticker']
             chg     = m.get('change_pct', 0)
-            score   = m.get('pick_score', 0)
             reason  = m.get('ev_cash_reason') or ''
-            ev_line = f"EV: {m['enterprise_value']}  MC: {m['market_cap_str']}" if m.get('enterprise_value') else ''
             strat   = m.get('top_strategy') or ''
             c30     = m.get('chg_30m')
             c1h     = m.get('chg_1h')
             price   = m.get('price', '')
             sf      = _pf(m.get('short_float'))
             rvol    = _pf(m.get('rel_volume'))
-            sf_str   = f"Short {sf:.0f}%" if sf else ''
-            rvol_str = f"Vol {rvol:.1f}x" if rvol else ''
+
+            reason_he = _EV_REASON_HE.get(reason, '')
+            sf_str   = f"שורט {sf:.0f}%" if sf else ''
+            rvol_str = f"נפח פי {rvol:.0f}x" if rvol else ''
             mom_str  = ''
             if c30 is not None and c1h is not None:
-                mom_str = f"30m {c30:+.1f}%  1h {c1h:+.1f}%"
+                mom_str = f"30 דק' {c30:+.1f}%  |  שעה {c1h:+.1f}%"
             elif c30 is not None:
-                mom_str = f"30m {c30:+.1f}%"
+                mom_str = f"30 דק' {c30:+.1f}%"
 
-            meta = '  '.join(filter(None, [sf_str, rvol_str]))
+            meta = '  |  '.join(filter(None, [sf_str, rvol_str]))
             ts = m.get('trade_suggestion') or {}
             ts_line = ''
             if ts:
                 ts_line = f"💡 כניסה ${ts['entry']}  יעד ${ts['target']} (+{ts['target_pct']}%)  סטופ ${ts['stop']} (-{ts['stop_pct']}%)  R:R {ts['rr']}:1"
             lines.append(
                 f"\n{tier} <b>{ticker}</b> {chg:+.1f}%  ${price}\n"
-                + (f"{reason}\n" if reason and reason != 'unknown' else '')
-                + (f"{ev_line}\n" if ev_line else '')
+                + (f"📊 {reason_he}\n" if reason_he else '')
                 + (f"{meta}\n" if meta else '')
-                + (f"{mom_str}\n" if mom_str else '')
-                + (f"🎯 {strat}\n" if strat else '')
+                + (f"📈 {mom_str}\n" if mom_str else '')
+                + (f"🎯 אסטרטגיה: {strat}\n" if strat else '')
                 + (f"{ts_line}" if ts_line else '')
             )
             _hot_alert_sent[ticker] = now_ts
