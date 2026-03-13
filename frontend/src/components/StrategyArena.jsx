@@ -632,14 +632,27 @@ function HotMovers() {
                 {sfloat > 0 && <span style={{ color: '#a78bfa' }}>שורט {sfloat.toFixed(0)}%</span>}
               </div>
 
-              {/* Row 3: Market Cap · EV */}
+              {/* Row 3: Market Cap · EV · cash-rich badge */}
               {(m.market_cap_str || m.market_cap || m.enterprise_value) && (
-                <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 5, display: 'flex', gap: 8 }}>
+                <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 5, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                   {(m.market_cap_str || m.market_cap) && (
                     <span>MC: <span style={{ color: '#d1d5db' }}>{m.market_cap_str || m.market_cap}</span></span>
                   )}
                   {m.enterprise_value && (
-                    <span>EV: <span style={{ color: '#d1d5db' }}>{m.enterprise_value}</span></span>
+                    <span title={m.ev_below_mc ? 'EV < Market Cap — החברה נסחרת מתחת לשווי המזומן שלה' : ''}>
+                      EV: <span style={{ color: m.ev_below_mc ? '#4ade80' : '#d1d5db', fontWeight: m.ev_below_mc ? 700 : 400 }}>
+                        {m.enterprise_value}
+                      </span>
+                    </span>
+                  )}
+                  {m.ev_below_mc && (
+                    <span title="EV < Market Cap — יש יותר מזומן משווי השוק. שורט סקוויז חזק במיוחד." style={{
+                      fontSize: 9, padding: '1px 5px', borderRadius: 4,
+                      background: 'rgba(74,222,128,0.15)', color: '#4ade80',
+                      border: '1px solid rgba(74,222,128,0.4)', fontWeight: 700,
+                    }}>
+                      💰 EV &lt; MC
+                    </span>
                   )}
                 </div>
               )}

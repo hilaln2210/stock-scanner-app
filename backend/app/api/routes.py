@@ -3673,14 +3673,31 @@ async def arena_hot_movers(min_chg: float = Query(15.0)):
                             merged[sk] = v
             except Exception:
                 pass
-            # 3. Strategy matching (uses enriched data with real rvol/short_float)
+            # 3. EV vs Market Cap — cash-rich signal
+            ev_raw  = str(merged.get('enterprise_value', '') or '').strip()
+            ev_val  = _parse_fv_num(ev_raw)
+            mc_val  = _parse_fv_num(str(merged.get('market_cap_str') or merged.get('market_cap', '') or ''))
+            # "-" from Finviz = negative EV (company has more cash than mkt cap + debt)
+            ev_is_negative = ev_val is not None and ev_val < 0 or ev_raw == '-'
+            if ev_is_negative:
+                merged['ev_below_mc'] = True   # pure cash surplus — strongest signal
+                merged['ev_mc_ratio'] = None
+            elif ev_val is not None and mc_val is not None and mc_val > 0:
+                merged['ev_below_mc'] = ev_val < mc_val
+                merged['ev_mc_ratio'] = round(ev_val / mc_val, 2)
+            else:
+                merged['ev_below_mc'] = False
+                merged['ev_mc_ratio'] = None
+            # 4. Strategy matching (uses enriched data with real rvol/short_float)
             all_strats, top_strat = _match_strategies(merged)
             merged['strategies'] = all_strats
             merged['top_strategy'] = top_strat
-            # 4. Health label
+            # 5. Momentum label
             merged['health'] = _health_label(merged)
-            # 5. Pick score (computed after health is set)
+            # 6. Pick score — bonus for EV < MC
             merged['pick_score'] = _pick_score(merged)
+            if merged.get('ev_below_mc'):
+                merged['pick_score'] = round(merged['pick_score'] + 3, 2)
             return merged
 
     enriched = list(await asyncio.gather(*[_enrich(s) for s in top]))
