@@ -693,13 +693,18 @@ async def lifespan(app: FastAPI):
                 mom_str = f"30m {c30:+.1f}%"
 
             meta = '  '.join(filter(None, [sf_str, rvol_str]))
+            ts = m.get('trade_suggestion') or {}
+            ts_line = ''
+            if ts:
+                ts_line = f"💡 כניסה ${ts['entry']}  יעד ${ts['target']} (+{ts['target_pct']}%)  סטופ ${ts['stop']} (-{ts['stop_pct']}%)  R:R {ts['rr']}:1"
             lines.append(
                 f"\n{tier} <b>{ticker}</b> {chg:+.1f}%  ${price}\n"
                 + (f"{reason}\n" if reason and reason != 'unknown' else '')
                 + (f"{ev_line}\n" if ev_line else '')
                 + (f"{meta}\n" if meta else '')
                 + (f"{mom_str}\n" if mom_str else '')
-                + (f"🎯 {strat}" if strat else '')
+                + (f"🎯 {strat}\n" if strat else '')
+                + (f"{ts_line}" if ts_line else '')
             )
             _hot_alert_sent[ticker] = now_ts
 

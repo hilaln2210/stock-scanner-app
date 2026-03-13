@@ -3428,9 +3428,14 @@ def _fetch_yf_info(ticker: str) -> dict:
 def _classify_ev_health(ev, mc, net_income, revenue, rev_growth, profit_margin, op_margin, eps):
     """Unified EV/MC financial health classifier. Returns (reason: str, score_bonus: int)."""
     # --- margin (best source first) ---
+    # If profit_margin > 3× op_margin → one-time event (asset sale, tax benefit, etc.)
+    # Use op_margin instead to reflect recurring business reality.
     margin = None
     if profit_margin is not None:
-        margin = profit_margin
+        if op_margin is not None and profit_margin > 3 * op_margin:
+            margin = op_margin  # one-time event inflating profit_margin
+        else:
+            margin = profit_margin
     elif op_margin is not None:
         margin = op_margin
     elif net_income is not None and revenue and revenue > 0:
@@ -3953,6 +3958,32 @@ async def arena_hot_movers(min_chg: float = Query(5.0)):
         m['financial_tier'] = tier
         m['too_late'] = too_late
         m['is_top_candidate'] = bool(tier and chg > 3.0 and rvol > 1.5 and not too_late)
+        # Trade suggestion — only for TOP CANDIDATES
+        if m['is_top_candidate']:
+            _TRADE_PARAMS = {
+                '⚡ Lightning Squeeze': (0.08, 0.10),
+                '🌪️ Gap & Squeeze':     (0.10, 0.12),
+                '💥 Nano Squeeze':      (0.10, 0.12),
+                '🔥 Hard Squeeze':      (0.08, 0.12),
+                '💣 Gap Explosion':     (0.12, 0.15),
+                '🚀 Premarket Gap':     (0.08, 0.12),
+                '🚀 Momentum Breaker':  (0.05, 0.12),
+                '⚡ Scalper':           (0.06, 0.10),
+                '🎯 High Conviction':   (0.05, 0.12),
+                '⚖️ Balanced':          (0.06, 0.12),
+            }
+            strat = m.get('top_strategy') or ''
+            stop_pct, tgt_pct = _TRADE_PARAMS.get(strat, (0.06, 0.12))
+            p = m.get('price') or 0
+            if p > 0:
+                m['trade_suggestion'] = {
+                    'entry':      round(p, 2),
+                    'target':     round(p * (1 + tgt_pct), 2),
+                    'stop':       round(p * (1 - stop_pct), 2),
+                    'target_pct': int(tgt_pct * 100),
+                    'stop_pct':   int(stop_pct * 100),
+                    'rr':         round(tgt_pct / stop_pct, 1),
+                }
     # Re-sort by pick_score so best appears first
     enriched.sort(key=lambda x: x.get('pick_score', 0), reverse=True)
 
