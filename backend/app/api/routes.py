@@ -3941,8 +3941,10 @@ async def arena_hot_movers(min_chg: float = Query(5.0)):
         tier = '💰💰💰' if ev_s >= 4 else ('💰💰' if ev_s >= 3 else ('💰' if ev_s >= 2 else None))
         chg  = m.get('change_pct') or 0
         rvol = _safe_float(m.get('rel_volume'))
+        too_late = chg > 80  # up >80% today — dangerous late entry
         m['financial_tier'] = tier
-        m['is_top_candidate'] = bool(tier and chg > 3.0 and rvol > 1.5)
+        m['too_late'] = too_late
+        m['is_top_candidate'] = bool(tier and chg > 3.0 and rvol > 1.5 and not too_late)
     # Re-sort by pick_score so best appears first
     enriched.sort(key=lambda x: x.get('pick_score', 0), reverse=True)
 

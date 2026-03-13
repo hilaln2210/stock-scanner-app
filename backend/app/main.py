@@ -654,7 +654,7 @@ async def lifespan(app: FastAPI):
             chg  = m.get('change_pct') or 0
             rvol = _pf(m.get('rel_volume')) or 0
             tier = _financial_tier(m)
-            moving = chg > 3.0 and rvol > 1.5
+            moving = chg > 3.0 and rvol > 1.5 and chg <= 80  # >80% = late entry risk
             if tier and moving:
                 return True, tier
             return False, None

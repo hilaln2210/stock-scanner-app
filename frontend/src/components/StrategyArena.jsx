@@ -623,22 +623,27 @@ function HotMovers() {
           const health = m.health || {};
           const isTop = m.top_pick;
           const isCandidate = m.is_top_candidate;
+          const isTooLate = m.too_late;
           const tier = m.financial_tier;
-          const borderColor = isCandidate ? '#22c55e' : isTop ? '#fbbf24' : (health.color || '#374151');
+          const borderColor = isTooLate ? '#dc2626' : isCandidate ? '#22c55e' : isTop ? '#fbbf24' : (health.color || '#374151');
           const sfloat = typeof m.short_float === 'number' ? m.short_float : parseFloat(m.short_float) || 0;
           const rvol = typeof m.rel_volume === 'number' ? m.rel_volume : parseFloat(m.rel_volume) || 0;
           return (
             <div key={m.ticker} style={{
-              background: isCandidate ? 'rgba(34,197,94,0.07)' : isTop ? 'rgba(251,191,36,0.07)' : 'rgba(17,24,39,0.9)',
-              border: `${(isCandidate || isTop) ? '2px' : '1.5px'} solid ${borderColor}`,
+              background: isTooLate ? 'rgba(220,38,38,0.06)' : isCandidate ? 'rgba(34,197,94,0.07)' : isTop ? 'rgba(251,191,36,0.07)' : 'rgba(17,24,39,0.9)',
+              border: `${(isTooLate || isCandidate || isTop) ? '2px' : '1.5px'} solid ${borderColor}`,
               borderRadius: 8,
               padding: '8px 12px',
               minWidth: 155,
               maxWidth: 200,
-              boxShadow: isCandidate ? '0 0 16px rgba(34,197,94,0.22)' : isTop ? '0 0 14px rgba(251,191,36,0.25)' : 'none',
+              boxShadow: isTooLate ? '0 0 10px rgba(220,38,38,0.18)' : isCandidate ? '0 0 16px rgba(34,197,94,0.22)' : isTop ? '0 0 14px rgba(251,191,36,0.25)' : 'none',
             }}>
               {/* Priority badge */}
-              {isCandidate ? (
+              {isTooLate ? (
+                <div title="המניה עלתה יותר מ-80% היום — כניסה מסוכנת בשלב זה" style={{ fontSize: 9, fontWeight: 700, color: '#ef4444', marginBottom: 3, letterSpacing: 0.5 }}>
+                  ⚠️ Late Entry
+                </div>
+              ) : isCandidate ? (
                 <div style={{ fontSize: 9, fontWeight: 700, color: '#22c55e', marginBottom: 3, letterSpacing: 0.5 }}>
                   {tier} TOP CANDIDATE
                 </div>
