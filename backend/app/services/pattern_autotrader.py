@@ -20,7 +20,18 @@ from typing import Dict, List, Optional
 import pytz
 
 from app.config import settings
-from app.services.alerts_service import send_telegram, send_telegram_with_buttons
+from app.services.alerts_service import send_telegram as _send_telegram_orig, send_telegram_with_buttons as _send_tg_buttons_orig
+
+# Telegram alerts disabled for pattern bot
+_PATTERN_TG_ENABLED = False
+
+async def send_telegram(msg, **kw):
+    if _PATTERN_TG_ENABLED:
+        return await _send_telegram_orig(msg, **kw)
+
+async def send_telegram_with_buttons(msg, buttons, **kw):
+    if _PATTERN_TG_ENABLED:
+        return await _send_tg_buttons_orig(msg, buttons, **kw)
 from app.services.pattern_scanner import analyze_single_ticker, filter_stock_pool
 
 _NY = pytz.timezone("America/New_York")
