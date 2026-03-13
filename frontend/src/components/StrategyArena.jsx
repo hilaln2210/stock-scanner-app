@@ -520,6 +520,86 @@ function StrategyCard({ strategy, rank, isLeader, livePrices = {}, flashState = 
   );
 }
 
+/* ── BestWorstBar ────────────────────────────────────────────────────────── */
+function BestWorstBar({ strategies = [] }) {
+  // Collect all closed full-trades from all strategies
+  const all = [];
+  strategies.forEach(s => {
+    (s.trade_log || []).forEach(t => {
+      if (!t.was_partial) all.push({ ...t, sName: s.name, sLabel: s.label });
+    });
+  });
+  if (!all.length) return null;
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayET  = (() => {
+    const now = new Date();
+    const offset = (3 <= now.getMonth() + 1 && now.getMonth() + 1 <= 11) ? -4 : -5;
+    return new Date(now.getTime() + offset * 3600000).toISOString().slice(0, 10);
+  })();
+
+  const today = all.filter(t => (t.exit_time || '').slice(0, 10) === todayET);
+
+  const best  = (arr) => arr.length ? arr.reduce((a, b) => a.pnl_pct > b.pnl_pct ? a : b) : null;
+  const worst = (arr) => arr.length ? arr.reduce((a, b) => a.pnl_pct < b.pnl_pct ? a : b) : null;
+
+  const cards = [
+    { icon: '🏆', label: 'הכי טוב היום',    trade: best(today),   accent: '#4ade80' },
+    { icon: '💀', label: 'הכי גרוע היום',   trade: worst(today),  accent: '#f87171' },
+    { icon: '⭐', label: 'הכי טוב השבוע',   trade: best(all),     accent: '#fbbf24' },
+    { icon: '⚠️', label: 'הכי גרוע השבוע', trade: worst(all),    accent: '#f97316' },
+  ];
+
+  // Skip the bar entirely if we have no today trades and only boring week trades
+  const hasAny = cards.some(c => c.trade);
+  if (!hasAny) return null;
+
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 14,
+    }}>
+      {cards.map(({ icon, label, trade, accent }) => {
+        if (!trade) return (
+          <div key={label} style={{
+            padding: '8px 12px', borderRadius: 9,
+            background: '#0d1117', border: '1px solid rgba(255,255,255,0.05)',
+            textAlign: 'center',
+          }}>
+            <div style={{ fontSize: 9, color: '#334155', marginBottom: 2 }}>{icon} {label}</div>
+            <div style={{ fontSize: 10, color: '#334155' }}>אין עדיין</div>
+          </div>
+        );
+        const pos = trade.pnl_pct >= 0;
+        const color = pos ? '#4ade80' : '#f87171';
+        const meta = STRATEGY_META[trade.sName] || { emoji: '📊' };
+        return (
+          <div key={label} style={{
+            padding: '8px 12px', borderRadius: 9,
+            background: `${accent}08`,
+            border: `1px solid ${accent}30`,
+          }}>
+            <div style={{ fontSize: 9, color: '#475569', marginBottom: 4, fontWeight: 700 }}>
+              {icon} {label}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+              <span style={{ fontSize: 13, fontWeight: 900, color: '#f8fafc', fontFamily: 'monospace' }}>
+                {trade.ticker}
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 900, color, fontFamily: 'monospace' }}>
+                {pos ? '+' : ''}{trade.pnl_pct.toFixed(1)}%
+              </span>
+            </div>
+            <div style={{ fontSize: 9, color: '#64748b', marginTop: 2 }}>
+              {meta.emoji} {trade.sLabel?.replace(/^[^\s]+ /, '') || trade.sName}
+              {' · '}{trade.reason}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ── WeeklyHistory ───────────────────────────────────────────────────────── */
 function WeeklyHistory({ history = [], strategies = [] }) {
   if (!history.length) return null;
@@ -845,6 +925,9 @@ export default function StrategyArena() {
           </div>
         ))}
       </div>
+
+      {/* ── Best / Worst trades ── */}
+      <BestWorstBar strategies={strategies} />
 
       {/* ── Strategy cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
