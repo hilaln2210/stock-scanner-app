@@ -642,7 +642,7 @@ function HotMovers() {
                     <span>
                       EV: <span style={{
                         color: m.ev_below_mc
-                          ? ({ profitable:'#4ade80', growing:'#a78bfa', stable:'#94a3b8', distressed:'#fb923c', unknown:'#64748b' }[m.ev_cash_reason] || '#94a3b8')
+                          ? ({ profitable_strong:'#22c55e', profitable:'#4ade80', profitable_weak:'#facc15', growing:'#a78bfa', stable:'#94a3b8', distressed:'#fb923c', unknown:'#64748b' }[m.ev_cash_reason] || '#94a3b8')
                           : m.ev_healthy ? '#60a5fa' : '#d1d5db',
                         fontWeight: (m.ev_below_mc || m.ev_healthy) ? 700 : 400,
                       }}>
@@ -653,9 +653,15 @@ function HotMovers() {
                   {m.ev_below_mc && (() => {
                     const reason = m.ev_cash_reason;
                     const REASON_CFG = {
+                      profitable_strong: { bg: 'rgba(74,222,128,0.25)', color: '#22c55e', border: 'rgba(74,222,128,0.6)',
+                                    label: '💰💰 EV < MC',
+                                    tip: 'EV < MC + מרווח רווח >20% — מכונת מזומנים. הסיגנל החזק ביותר.' },
                       profitable: { bg: 'rgba(74,222,128,0.18)',  color: '#4ade80', border: 'rgba(74,222,128,0.45)',
                                     label: '💰 EV < MC ✓',
-                                    tip: 'EV < MC + רווחית — מזומן מצטבר מפעילות. שורט סקוויז חזק במיוחד.' },
+                                    tip: 'EV < MC + רווחית (מרווח 5-20%) — מזומן מצטבר מפעילות. שורט סקוויז חזק.' },
+                      profitable_weak: { bg: 'rgba(250,204,21,0.15)', color: '#facc15', border: 'rgba(250,204,21,0.4)',
+                                    label: '💰 EV < MC ~',
+                                    tip: 'EV < MC + רווחית בקושי (מרווח <5%) — מזומן מפעילות אך שולי דק.' },
                       growing:    { bg: 'rgba(139,92,246,0.15)',  color: '#a78bfa', border: 'rgba(139,92,246,0.4)',
                                     label: '🚀 EV < MC ↑',
                                     tip: 'EV < MC + הפסדית אך הכנסות צומחות >10% — שורפת כסף לצמיחה. סיגנל חיובי.' },

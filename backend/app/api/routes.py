@@ -3689,6 +3689,7 @@ async def arena_hot_movers(min_chg: float = Query(15.0)):
                 ('enterpriseValue',  '_yf_ev'),
                 ('marketCap',        '_yf_mc'),
                 ('netIncomeToCommon','_yf_net_income'),   # > 0 = profitable
+                ('totalRevenue',     '_yf_revenue'),      # for profit margin calc
                 ('revenueGrowth',    '_yf_rev_growth'),   # YoY e.g. 0.15 = +15%
                 ('trailingEps',      '_yf_eps'),          # > 0 = profitable (fallback)
             ]:
@@ -3725,7 +3726,8 @@ async def arena_hot_movers(min_chg: float = Query(15.0)):
                     # override with richer data from quote page (skip non-numeric market_cap text)
                     for fk, sk in [('rel_volume','rel_volume'), ('short_float','short_float'),
                                    ('float_shares','float_shares'), ('enterprise_value','enterprise_value'),
-                                   ('market_cap','market_cap_str')]:
+                                   ('market_cap','market_cap_str'), ('sales','sales'),
+                                   ('income','income')]:
                         v = f.get(fk)
                         if v is None or v == '' or v == 0:
                             continue
@@ -3786,7 +3788,18 @@ async def arena_hot_movers(min_chg: float = Query(15.0)):
                         net_income = eps  # proxy: positive EPS → positive income
                 rev_growth = merged.get('_yf_rev_growth')  # float e.g. 0.15 = +15%
                 if net_income is not None and net_income > 0:
-                    merged['ev_cash_reason'] = 'profitable'   # cash from operations → +3
+                    # Compute profit margin to grade profitability
+                    revenue = merged.get('_yf_revenue') or _parse_fv_num(str(merged.get('sales', '') or ''))
+                    if revenue and revenue > 0:
+                        margin = net_income / revenue
+                        if margin > 0.20:
+                            merged['ev_cash_reason'] = 'profitable_strong'  # >20% margin → +4
+                        elif margin > 0.05:
+                            merged['ev_cash_reason'] = 'profitable'          # 5-20% margin → +3
+                        else:
+                            merged['ev_cash_reason'] = 'profitable_weak'     # 0-5% margin → +2
+                    else:
+                        merged['ev_cash_reason'] = 'profitable'              # no revenue data → assume ok
                 elif net_income is not None and net_income < 0:
                     if rev_growth is None:
                         merged['ev_cash_reason'] = 'unknown'  # no revenue data (pre-revenue) → 0
@@ -3810,7 +3823,8 @@ async def arena_hot_movers(min_chg: float = Query(15.0)):
             merged['pick_score'] = _pick_score(merged)
             if merged.get('ev_below_mc'):
                 reason = merged.get('ev_cash_reason')
-                bonus = {'profitable': 3, 'growing': 2, 'stable': 1, 'unknown': 0, 'distressed': -1}.get(reason, 0)
+                bonus = {'profitable_strong': 4, 'profitable': 3, 'profitable_weak': 2,
+                         'growing': 2, 'stable': 1, 'unknown': 0, 'distressed': -1}.get(reason, 0)
                 merged['pick_score'] = round(merged['pick_score'] + bonus, 2)
             return merged
 
