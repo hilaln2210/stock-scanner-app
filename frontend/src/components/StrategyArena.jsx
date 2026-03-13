@@ -667,7 +667,18 @@ function HotMovers() {
               {/* Row 2: price · rvol · short */}
               <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 5, display: 'flex', gap: 6 }}>
                 <span>${m.price > 0 ? m.price.toFixed(2) : '—'}</span>
-                {rvol > 0 && <span title={`rvol ${rvol.toFixed(1)}x — נפח מסחר פי ${rvol.toFixed(1)} מהממוצע היומי. 2x+ = מומנטום. מעל 30x = noise.`} style={{ color: '#818cf8', cursor: 'help' }}>{rvol.toFixed(1)}x vol</span>}
+                {rvol > 0 && (() => {
+                  const rvolBadge = rvol > 100 ? { icon: '⚠️', label: 'Late', color: '#f87171', tip: `rvol ${rvol.toFixed(0)}x — נפח מטורף, כנראה פספסת את הכניסה` }
+                    : rvol > 10  ? { icon: '🔥🔥', label: 'Spike', color: '#fb923c', tip: `rvol ${rvol.toFixed(1)}x — Volume Spike חריג מאוד, משהו קורה` }
+                    : rvol > 5   ? { icon: '🔥',   label: '',       color: '#fbbf24', tip: `rvol ${rvol.toFixed(1)}x — נפח גבוה מאוד` }
+                    : rvol > 2   ? { icon: '⚡',   label: '',       color: '#818cf8', tip: `rvol ${rvol.toFixed(1)}x — נפח טוב` }
+                    :              { icon: '',     label: '',       color: '#6b7280', tip: `rvol ${rvol.toFixed(1)}x` };
+                  return (
+                    <span title={rvolBadge.tip} style={{ color: rvolBadge.color, cursor: 'help', fontWeight: rvol > 5 ? 700 : 400 }}>
+                      {rvolBadge.icon} {rvol.toFixed(1)}x{rvolBadge.label ? ` ${rvolBadge.label}` : ''}
+                    </span>
+                  );
+                })()}
                 {sfloat > 0 && <span title={`Short float ${sfloat.toFixed(0)}% — ${sfloat.toFixed(0)}% מהמניות משועבדות לשורט. מעל 10% = squeeze potential. מעל 20% = לחץ שורט גבוה.`} style={{ color: '#a78bfa', cursor: 'help' }}>שורט {sfloat.toFixed(0)}%</span>}
               </div>
 
