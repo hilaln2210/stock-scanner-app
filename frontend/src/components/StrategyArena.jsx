@@ -593,71 +593,78 @@ function HotMovers() {
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {movers.map(m => {
-          const dayColor = m.change_pct >= 30 ? '#f97316' : m.change_pct >= 20 ? '#fb923c' : '#4ade80';
+          const dayColor = m.change_pct >= 50 ? '#ef4444' : m.change_pct >= 30 ? '#f97316' : m.change_pct >= 20 ? '#fb923c' : '#4ade80';
           const c30 = m.chg_30m;
           const c1h = m.chg_1h;
-          const momentum = c30 != null && c1h != null
-            ? (c30 > 0 && c1h > 0 ? 'hot' : c30 > 0 ? 'warming' : 'cooling')
-            : null;
-          const borderColor = momentum === 'hot' ? '#4ade80' : momentum === 'warming' ? '#fbbf24' : momentum === 'cooling' ? '#f87171' : '#374151';
+          const health = m.health || {};
+          const borderColor = health.color || '#374151';
+          const sfloat = typeof m.short_float === 'number' ? m.short_float : parseFloat(m.short_float) || 0;
+          const rvol = typeof m.rel_volume === 'number' ? m.rel_volume : parseFloat(m.rel_volume) || 0;
           return (
             <div key={m.ticker} style={{
               background: 'rgba(17,24,39,0.9)',
-              border: `1px solid ${borderColor}`,
+              border: `1.5px solid ${borderColor}`,
               borderRadius: 8,
               padding: '8px 12px',
-              minWidth: 140,
-              position: 'relative',
+              minWidth: 155,
+              maxWidth: 200,
             }}>
-              {/* ticker + day change */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              {/* Row 1: ticker + day% */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
                 <span style={{ fontWeight: 800, fontSize: 14, color: '#f9fafb' }}>{m.ticker}</span>
                 <span style={{ fontWeight: 700, fontSize: 15, color: dayColor }}>
                   +{m.change_pct.toFixed(1)}%
                 </span>
               </div>
-              {/* price */}
-              <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>
-                ${m.price > 0 ? m.price.toFixed(2) : '—'}
-                {m.rel_volume > 0 && <span style={{ marginLeft: 6, color: '#6366f1' }}>vol {m.rel_volume.toFixed(1)}x</span>}
+
+              {/* Row 2: price · rvol · short */}
+              <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 5, display: 'flex', gap: 6 }}>
+                <span>${m.price > 0 ? m.price.toFixed(2) : '—'}</span>
+                {rvol > 0 && <span style={{ color: '#818cf8' }}>{rvol.toFixed(1)}x vol</span>}
+                {sfloat > 0 && <span style={{ color: '#a78bfa' }}>שורט {sfloat.toFixed(0)}%</span>}
               </div>
-              {/* 30m / 1h intraday */}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 2 }}>30 דק'</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: chgColor(c30) }}>
-                    {fmtChg(c30)}{arrow(c30)}
-                  </div>
+
+              {/* Row 3: Market Cap · EV */}
+              {(m.market_cap_str || m.market_cap || m.enterprise_value) && (
+                <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 5, display: 'flex', gap: 8 }}>
+                  {(m.market_cap_str || m.market_cap) && (
+                    <span>MC: <span style={{ color: '#d1d5db' }}>{m.market_cap_str || m.market_cap}</span></span>
+                  )}
+                  {m.enterprise_value && (
+                    <span>EV: <span style={{ color: '#d1d5db' }}>{m.enterprise_value}</span></span>
+                  )}
                 </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 2 }}>1 שעה</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: chgColor(c1h) }}>
-                    {fmtChg(c1h)}{arrow(c1h)}
-                  </div>
+              )}
+
+              {/* Row 4: 30m / 1h */}
+              <div style={{ display: 'flex', gap: 10, marginBottom: 5 }}>
+                <div>
+                  <div style={{ fontSize: 9, color: '#6b7280' }}>30 דק'</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: chgColor(c30) }}>{fmtChg(c30)}{arrow(c30)}</div>
                 </div>
-                {m.short_float > 0 && (
-                  <div style={{ textAlign: 'center', marginLeft: 'auto' }}>
-                    <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 2 }}>שורט</div>
-                    <div style={{ fontSize: 11, color: '#a78bfa' }}>{m.short_float.toFixed(0)}%</div>
+                <div>
+                  <div style={{ fontSize: 9, color: '#6b7280' }}>1 שעה</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: chgColor(c1h) }}>{fmtChg(c1h)}{arrow(c1h)}</div>
+                </div>
+                {health.label && (
+                  <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                    <div style={{ fontSize: 9, color: '#6b7280' }}>מצב</div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: health.color }}>{health.label}</div>
                   </div>
                 )}
               </div>
-              {/* Matching strategies */}
-              {m.strategies && m.strategies.length > 0 && (
-                <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                  {m.strategies.map(s => (
-                    <span key={s} style={{
-                      fontSize: 9, padding: '1px 5px', borderRadius: 4,
-                      background: 'rgba(99,102,241,0.15)', color: '#a5b4fc',
-                      border: '1px solid rgba(99,102,241,0.3)', whiteSpace: 'nowrap',
-                    }}>{s}</span>
-                  ))}
+
+              {/* Row 5: Top strategy (single badge) */}
+              {m.top_strategy ? (
+                <div style={{
+                  fontSize: 10, padding: '2px 7px', borderRadius: 5, display: 'inline-block',
+                  background: 'rgba(99,102,241,0.18)', color: '#c7d2fe',
+                  border: '1px solid rgba(99,102,241,0.4)', fontWeight: 600,
+                }}>
+                  {m.top_strategy}
                 </div>
-              )}
-              {m.strategies && m.strategies.length === 0 && (
-                <div style={{ marginTop: 5, fontSize: 9, color: '#4b5563', fontStyle: 'italic' }}>
-                  אין התאמה לאסטרטגיה
-                </div>
+              ) : (
+                <div style={{ fontSize: 9, color: '#4b5563', fontStyle: 'italic' }}>אין התאמה</div>
               )}
             </div>
           );

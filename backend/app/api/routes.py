@@ -3366,51 +3366,91 @@ _HOT_MOVERS_CACHE_TIME: float = 0.0
 _HOT_MOVERS_CACHE_TTL: int = 90  # 90s — dedicated scan, don't hammer
 
 
-def _match_strategies(stock: dict) -> list[str]:
+# Strategy priority: most specific (hardest filters) first → used for top_strategy pick
+_STRATEGY_SPECIFICITY = [
+    'GapExplosion', 'SeasonalityTrader', 'SwingSetup', 'SqueezeHunter',
+    'PatternTrader', 'GapScanner', 'MomentumBreaker', 'Scalper',
+    'HighConviction', 'Balanced',
+]
+
+
+def _match_strategies(stock: dict) -> tuple[list[str], str | None]:
     """
-    Returns list of strategy labels that would identify this stock as a candidate.
-    Checks the stock's metrics against each strategy's entry filters.
+    Returns (all_matching_labels, top_strategy_label).
+    top_strategy = the most specific matching strategy (highest in _STRATEGY_SPECIFICITY).
     """
-    chg        = _safe_float(stock.get('change_pct'))
-    rvol       = _safe_float(stock.get('rel_volume'))
-    price      = _safe_float(stock.get('price'))
-    short_f    = _safe_float(stock.get('short_float'))
-    float_sh   = _safe_float(stock.get('float_shares'))   # in millions if from screener
-    # float_shares from Finviz screener is in raw form (e.g. 15M → 15_000_000 or 15.0)
-    # normalise: if < 1000, assume it's already in millions
+    chg     = _safe_float(stock.get('change_pct'))
+    rvol    = _safe_float(stock.get('rel_volume'))
+    price   = _safe_float(stock.get('price'))
+    short_f = _safe_float(stock.get('short_float'))
+    float_sh = _safe_float(stock.get('float_shares'))
     if float_sh > 0 and float_sh < 1000:
         float_sh = float_sh * 1_000_000
 
-    matches = []
+    matched_names = []
     for name, cfg in _ARENA_STRATEGY_CONFIGS.items():
-        # 1. min_chg / requires_min_chg
         min_chg_req = cfg.get('requires_min_chg') or 0
         if chg < min_chg_req:
             continue
-        # 2. rel volume
         min_rv = cfg.get('min_rvol', 0)
         if rvol > 0 and rvol < min_rv:
             continue
-        # 3. short float requirement
         sf_req = cfg.get('requires_short_float')
         if sf_req and (short_f <= 0 or short_f < sf_req):
             continue
-        # 4. float shares max
         fs_max = cfg.get('requires_float_shares_max')
         if fs_max and float_sh > 0 and float_sh > fs_max:
             continue
-        # 5. price range
         min_p = cfg.get('min_price', 0)
         max_p = cfg.get('max_price', 99999)
         if price > 0 and not (min_p <= price <= max_p):
             continue
-        # 6. min_gap_pct (use change_pct as proxy since gap_pct not in screener data)
         min_gap = cfg.get('min_gap_pct')
         if min_gap and chg < min_gap:
             continue
-        matches.append(cfg.get('label', name))
+        matched_names.append(name)
 
-    return matches
+    all_labels = [_ARENA_STRATEGY_CONFIGS[n].get('label', n) for n in matched_names]
+
+    # Pick top strategy by specificity order
+    top = None
+    for name in _STRATEGY_SPECIFICITY:
+        if name in matched_names:
+            top = _ARENA_STRATEGY_CONFIGS[name].get('label', name)
+            break
+
+    return all_labels, top
+
+
+def _health_label(stock: dict) -> dict:
+    """
+    Returns {label, color} based on intraday momentum + fundamentals.
+    healthy   = green  — both 30m and 1h positive
+    warming   = yellow — 30m positive, 1h flat/negative (just turning)
+    cooling   = orange — 30m negative, 1h was positive (pulling back)
+    unhealthy = red    — both negative (fading)
+    """
+    c30 = stock.get('chg_30m')
+    c1h = stock.get('chg_1h')
+    rvol = _safe_float(stock.get('rel_volume'))
+    short_f = _safe_float(stock.get('short_float'))
+
+    # Bonus: high short float = squeeze potential = healthier signal
+    squeeze_bonus = short_f >= 10
+
+    if c30 is None or c1h is None:
+        return {'label': '—', 'color': '#6b7280'}
+
+    if c30 > 0.5 and c1h > 0.5:
+        label = '🟢 בריא' if not squeeze_bonus else '🟢 בריא + שורט'
+        return {'label': label, 'color': '#4ade80'}
+    if c30 > 0.3 and c1h <= 0:
+        return {'label': '🟡 מתחמם', 'color': '#fbbf24'}
+    if c30 <= 0 and c1h > 0.5:
+        return {'label': '🟠 נסיגה', 'color': '#fb923c'}
+    if c30 <= 0 and c1h <= 0:
+        return {'label': '🔴 נחלש', 'color': '#f87171'}
+    return {'label': '🟡 ניטרלי', 'color': '#fbbf24'}
 
 
 async def _scrape_hot_movers(min_chg: float) -> list:
@@ -3537,9 +3577,31 @@ async def arena_hot_movers(min_chg: float = Query(15.0)):
 
     async def _enrich(item):
         async with sem:
-            intraday = await loop.run_in_executor(None, _get_intraday, item['ticker'])
-            strategies = _match_strategies(item)
-            return {**item, **intraday, 'strategies': strategies}
+            ticker = item['ticker']
+            # 1. Intraday momentum (yfinance)
+            intraday = await loop.run_in_executor(None, _get_intraday, ticker)
+            merged = {**item, **intraday}
+            # 2. Fundamentals (rel_volume, short_float, float_shares, EV)
+            try:
+                funds = await finviz_fundamentals.get_fundamentals_batch([ticker])
+                f = funds.get(ticker, {})
+                if f:
+                    # override with richer data from quote page
+                    for fk, sk in [('rel_volume','rel_volume'), ('short_float','short_float'),
+                                   ('float_shares','float_shares'), ('enterprise_value','enterprise_value'),
+                                   ('market_cap','market_cap_str')]:
+                        v = f.get(fk)
+                        if v is not None and v != '' and v != 0:
+                            merged[sk] = v
+            except Exception:
+                pass
+            # 3. Strategy matching (uses enriched data with real rvol/short_float)
+            all_strats, top_strat = _match_strategies(merged)
+            merged['strategies'] = all_strats
+            merged['top_strategy'] = top_strat
+            # 4. Health label
+            merged['health'] = _health_label(merged)
+            return merged
 
     enriched = await asyncio.gather(*[_enrich(s) for s in top])
 
