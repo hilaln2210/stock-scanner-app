@@ -3958,8 +3958,12 @@ async def arena_hot_movers(min_chg: float = Query(5.0)):
         m['financial_tier'] = tier
         m['too_late'] = too_late
         m['is_top_candidate'] = bool(tier and chg > 3.0 and rvol > 1.5 and not too_late)
-        # Trade suggestion — only for TOP CANDIDATES
-        if m['is_top_candidate']:
+        # strong_conviction: momentum still going — chg_30m > 0 AND health label = "ממשיך"
+        health_label = (m.get('health') or {}).get('label', '')
+        momentum_still_up = (m.get('chg_30m') or 0) > 0 and 'ממשיך' in health_label
+        m['strong_conviction'] = m['is_top_candidate'] and momentum_still_up
+        # Trade suggestion — only when bot has real conviction
+        if m['strong_conviction']:
             _TRADE_PARAMS = {
                 '⚡ Lightning Squeeze': (0.08, 0.10),
                 '🌪️ Gap & Squeeze':     (0.10, 0.12),

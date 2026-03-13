@@ -778,12 +778,12 @@ function HotMovers() {
                 <div style={{ fontSize: 9, color: '#4b5563', fontStyle: 'italic' }}>אין התאמה</div>
               )}
 
-              {/* Trade suggestion — only for TOP CANDIDATES */}
-              {isCandidate && m.trade_suggestion && (() => {
+              {/* Trade suggestion — only when bot has real conviction */}
+              {m.strong_conviction && m.trade_suggestion && (() => {
                 const ts = m.trade_suggestion;
                 return (
                   <div style={{ marginTop: 8, padding: '7px 9px', background: 'rgba(10,30,15,0.95)', borderRadius: 6, borderLeft: '2px solid #22c55e' }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, color: '#4ade80', marginBottom: 5 }}>💡 אם הייתי נכנסת עכשיו</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: '#4ade80', marginBottom: 5 }}>💡 אני הייתי נכנסת עכשיו</div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '3px 10px', fontSize: 10 }}>
                       <span style={{ color: '#6b7280' }}>כניסה</span>
                       <span style={{ color: '#f3f4f6', fontWeight: 600 }}>${ts.entry.toFixed(2)}</span>

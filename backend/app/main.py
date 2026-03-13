@@ -663,6 +663,9 @@ async def lifespan(app: FastAPI):
         for m in movers:
             if now_ts - _hot_alert_sent.get(m['ticker'], 0) < 1800:
                 continue
+            # Only alert when bot has real conviction: TOP CANDIDATE + momentum still going up
+            if not m.get('strong_conviction'):
+                continue
             ok, tier = _is_top_candidate(m)
             if ok:
                 picks.append((m, tier))
