@@ -3363,15 +3363,86 @@ async def smart_portfolio_arena_status():
 
 _HOT_MOVERS_CACHE: dict = {}
 _HOT_MOVERS_CACHE_TIME: float = 0.0
-_HOT_MOVERS_CACHE_TTL: int = 60  # 60s — refresh every minute
+_HOT_MOVERS_CACHE_TTL: int = 90  # 90s — dedicated scan, don't hammer
+
+
+async def _scrape_hot_movers(min_chg: float) -> list:
+    """
+    Dedicated Finviz scan for stocks up min_chg%+ today.
+    Uses ta_perf_d{n}o filter — catches all market caps including small-cap runners.
+    Falls back to local caches if Finviz scrape fails.
+    """
+    # Map min_chg to Finviz ta_perf filter (rounds down to nearest supported threshold)
+    perf_filter = 'ta_perf_d15o' if min_chg <= 15 else 'ta_perf_d20o'
+    if min_chg <= 10:
+        perf_filter = 'ta_perf_d10o'
+    if min_chg <= 5:
+        perf_filter = 'ta_perf_d5o'
+
+    raw_stocks = []
+    try:
+        pages = await asyncio.gather(*[
+            finviz_screener._scrape_screener(
+                {'v': '111', 'f': perf_filter, 'o': '-changeopen', 'r': str(r)},
+                'hot-movers',
+            )
+            for r in [1, 21]
+        ], return_exceptions=True)
+        seen = set()
+        for page in pages:
+            if isinstance(page, Exception) or not page:
+                continue
+            for s in page:
+                t = s.get('ticker')
+                if t and t not in seen:
+                    seen.add(t)
+                    chg = _safe_float(s.get('change_pct'))
+                    if chg >= min_chg:
+                        raw_stocks.append({
+                            'ticker': t,
+                            'price': _safe_float(s.get('price')),
+                            'change_pct': round(chg, 2),
+                            'rel_volume': _safe_float(s.get('rel_volume') or s.get('rvol')),
+                            'volume': _safe_float(s.get('volume')),
+                            'short_float': _safe_float(s.get('short_float')),
+                            'float_shares': _safe_float(s.get('float_shares') or s.get('float_sh')),
+                            'market_cap': s.get('market_cap_str') or s.get('market_cap', ''),
+                        })
+    except Exception as e:
+        print(f"[hot-movers] Finviz scrape error: {e}")
+
+    # Fallback: filter local caches
+    if not raw_stocks:
+        seen = set()
+        for src in [
+            _FV_TABLE_CACHE.get('data', {}).get('stocks', []),
+            _FV_SMALLCAP_CACHE,
+        ]:
+            for s in src:
+                t = s.get('ticker')
+                chg = _safe_float(s.get('change_pct') or s.get('chg'))
+                if t and chg >= min_chg and t not in seen:
+                    seen.add(t)
+                    raw_stocks.append({
+                        'ticker': t,
+                        'price': _safe_float(s.get('price')),
+                        'change_pct': round(chg, 2),
+                        'rel_volume': _safe_float(s.get('rel_volume') or s.get('rvol')),
+                        'volume': _safe_float(s.get('volume') or s.get('cur_vol')),
+                        'short_float': _safe_float(s.get('short_float')),
+                        'float_shares': _safe_float(s.get('float_shares') or s.get('float_sh')),
+                        'market_cap': s.get('market_cap', ''),
+                    })
+
+    return sorted(raw_stocks, key=lambda x: x['change_pct'], reverse=True)
 
 
 @router.get("/smart-portfolio/arena/hot-movers")
 async def arena_hot_movers(min_chg: float = Query(15.0)):
     """
     Stocks up min_chg%+ today with intraday momentum (30m + 1h change).
-    Sources: _FV_TABLE_CACHE + _FV_SMALLCAP_CACHE.
-    Cached 60 seconds.
+    Runs a dedicated Finviz scan (ta_perf_d15o) — catches small-cap runners too.
+    Cached 90 seconds.
     """
     global _HOT_MOVERS_CACHE, _HOT_MOVERS_CACHE_TIME
     import time as _tm2
@@ -3379,52 +3450,21 @@ async def arena_hot_movers(min_chg: float = Query(15.0)):
     cache_key = str(min_chg)
     if (
         _HOT_MOVERS_CACHE.get('_key') == cache_key
-        and _HOT_MOVERS_CACHE.get('count', 0) > 0   # never serve a stale empty result
+        and _HOT_MOVERS_CACHE.get('count', 0) > 0
         and (now - _HOT_MOVERS_CACHE_TIME) < _HOT_MOVERS_CACHE_TTL
     ):
         return _HOT_MOVERS_CACHE
 
-    # Collect candidates from both caches
-    candidates: dict = {}  # ticker -> base info
-    for s in _FV_TABLE_CACHE.get('data', {}).get('stocks', []):
-        t = s.get('ticker')
-        chg = _safe_float(s.get('change_pct') or s.get('chg') or s.get('day_chg'))
-        if t and chg >= min_chg:
-            candidates[t] = {
-                'ticker': t,
-                'price': _safe_float(s.get('price')),
-                'change_pct': round(chg, 2),
-                'rel_volume': _safe_float(s.get('rel_volume') or s.get('rvol')),
-                'volume': _safe_float(s.get('volume') or s.get('cur_vol')),
-                'short_float': _safe_float(s.get('short_float')),
-                'float_shares': _safe_float(s.get('float_shares') or s.get('float_sh')),
-                'market_cap': s.get('market_cap', ''),
-            }
-    for s in _FV_SMALLCAP_CACHE:
-        t = s.get('ticker')
-        chg = _safe_float(s.get('change_pct') or s.get('chg'))
-        if t and chg >= min_chg and t not in candidates:
-            candidates[t] = {
-                'ticker': t,
-                'price': _safe_float(s.get('price')),
-                'change_pct': round(chg, 2),
-                'rel_volume': _safe_float(s.get('rel_volume') or s.get('rvol')),
-                'volume': _safe_float(s.get('volume') or s.get('cur_vol')),
-                'short_float': _safe_float(s.get('short_float')),
-                'float_shares': _safe_float(s.get('float_shares') or s.get('float_sh')),
-                'market_cap': s.get('market_cap', ''),
-            }
+    candidates = await _scrape_hot_movers(min_chg)
 
     if not candidates:
         return {'movers': [], 'count': 0, 'min_chg': min_chg}  # don't cache empty
 
-    # Sort by change_pct, take top 10 for intraday enrichment
-    top = sorted(candidates.values(), key=lambda x: x['change_pct'], reverse=True)[:10]
+    # Take top 10 for intraday enrichment (already sorted by _scrape_hot_movers)
+    top = candidates[:10]
 
     # Fetch intraday momentum in parallel (max 3 concurrent)
     import yfinance as _yf2
-    from concurrent.futures import ThreadPoolExecutor as _TPE3
-    import asyncio as _aio2
 
     def _get_intraday(ticker: str) -> dict:
         try:
