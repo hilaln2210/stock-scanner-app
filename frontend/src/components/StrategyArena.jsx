@@ -639,24 +639,40 @@ function HotMovers() {
                     <span>MC: <span style={{ color: '#d1d5db' }}>{m.market_cap_str || m.market_cap}</span></span>
                   )}
                   {m.enterprise_value && (
-                    <span title={m.ev_below_mc ? 'EV < Market Cap — החברה נסחרת מתחת לשווי המזומן שלה' : m.ev_healthy ? 'EV ≈ Market Cap — חברה יציבה עם מעט חוב' : ''}>
+                    <span>
                       EV: <span style={{
-                        color: m.ev_below_mc ? '#4ade80' : m.ev_healthy ? '#60a5fa' : '#d1d5db',
+                        color: m.ev_below_mc
+                          ? (m.ev_cash_reason === 'distressed' ? '#fb923c' : m.ev_cash_reason === 'raised' ? '#94a3b8' : '#4ade80')
+                          : m.ev_healthy ? '#60a5fa' : '#d1d5db',
                         fontWeight: (m.ev_below_mc || m.ev_healthy) ? 700 : 400,
                       }}>
                         {m.enterprise_value}
                       </span>
                     </span>
                   )}
-                  {m.ev_below_mc && (
-                    <span title="EV < Market Cap — יש יותר מזומן משווי השוק. שורט סקוויז חזק במיוחד." style={{
-                      fontSize: 9, padding: '1px 5px', borderRadius: 4,
-                      background: 'rgba(74,222,128,0.15)', color: '#4ade80',
-                      border: '1px solid rgba(74,222,128,0.4)', fontWeight: 700,
-                    }}>
-                      💰 EV &lt; MC
-                    </span>
-                  )}
+                  {m.ev_below_mc && (() => {
+                    const reason = m.ev_cash_reason;
+                    const cfg = reason === 'profitable'
+                      ? { bg: 'rgba(74,222,128,0.18)', color: '#4ade80', border: 'rgba(74,222,128,0.45)',
+                          label: '💰 EV < MC ✓',
+                          tip: 'EV < MC + רווחית — מזומן מצטבר מפעילות. שורט סקוויז חזק במיוחד.' }
+                      : reason === 'distressed'
+                      ? { bg: 'rgba(251,146,60,0.15)', color: '#fb923c', border: 'rgba(251,146,60,0.4)',
+                          label: '⚠️ EV < MC',
+                          tip: 'EV < MC אך הפסדית + הכנסות יורדות — מזומן כנראה ממכירת נכסים. סיגנל חלש.' }
+                      : { bg: 'rgba(148,163,184,0.12)', color: '#94a3b8', border: 'rgba(148,163,184,0.35)',
+                          label: '💰 EV < MC ~',
+                          tip: 'EV < MC — הפסדית אך צומחת, כנראה כסף מגיוס. ניטרלי.' };
+                    return (
+                      <span title={cfg.tip} style={{
+                        fontSize: 9, padding: '1px 5px', borderRadius: 4,
+                        background: cfg.bg, color: cfg.color,
+                        border: `1px solid ${cfg.border}`, fontWeight: 700,
+                      }}>
+                        {cfg.label}
+                      </span>
+                    );
+                  })()}
                   {!m.ev_below_mc && m.ev_healthy && (
                     <span title={`EV ≈ MC (יחס ${m.ev_mc_ratio}) — חברה יציבה, חוב ≈ מזומן, צמיחה נורמלית`} style={{
                       fontSize: 9, padding: '1px 5px', borderRadius: 4,

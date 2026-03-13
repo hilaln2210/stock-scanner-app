@@ -3681,16 +3681,20 @@ async def arena_hot_movers(min_chg: float = Query(15.0)):
             return {}
 
     def _get_yf_info(ticker: str) -> dict:
-        """Fetch yfinance .info for EV/MC — called via asyncio.wait_for for hang-safety."""
+        """Fetch yfinance .info for EV/MC/profitability — called via asyncio.wait_for."""
         try:
             info = _yf2.Ticker(ticker).info
             result = {}
-            ev = info.get('enterpriseValue')
-            mc = info.get('marketCap')
-            if ev is not None:
-                result['_yf_ev'] = ev
-            if mc is not None:
-                result['_yf_mc'] = mc
+            for src_key, dst_key in [
+                ('enterpriseValue',  '_yf_ev'),
+                ('marketCap',        '_yf_mc'),
+                ('netIncomeToCommon','_yf_net_income'),   # > 0 = profitable
+                ('revenueGrowth',    '_yf_rev_growth'),   # YoY e.g. 0.15 = +15%
+                ('trailingEps',      '_yf_eps'),          # > 0 = profitable (fallback)
+            ]:
+                v = info.get(src_key)
+                if v is not None:
+                    result[dst_key] = v
             return result
         except Exception:
             return {}
@@ -3767,16 +3771,47 @@ async def arena_hot_movers(min_chg: float = Query(15.0)):
                 merged['ev_below_mc'] = False
                 merged['ev_mc_ratio'] = None
                 merged['ev_healthy'] = False
-            # 4. Strategy matching (uses enriched data with real rvol/short_float)
+            # 4. EV cash-reason classification (only relevant when ev_below_mc=True)
+            if merged.get('ev_below_mc'):
+                # Determine WHY the company has so much cash
+                # Priority: yfinance (precise) → Finviz income string
+                net_income = merged.get('_yf_net_income')
+                if net_income is None:
+                    # Finviz 'income' field (already in merged from Finviz fundamentals)
+                    net_income = _parse_fv_num(str(merged.get('income', '') or ''))
+                # Fallback: trailing EPS (positive = profitable)
+                if net_income is None:
+                    eps = merged.get('_yf_eps')
+                    if eps is not None:
+                        net_income = eps  # proxy: positive EPS → positive income
+                rev_growth = merged.get('_yf_rev_growth')  # float e.g. 0.15 = +15%
+                if net_income is not None and net_income > 0:
+                    # Cash from operations → genuinely cash-rich, strong squeeze fuel
+                    merged['ev_cash_reason'] = 'profitable'
+                elif net_income is not None and net_income < 0:
+                    if rev_growth is not None and rev_growth < -0.05:
+                        # Losing money AND revenue actually declining → selling assets to survive
+                        merged['ev_cash_reason'] = 'distressed'
+                    else:
+                        # Losing money but revenue stable/growing or pre-revenue (biotech etc.)
+                        # → cash from capital raise, investing for growth
+                        merged['ev_cash_reason'] = 'raised'
+                else:
+                    merged['ev_cash_reason'] = 'raised'  # unknown → neutral
+            else:
+                merged['ev_cash_reason'] = None
+            # 5. Strategy matching (uses enriched data with real rvol/short_float)
             all_strats, top_strat = _match_strategies(merged)
             merged['strategies'] = all_strats
             merged['top_strategy'] = top_strat
-            # 5. Momentum label
+            # 6. Momentum label
             merged['health'] = _health_label(merged)
-            # 6. Pick score — bonus for EV < MC
+            # 7. Pick score — bonus for EV < MC (adjusted by cash reason)
             merged['pick_score'] = _pick_score(merged)
             if merged.get('ev_below_mc'):
-                merged['pick_score'] = round(merged['pick_score'] + 3, 2)
+                reason = merged.get('ev_cash_reason')
+                bonus = 3 if reason == 'profitable' else 1 if reason == 'raised' else -1
+                merged['pick_score'] = round(merged['pick_score'] + bonus, 2)
             return merged
 
     enriched = list(await asyncio.gather(*[_enrich(s) for s in top]))
