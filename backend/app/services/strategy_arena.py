@@ -53,63 +53,70 @@ def _today() -> str:
 STRATEGY_CONFIGS = {
     "Balanced": {
         "label": "⚖️ Balanced",
-        "description": "כניסות מאוזנות — health טוב + מומנטום",
-        "min_health": 30, "min_conf": 35, "min_rvol": 0.4,
+        "description": "כניסות מאוזנות — health טוב + מומנטום, rvol ≥ 1.2, כניסה לפני 11:00 ET",
+        "min_health": 30, "min_conf": 35, "min_rvol": 1.2,
         "stop_pct": 6.0, "target_pct": 18.0,
         "max_day_chg": 12.0, "requires_short_float": None,
-        "requires_min_chg": None, "max_positions": 3,
+        "requires_min_chg": None, "max_positions": 2,
+        "entry_cutoff_et": 11 * 60,          # no new entries after 11:00 ET
     },
     "HighConviction": {
         "label": "🎯 High Conviction",
-        "description": "רק הכי טובים — פחות עסקאות, R:R גבוה",
+        "description": "רק הכי טובים — partial TP ב-8% (50%), יעד +15%",
         "min_health": 45, "min_conf": 48, "min_rvol": 0.6,
-        "stop_pct": 5.0, "target_pct": 25.0,
+        "stop_pct": 5.0, "target_pct": 15.0,
         "max_day_chg": 8.0, "requires_short_float": None,
         "requires_min_chg": None, "max_positions": 2,
+        "partial_tp_trigger": 8.0, "partial_tp_pct": 0.5,  # sell 50% at +8%
+        "trailing_trigger": 8.0, "trail_pct": 0.91,
     },
     "SqueezeHunter": {
         "label": "🔥 Hard Squeeze",
-        "description": "שורט סקוויז אגרסיבי — שורט float ≥ 20%, rvol ≥ 1.5, Small+Micro Cap, יעד +40%",
+        "description": "שורט סקוויז — שורט≥20%, partial TP ב-15% (50%), יעד +40%",
         "min_health": 12, "min_conf": 15, "min_rvol": 1.5,
         "stop_pct": 8.0, "target_pct": 40.0,
         "max_day_chg": 999.0, "requires_short_float": 20.0,
         "requires_min_chg": 2.0, "max_positions": 2,
         "small_cap_only": True,
+        "partial_tp_trigger": 15.0, "partial_tp_pct": 0.5,  # sell 50% at +15%
+        "trailing_trigger": 12.0, "trail_pct": 0.91,
     },
     "Scalper": {
         "label": "⚡ Scalper",
-        "description": "כניסות אגרסיביות — סיכון גבוה, יעד רווח גבוה, 3 פוזיציות ריכוזיות",
-        "min_health": 18, "min_conf": 20, "min_rvol": 0.5,
+        "description": "כניסות אגרסיביות — rvol ≥ 1.5, כניסה רק 9:30-10:00 ET, trail 0.92",
+        "min_health": 18, "min_conf": 20, "min_rvol": 1.5,
         "stop_pct": 6.0, "target_pct": 20.0,
         "max_day_chg": 999.0, "requires_short_float": None,
-        "requires_min_chg": 0.1, "max_positions": 3,
-        "partial_tp_trigger": 10.0, "trailing_trigger": 8.0, "trail_pct": 0.95,
+        "requires_min_chg": 0.1, "max_positions": 2,
+        "partial_tp_trigger": 10.0, "trailing_trigger": 8.0, "trail_pct": 0.92,
+        "entry_cutoff_et": 10 * 60,          # entries only 9:30–10:00 ET
     },
     "MomentumBreaker": {
         "label": "🚀 Momentum Breaker",
-        "description": "פורצים עם נפח פנומנלי — rvol ≥ 1.5, תנועה > 1%",
+        "description": "פורצים עם נפח פנומנלי — rvol ≥ 1.5, תנועה > 1.5%, כניסה לפני 10:30 ET",
         "min_health": 22, "min_conf": 28, "min_rvol": 1.5,
         "stop_pct": 5.0, "target_pct": 16.0,
         "max_day_chg": 30.0, "requires_short_float": None,
-        "requires_min_chg": 0.8, "max_positions": 3,
+        "requires_min_chg": 1.5, "max_positions": 2,
+        "entry_cutoff_et": 10 * 60 + 30,     # no new entries after 10:30 ET
     },
     "SwingSetup": {
         "label": "⚡ Lightning Squeeze",
-        "description": "Float<50M, שורט≥10%, מחיר<$50, נפח>2x, GAP UP — סקוויז קלאסי עם float קטן",
+        "description": "Float<50M, שורט≥10%, GAP UP — trail רחב 0.87 לנשימה",
         "min_health": 10, "min_conf": 12, "min_rvol": 2.0,
         "stop_pct": 8.0, "target_pct": 35.0,
         "max_day_chg": 999.0, "requires_short_float": 10.0,
-        "requires_min_chg": 1.0, "max_positions": 3,
+        "requires_min_chg": 1.0, "max_positions": 2,
         "max_price": 50.0,
         "requires_gap": True,
         "requires_float_shares_max": 50_000_000,
         "partial_tp_trigger": 10.0,
         "trailing_trigger": 8.0,
-        "trail_pct": 0.93,
+        "trail_pct": 0.87,                   # wider trail — small float needs room
     },
     "SeasonalityTrader": {
         "label": "🌪️ Gap & Squeeze",
-        "description": "גאפ + שורט סקוויז — float<30M, שורט≥20%, מחיר<$20, נפח>5x, GAP UP + פריצה intraday",
+        "description": "גאפ + שורט — partial TP ב-20% (30%) + ב-40% (30%), runner ל-60%",
         "min_health": 8, "min_conf": 10, "min_rvol": 5.0,
         "stop_pct": 10.0, "target_pct": 60.0,
         "max_day_chg": 999.0, "requires_short_float": 20.0,
@@ -118,15 +125,19 @@ STRATEGY_CONFIGS = {
         "max_price": 20.0,
         "requires_gap": True,
         "requires_float_shares_max": 30_000_000,
+        "partial_tp_trigger": 20.0, "partial_tp_pct": 0.3,   # sell 30% at +20%
+        "partial_tp2_trigger": 40.0, "partial_tp2_pct": 0.3, # sell 30% at +40%, runner ל-60%
+        "trailing_trigger": 20.0, "trail_pct": 0.88,
     },
     "PatternTrader": {
         "label": "💥 Nano Squeeze",
-        "description": "מיקרו שורט סקוויז — שורט float ≥ 15%, rvol ≥ 2.0, לוטרי Small Cap, יעד +50%",
+        "description": "מיקרו שורט סקוויז — stop קטן 6%, half position size, יעד +50%",
         "min_health": 10, "min_conf": 12, "min_rvol": 2.0,
-        "stop_pct": 10.0, "target_pct": 50.0,
+        "stop_pct": 6.0, "target_pct": 50.0,
         "max_day_chg": 999.0, "requires_short_float": 15.0,
         "requires_min_chg": 1.0, "max_positions": 2,
         "small_cap_only": True,
+        "half_position_size": True,          # לוטרי — חצי מגודל רגיל
     },
 }
 
@@ -224,6 +235,8 @@ class MiniPortfolio:
         if math.isnan(equity) or equity <= 0:
             return False
         slot_size  = equity / cfg["max_positions"]   # equal-weight slots
+        if cfg.get("half_position_size"):
+            slot_size = slot_size / 2               # Nano Squeeze: lottery size
         qty        = max(1, int(slot_size / price))
         cost       = price * qty
         if cost > self.cash:
@@ -284,9 +297,14 @@ class MiniPortfolio:
     def check_stops(self, live_prices: dict) -> list:
         closed = []
         now    = datetime.now()
-        partial_tp_trigger = self.config.get("partial_tp_trigger", 12.0)  # was 5% — too early
-        trailing_trigger   = self.config.get("trailing_trigger",    8.0)  # was 4% — activated too soon
-        trail_pct          = self.config.get("trail_pct",           0.91)  # was 0.97 — too tight for volatile stocks
+        cfg    = self.config
+        partial_tp_trigger  = cfg.get("partial_tp_trigger",  12.0)
+        partial_tp_pct      = cfg.get("partial_tp_pct",       0.4)   # fraction to sell at TP1
+        partial_tp2_trigger = cfg.get("partial_tp2_trigger",  None)  # optional second TP level
+        partial_tp2_pct     = cfg.get("partial_tp2_pct",      0.3)
+        trailing_trigger    = cfg.get("trailing_trigger",      8.0)
+        trail_pct           = cfg.get("trail_pct",             0.91)
+
         for ticker in list(self.positions.keys()):
             pos   = self.positions[ticker]
             price = live_prices.get(ticker)
@@ -308,10 +326,26 @@ class MiniPortfolio:
             except Exception:
                 pass
 
-            # Partial TP
-            if pnl_pct >= partial_tp_trigger and ticker not in self.partial_taken and pos["qty"] >= 2:
-                t = self.close_position(ticker, price, f"Partial TP +{partial_tp_trigger:.0f}%", partial_pct=0.4)
+            # Partial TP1
+            tp1_key = f"_tp1_{ticker}"
+            if pnl_pct >= partial_tp_trigger and tp1_key not in self.partial_taken and pos["qty"] >= 2:
+                t = self.close_position(ticker, price,
+                                        f"Partial TP1 +{partial_tp_trigger:.0f}%",
+                                        partial_pct=partial_tp_pct)
                 if t: closed.append(t)
+                self.partial_taken.add(tp1_key)
+                pos = self.positions.get(ticker)
+                if not pos: continue
+
+            # Partial TP2 (e.g. Gap & Squeeze: sell another 30% at +40%)
+            tp2_key = f"_tp2_{ticker}"
+            if (partial_tp2_trigger and pnl_pct >= partial_tp2_trigger
+                    and tp2_key not in self.partial_taken and pos["qty"] >= 2):
+                t = self.close_position(ticker, price,
+                                        f"Partial TP2 +{partial_tp2_trigger:.0f}%",
+                                        partial_pct=partial_tp2_pct)
+                if t: closed.append(t)
+                self.partial_taken.add(tp2_key)
                 pos = self.positions.get(ticker)
                 if not pos: continue
 
@@ -365,7 +399,16 @@ class MiniPortfolio:
                       f"(max_positions={max_pos}) → refunded ${pos['entry_price'] * pos['qty']:.2f}")
             all_positions = dict(sorted_items[:max_pos])
         self.positions     = all_positions
-        self.partial_taken = set(state.get("partial_taken", [])) & set(all_positions.keys())
+        saved_pt = set(state.get("partial_taken", []))
+        pos_keys = set(all_positions.keys())
+        # Keep entries whose underlying ticker is still open
+        # Handles both old (plain ticker) and new (_tp1_TICKER / _tp2_TICKER) formats
+        self.partial_taken = {
+            k for k in saved_pt
+            if k in pos_keys
+            or (k.startswith("_tp1_") and k[5:] in pos_keys)
+            or (k.startswith("_tp2_") and k[5:] in pos_keys)
+        }
 
 
 # ─── StrategyArena ────────────────────────────────────────────────────────────
@@ -561,6 +604,18 @@ class StrategyArena:
 
     # ── Core Logic ───────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _spy_is_bearish(live_prices: dict) -> bool:
+        """
+        Global rule #1: if SPY is down > 0.5% on the day, block new entries.
+        Uses live_prices cache; if SPY not present, allows trading (fail open).
+        """
+        spy = live_prices.get("SPY") or live_prices.get("spy")
+        spy_prev = live_prices.get("SPY_prev_close") or live_prices.get("spy_prev_close")
+        if not spy or not spy_prev or spy_prev <= 0:
+            return False
+        return (spy - spy_prev) / spy_prev * 100 < -0.5
+
     def think(self, stocks: list, live_prices: dict) -> dict:
         """Run one tick for all strategies. Works in all market sessions."""
         with self._lock:
@@ -579,6 +634,13 @@ class StrategyArena:
             # Session overrides
             ov = _SESSION_OVERRIDES.get(session, _SESSION_OVERRIDES["regular"])
 
+            # Global rule #1: SPY regime — block all new entries on red market days
+            spy_bearish = self._spy_is_bearish(live_prices)
+
+            # Current ET time in minutes for entry_cutoff_et checks
+            et_now   = _et_now()
+            et_mins  = et_now.hour * 60 + et_now.minute
+
             # Pre-score all stocks
             scored = []
             import math as _math
@@ -591,14 +653,12 @@ class StrategyArena:
             scored.sort(key=lambda x: -x[2])
 
             new_positions_this_tick = {name: 0 for name in self.portfolios}
-            now_iso = datetime.now().isoformat()
 
             for pf in self.portfolios.values():
                 cfg = pf.config
 
                 # 1. Check stops / stale exits — capture closed trades as events
-                positions_before = set(pf.positions.keys())
-                trades_before    = len(pf.trades)
+                trades_before = len(pf.trades)
                 pf.check_stops(live_prices)
                 for trade in pf.trades[trades_before:]:
                     self._add_event("SELL", pf.name, trade["ticker"],
@@ -611,6 +671,15 @@ class StrategyArena:
                 # 3. Respect per-tick new-position limit for extended hours
                 if new_positions_this_tick[pf.name] >= ov["max_new_pos"]:
                     continue
+
+                # Global rule #1: no new entries when SPY is bearish (regular session only)
+                if spy_bearish and session == "regular":
+                    continue
+
+                # Global rule #2: entry time window (regular session only)
+                if session == "regular" and cfg.get("entry_cutoff_et"):
+                    if et_mins > cfg["entry_cutoff_et"]:
+                        continue
 
                 effective_min_rvol = cfg["min_rvol"] * ov["rvol_factor"]
                 extra_stop         = ov["stop_add_pct"]
@@ -640,22 +709,16 @@ class StrategyArena:
                         continue
                     if cfg.get("requires_pattern") and _safe_float(stock.get("pattern_win_rate", 0)) < 60:
                         continue
-                    # max_price filter (e.g. Gap & Squeeze requires price < $20)
                     if cfg.get("max_price") and price > cfg["max_price"]:
                         continue
-                    # requires_gap: stock must have gapped up (gap_pct > 0, or change_pct > 3% as proxy)
                     if cfg.get("requires_gap"):
                         gap = _safe_float(stock.get("gap_pct", stock.get("gap", 0)))
-                        if gap <= 0:
-                            # fallback: use change_pct as gap proxy (must be up >3% on day open)
-                            if chg < 3.0:
-                                continue
-                    # requires_float_shares_max: float shares < threshold (e.g. 30M)
+                        if gap <= 0 and chg < 3.0:
+                            continue
                     if cfg.get("requires_float_shares_max"):
                         float_shares = _safe_float(stock.get("float_shares", stock.get("float_shares_num", 0)))
                         if float_shares > 0 and float_shares > cfg["requires_float_shares_max"]:
                             continue
-                    # small_cap_only: market cap < $2B or price ≤ $50 (proxy for small cap)
                     if cfg.get("small_cap_only"):
                         cap = _safe_float(stock.get("market_cap", stock.get("cap", 0)))
                         if cap > 2_000_000_000 and price > 50:

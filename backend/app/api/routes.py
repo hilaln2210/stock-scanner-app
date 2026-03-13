@@ -3442,6 +3442,23 @@ async def smart_portfolio_arena_think():
         for s in stocks
         if s.get('ticker') and _safe_float(s.get('price')) > 0
     }
+
+    # Inject SPY prev_close for the regime filter (cache 5 min)
+    import time as _spy_t
+    _spy_cache = _SPY_PREV_CLOSE_CACHE
+    if _spy_t.time() - _spy_cache.get('ts', 0) > 300:
+        try:
+            import yfinance as yf
+            _spy_hist = yf.Ticker("SPY").history(period="2d", timeout=4)
+            if len(_spy_hist) >= 2:
+                _spy_cache['prev_close'] = float(_spy_hist['Close'].iloc[-2])
+                _spy_cache['ts'] = _spy_t.time()
+        except Exception:
+            pass
+    if _spy_cache.get('prev_close'):
+        live_prices.setdefault('SPY', live_prices.get('SPY', 0) or _spy_cache.get('prev_close', 0))
+        live_prices['SPY_prev_close'] = _spy_cache['prev_close']
+
     result = arena_singleton.think(stocks, live_prices)
 
     # Arena→IB bridge: execute trades for the followed strategy
@@ -3740,6 +3757,7 @@ _ARENA_SEASONAL_UPDATED: float = 0.0
 _ARENA_PATTERN_SIGNALS: dict  = {}   # {ticker: win_rate}
 _ARENA_PATTERN_UPDATED: float  = 0.0
 _ARENA_SEASONAL_LOCK: asyncio.Lock = None   # prevent concurrent refreshes
+_SPY_PREV_CLOSE_CACHE: dict = {}     # {prev_close: float, ts: float}
 
 _seasonality_cache: dict = {}
 _seasonality_lock:  asyncio.Lock = None    # prevent concurrent yfinance downloads
