@@ -45,7 +45,7 @@ cd frontend && npx vite --host 0.0.0.0
 1. Finviz scan  →  אם cache > 20s ישן: סריקה מחודשת (TTL=18s)
 2. Live prices  →  yfinance לכל הפוזיציות הפתוחות → מוזרק ל-cache
 3. SmallCap     →  _FV_SMALLCAP_CACHE ממוזג לרשימת המניות (מרענן כל 2 דקות)
-4. Arena think  →  כל 8 האסטרטגיות מריצות לוגיקת כניסה/יציאה
+4. Arena think  →  כל 10 האסטרטגיות מריצות לוגיקת כניסה/יציאה
 5. IB Trader    →  אם מחובר — מבצע פקודות בחשבון demo DU3788776
 ```
 
@@ -79,7 +79,7 @@ cd frontend && npx vite --host 0.0.0.0
 
 ---
 
-### 8 האסטרטגיות
+### 10 האסטרטגיות
 
 #### ⚖️ Balanced (`Balanced`)
 
@@ -221,6 +221,41 @@ cd frontend && npx vite --host 0.0.0.0
 
 ---
 
+#### 🚀 Premarket Gap (`GapScanner`)
+
+| פרמטר | ערך |
+|---|---|
+| min_rvol | 2x |
+| min_chg | 8% (gap) |
+| float_shares | < 50M |
+| min/max_price | $2 / $20 |
+| entry_window | 9:30–9:45 ET |
+| Stop / Target | 8% / 30% |
+| max_positions | 2 |
+
+**פילוסופיה:** Gap > 8% premarket על float קטן = daily runner. חלון כניסה צר 15 דקות בלבד. TP חלקי 12% + trail 0.88.
+
+---
+
+#### 💣 Gap Explosion (`GapExplosion`)
+
+| פרמטר | ערך |
+|---|---|
+| min_rvol | 2x |
+| min_gap_pct | 20% |
+| short_float | ≥ 10% |
+| float_shares | < 50M |
+| min/max_price | $1 / $30 |
+| entry_window | 9:30–9:50 ET |
+| Stop / Target | 12% / 60% |
+| max_positions | 2 |
+| partial_tp | 15% (50% מהפוז') |
+| trail_pct | 0.88 |
+
+**פילוסופיה:** הפילטר הקשה ביותר לגאפ — gap > 20% + שורט ≥ 10% + float < 50M. כשכל התנאים מתחברים בחלון 9:30–9:50 ET — פוטנציאל לריצה של +50-100%. Stop רחב (12%) לתנודתיות של הפתיחה.
+
+---
+
 ### Scheduler Jobs
 
 | Job | תדירות | מה עושה |
@@ -239,7 +274,7 @@ cd frontend && npx vite --host 0.0.0.0
 ### EOD Auto-Replace (16:15 ET)
 
 כל יום ב-16:15 ET:
-1. מדרג את כל 8 האסטרטגיות לפי P&L
+1. מדרג את כל 10 האסטרטגיות לפי P&L
 2. אסטרטגיות עם P&L שלילי → מקבלות קונפיג חדש (clone של המנצח + וריאציה)
 3. **פוזיציות ברווח — לא נסגרות** (לא הורגים winners)
 4. פוזיציות הפסדיות בלבד נסגרות ב-market price

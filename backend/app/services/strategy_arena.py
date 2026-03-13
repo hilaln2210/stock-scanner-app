@@ -161,6 +161,21 @@ STRATEGY_CONFIGS = {
         "partial_tp_trigger": 12.0, "partial_tp_pct": 0.4,
         "trailing_trigger": 10.0, "trail_pct": 0.88,
     },
+    "GapExplosion": {
+        "label": "💣 Gap Explosion",
+        "description": "gap > 20%, שורט≥10%, float<50M, $1-$30 — רק 9:30-9:50 ET, runner 0.88",
+        "min_health": 5, "min_conf": 8, "min_rvol": 2.0,
+        "stop_pct": 12.0, "target_pct": 60.0,
+        "max_day_chg": 999.0, "requires_short_float": 10.0,
+        "requires_min_chg": 20.0, "max_positions": 2,
+        "min_price": 1.0, "max_price": 30.0,
+        "min_volume": 300_000,
+        "requires_float_shares_max": 50_000_000,
+        "min_gap_pct": 20.0,
+        "entry_cutoff_et": 9 * 60 + 50,      # window: 9:30–9:50 ET only
+        "partial_tp_trigger": 15.0, "partial_tp_pct": 0.5,  # sell 50% at +15%
+        "trailing_trigger": 15.0, "trail_pct": 0.88,
+    },
 }
 
 _ARENA_TO_BRAIN_PARAMS = {
