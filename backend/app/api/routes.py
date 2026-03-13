@@ -3390,6 +3390,100 @@ _HOT_MOVERS_RAW_CACHE: list = []
 _HOT_MOVERS_RAW_CACHE_TIME: float = 0.0
 
 
+def _classify_ev_health(ev, mc, net_income, revenue, rev_growth, profit_margin, op_margin, eps):
+    """Unified EV/MC financial health classifier. Returns (reason: str, score_bonus: int)."""
+    # --- margin (best source first) ---
+    margin = None
+    if profit_margin is not None:
+        margin = profit_margin
+    elif op_margin is not None:
+        margin = op_margin
+    elif net_income is not None and revenue and revenue > 0:
+        margin = net_income / revenue
+
+    # --- income fallback (EPS as proxy) ---
+    income = net_income
+    if income is None and eps is not None:
+        income = eps
+
+    # --- EV/MC ratio ---
+    ev_ratio = None
+    try:
+        if ev is not None and mc and mc > 0:
+            ev_ratio = float(ev) / float(mc)
+    except Exception:
+        pass
+
+    # CASE A: EV < MC (cash-rich — positive signal)
+    if ev_ratio is not None and ev_ratio < 0.95:
+        if margin is not None:
+            if margin > 0.20:   return 'profitable_strong', 4
+            elif margin > 0.10: return 'profitable', 3
+            elif margin > 0.02: return 'profitable_weak', 2
+            else:               return 'breakeven_cash', 2
+        elif income is not None:
+            if income > 0:      return 'profitable_weak', 2
+            else:
+                if rev_growth is None:        return 'cash_unknown', 1
+                elif rev_growth > 0.10:       return 'growing', 2
+                elif rev_growth < -0.15:      return 'distressed', 0
+                else:                         return 'stable_cash', 1
+        else:
+            return 'cash_unknown', 1
+
+    # CASE B: EV ≈ MC (normal leverage)
+    elif ev_ratio is not None and ev_ratio <= 1.50:
+        if margin is not None:
+            if margin > 0.20:   return 'profitable_strong', 4
+            elif margin > 0.10: return 'profitable', 3
+            elif margin > 0.02: return 'profitable_weak', 2
+            elif margin > 0:    return 'breakeven', 1
+            else:
+                if rev_growth is None:        return 'unknown', 0
+                elif rev_growth > 0.10:       return 'growing', 1
+                elif rev_growth < -0.15:      return 'distressed', -1
+                else:                         return 'stable', 0
+        elif income is not None:
+            if income > 0:      return 'profitable_weak', 2
+            else:
+                if rev_growth is None:        return 'unknown', 0
+                elif rev_growth > 0.10:       return 'growing', 1
+                elif rev_growth < -0.15:      return 'distressed', -1
+                else:                         return 'stable', 0
+        else:
+            return 'unknown', 0
+
+    # CASE C: EV >> MC (high debt — warning)
+    elif ev_ratio is not None and ev_ratio > 1.50:
+        if margin is not None:
+            if margin > 0.20:   return 'profitable_strong_debt', 2
+            elif margin > 0.10: return 'profitable_debt', 1
+            elif margin > 0.02: return 'profitable_weak_debt', 0
+            else:
+                if rev_growth is not None and rev_growth < -0.15:
+                                return 'distressed_debt', -3
+                else:           return 'losing_debt', -2
+        elif income is not None:
+            if income > 0:      return 'profitable_weak_debt', 0
+            else:               return 'losing_debt', -2
+        else:
+            return 'unknown_debt', -1
+
+    # CASE D: no EV/MC — fallback on margin only
+    else:
+        if margin is not None:
+            if margin > 0.20:   return 'profitable_strong', 3
+            elif margin > 0.10: return 'profitable', 2
+            elif margin > 0.02: return 'profitable_weak', 1
+            elif margin > 0:    return 'breakeven', 0
+            else:
+                if rev_growth is not None and rev_growth > 0.10:  return 'growing', 1
+                elif rev_growth is not None and rev_growth < -0.15: return 'distressed', -1
+                else:                                               return 'unknown', 0
+        else:
+            return 'unknown', 0
+
+
 # Strategy priority: most specific (hardest filters) first → used for top_strategy pick
 _STRATEGY_SPECIFICITY = [
     'GapExplosion', 'SeasonalityTrader', 'SwingSetup', 'SqueezeHunter',
@@ -3633,7 +3727,7 @@ async def _scrape_hot_movers(min_chg: float) -> list:
 
 
 @router.get("/smart-portfolio/arena/hot-movers")
-async def arena_hot_movers(min_chg: float = Query(15.0)):
+async def arena_hot_movers(min_chg: float = Query(5.0)):
     """
     Stocks up min_chg%+ today with intraday momentum (30m + 1h change).
     Runs a dedicated Finviz scan (ta_perf_d15o) — catches small-cap runners too.
@@ -3775,63 +3869,29 @@ async def arena_hot_movers(min_chg: float = Query(15.0)):
                 merged['ev_below_mc'] = False
                 merged['ev_mc_ratio'] = None
                 merged['ev_healthy'] = False
-            # 4. EV cash-reason classification (only relevant when ev_below_mc=True)
-            if merged.get('ev_below_mc'):
-                # --- Profit margin (best source first) ---
-                pm = merged.get('_yf_profit_margin')
-                margin = pm if pm is not None else merged.get('_yf_op_margin')
-                # If no direct margin, compute from income / revenue
-                if margin is None:
-                    net_income = (
-                        merged.get('_yf_net_income')               # netIncomeToCommon
-                        or _parse_fv_num(str(merged.get('income', '') or ''))  # Finviz
-                        or merged.get('_yf_eps')                   # trailingEps as proxy
-                    )
-                    revenue = (
-                        merged.get('_yf_revenue')                  # totalRevenue
-                        or _parse_fv_num(str(merged.get('sales', '') or ''))   # Finviz
-                    )
-                    if net_income is not None and revenue and revenue > 0:
-                        margin = net_income / revenue
-                    elif net_income is not None:
-                        # revenue unknown — use sign of net_income only
-                        margin = 1.0 if net_income > 0 else -1.0  # sentinel: +/- direction
-
-                rev_growth = merged.get('_yf_rev_growth')
-
-                if margin is not None and margin > 0:
-                    if margin > 0.20:
-                        merged['ev_cash_reason'] = 'profitable_strong'  # >20% margin → +4
-                    elif margin > 0.05:
-                        merged['ev_cash_reason'] = 'profitable'          # 5-20% → +3
-                    else:
-                        merged['ev_cash_reason'] = 'profitable_weak'     # 0-5% → +2
-                elif margin is not None and margin < 0:
-                    if rev_growth is None:
-                        merged['ev_cash_reason'] = 'unknown'             # no rev data → 0
-                    elif rev_growth > 0.10:
-                        merged['ev_cash_reason'] = 'growing'             # losing but scaling → +2
-                    elif rev_growth < -0.15:
-                        merged['ev_cash_reason'] = 'distressed'          # declining rev → -1
-                    else:
-                        merged['ev_cash_reason'] = 'stable'              # flat rev → +1
-                else:
-                    merged['ev_cash_reason'] = 'unknown'                 # no data at all → 0
-            else:
-                merged['ev_cash_reason'] = None
+            # 4. EV financial health — unified classifier
+            _ev_num  = ev_val  # already computed above
+            _mc_num  = mc_val  # already computed above
+            ev_reason, ev_bonus = _classify_ev_health(
+                ev=_ev_num,
+                mc=_mc_num,
+                net_income=merged.get('_yf_net_income') or _parse_fv_num(str(merged.get('income','') or '')),
+                revenue=merged.get('_yf_revenue') or _parse_fv_num(str(merged.get('sales','') or '')),
+                rev_growth=merged.get('_yf_rev_growth'),
+                profit_margin=merged.get('_yf_profit_margin'),
+                op_margin=merged.get('_yf_op_margin'),
+                eps=merged.get('_yf_eps'),
+            )
+            merged['ev_cash_reason'] = ev_reason
+            merged['ev_score_bonus'] = ev_bonus
             # 5. Strategy matching (uses enriched data with real rvol/short_float)
             all_strats, top_strat = _match_strategies(merged)
             merged['strategies'] = all_strats
             merged['top_strategy'] = top_strat
             # 6. Momentum label
             merged['health'] = _health_label(merged)
-            # 7. Pick score — bonus for EV < MC (adjusted by cash reason)
-            merged['pick_score'] = _pick_score(merged)
-            if merged.get('ev_below_mc'):
-                reason = merged.get('ev_cash_reason')
-                bonus = {'profitable_strong': 4, 'profitable': 3, 'profitable_weak': 2,
-                         'growing': 2, 'stable': 1, 'unknown': 0, 'distressed': -1}.get(reason, 0)
-                merged['pick_score'] = round(merged['pick_score'] + bonus, 2)
+            # 7. Pick score — unified EV health bonus
+            merged['pick_score'] = round(_pick_score(merged) + merged.get('ev_score_bonus', 0), 2)
             return merged
 
     enriched = list(await asyncio.gather(*[_enrich(s) for s in top]))

@@ -143,7 +143,7 @@ async def lifespan(app: FastAPI):
                 hot_age = _t.time() - _routes._HOT_MOVERS_RAW_CACHE_TIME
                 if hot_age > 60:
                     try:
-                        await _routes._scrape_hot_movers(15.0)
+                        await _routes._scrape_hot_movers(5.0)
                     except Exception:
                         pass
 

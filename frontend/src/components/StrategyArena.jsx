@@ -641,43 +641,50 @@ function HotMovers() {
                   {m.enterprise_value && (
                     <span>
                       EV: <span style={{
-                        color: m.ev_below_mc
-                          ? ({ profitable_strong:'#22c55e', profitable:'#4ade80', profitable_weak:'#facc15', growing:'#a78bfa', stable:'#94a3b8', distressed:'#fb923c', unknown:'#64748b' }[m.ev_cash_reason] || '#94a3b8')
-                          : m.ev_healthy ? '#60a5fa' : '#d1d5db',
+                        color: (() => {
+                          const COLOR_MAP = {
+                            profitable_strong:'#22c55e', profitable:'#4ade80', profitable_weak:'#facc15',
+                            breakeven_cash:'#fbbf24', growing:'#a78bfa', stable_cash:'#94a3b8',
+                            cash_unknown:'#64748b', distressed:'#fb923c',
+                            breakeven:'#94a3b8', stable:'#64748b',
+                            profitable_strong_debt:'#fbbf24', profitable_debt:'#f59e0b',
+                            profitable_weak_debt:'#fb923c', losing_debt:'#ef4444',
+                            distressed_debt:'#dc2626', unknown_debt:'#475569',
+                          };
+                          return COLOR_MAP[m.ev_cash_reason] || '#d1d5db';
+                        })(),
                         fontWeight: (m.ev_below_mc || m.ev_healthy) ? 700 : 400,
                       }}>
                         {m.enterprise_value}
                       </span>
                     </span>
                   )}
-                  {m.ev_below_mc && (() => {
-                    const reason = m.ev_cash_reason;
-                    const REASON_CFG = {
-                      profitable_strong: { bg: 'rgba(74,222,128,0.25)', color: '#22c55e', border: 'rgba(74,222,128,0.6)',
-                                    label: '💰💰 EV < MC',
-                                    tip: 'EV < MC + מרווח רווח >20% — מכונת מזומנים. הסיגנל החזק ביותר.' },
-                      profitable: { bg: 'rgba(74,222,128,0.18)',  color: '#4ade80', border: 'rgba(74,222,128,0.45)',
-                                    label: '💰 EV < MC ✓',
-                                    tip: 'EV < MC + רווחית (מרווח 5-20%) — מזומן מצטבר מפעילות. שורט סקוויז חזק.' },
-                      profitable_weak: { bg: 'rgba(250,204,21,0.15)', color: '#facc15', border: 'rgba(250,204,21,0.4)',
-                                    label: '💰 EV < MC ~',
-                                    tip: 'EV < MC + רווחית בקושי (מרווח <5%) — מזומן מפעילות אך שולי דק.' },
-                      growing:    { bg: 'rgba(139,92,246,0.15)',  color: '#a78bfa', border: 'rgba(139,92,246,0.4)',
-                                    label: '🚀 EV < MC ↑',
-                                    tip: 'EV < MC + הפסדית אך הכנסות צומחות >10% — שורפת כסף לצמיחה. סיגנל חיובי.' },
-                      stable:     { bg: 'rgba(148,163,184,0.12)', color: '#94a3b8', border: 'rgba(148,163,184,0.35)',
-                                    label: '💰 EV < MC',
-                                    tip: 'EV < MC + הכנסות יציבות — כנראה כסף מגיוס. ניטרלי.' },
-                      distressed: { bg: 'rgba(251,146,60,0.15)',  color: '#fb923c', border: 'rgba(251,146,60,0.4)',
-                                    label: '⚠️ EV < MC',
-                                    tip: 'EV < MC אך הכנסות יורדות >15% — מזומן ממכירת נכסים? סיגנל חלש.' },
-                      unknown:    { bg: 'rgba(100,116,139,0.12)', color: '#64748b', border: 'rgba(100,116,139,0.3)',
-                                    label: '❓ EV < MC',
-                                    tip: 'EV < MC — אין מידע על הכנסות (חברה pre-revenue?). לא ניתן לסווג.' },
+                  {m.ev_cash_reason && m.ev_cash_reason !== 'unknown' && (() => {
+                    const EV_BADGES = {
+                      // Case A — EV < MC (cash-rich)
+                      profitable_strong: { bg:'rgba(34,197,94,0.2)',   color:'#22c55e', border:'rgba(34,197,94,0.5)',   label:'💰💰 EV<MC', tip:'רווחית חזק >20% margin + מזומן עודף. הסיגנל הכי חזק.' },
+                      profitable:        { bg:'rgba(74,222,128,0.18)',  color:'#4ade80', border:'rgba(74,222,128,0.45)', label:'💰 EV<MC ✓', tip:'רווחית 10-20% margin + EV < MC. מזומן מצטבר.' },
+                      profitable_weak:   { bg:'rgba(250,204,21,0.15)',  color:'#facc15', border:'rgba(250,204,21,0.4)',  label:'💰 EV<MC',   tip:'רווחית בקושי 2-10% margin + EV < MC.' },
+                      breakeven_cash:    { bg:'rgba(250,204,21,0.12)',  color:'#fbbf24', border:'rgba(250,204,21,0.3)',  label:'⚖️ EV<MC',   tip:'כמעט breakeven אבל EV < MC — יש מזומן עודף.' },
+                      growing:           { bg:'rgba(139,92,246,0.15)',  color:'#a78bfa', border:'rgba(139,92,246,0.4)',  label:'🚀 EV<MC ↑', tip:'הפסדית אך צומחת >10% + EV < MC. שורפת כסף לצמיחה.' },
+                      stable_cash:       { bg:'rgba(148,163,184,0.12)', color:'#94a3b8', border:'rgba(148,163,184,0.35)',label:'💰 EV<MC',   tip:'הפסדית, הכנסות יציבות + EV < MC. כנראה גייסה.' },
+                      cash_unknown:      { bg:'rgba(100,116,139,0.12)', color:'#64748b', border:'rgba(100,116,139,0.3)', label:'💰 EV<MC ?', tip:'EV < MC — אין מידע פיננסי מלא.' },
+                      distressed:        { bg:'rgba(251,146,60,0.15)',  color:'#fb923c', border:'rgba(251,146,60,0.4)',  label:'⚠️ EV<MC',  tip:'EV<MC אך הכנסות יורדות >15%. מכירת נכסים?' },
+                      // Case B — EV ≈ MC (normal)
+                      breakeven:         { bg:'rgba(148,163,184,0.1)',  color:'#94a3b8', border:'rgba(148,163,184,0.3)', label:'⚖️',        tip:'כמעט breakeven.' },
+                      stable:            { bg:'rgba(100,116,139,0.1)',  color:'#64748b', border:'rgba(100,116,139,0.25)',label:'📊',        tip:'הפסדית, הכנסות יציבות.' },
+                      // Case C — EV >> MC (high debt)
+                      profitable_strong_debt: { bg:'rgba(250,204,21,0.15)', color:'#fbbf24', border:'rgba(250,204,21,0.4)',  label:'💰💰 ⚠️חוב', tip:'רווחית חזק אבל חוב גבוה (EV >> MC).' },
+                      profitable_debt:        { bg:'rgba(251,191,36,0.12)', color:'#f59e0b', border:'rgba(251,191,36,0.35)', label:'💰 ⚠️חוב',  tip:'רווחית אבל חוב גבוה.' },
+                      profitable_weak_debt:   { bg:'rgba(251,146,60,0.12)', color:'#fb923c', border:'rgba(251,146,60,0.3)',  label:'⚠️ חוב',   tip:'כמעט breakeven + חוב גבוה.' },
+                      losing_debt:            { bg:'rgba(239,68,68,0.15)',  color:'#ef4444', border:'rgba(239,68,68,0.4)',   label:'⚠️⚠️ חוב', tip:'הפסדית + חוב גבוה.' },
+                      distressed_debt:        { bg:'rgba(185,28,28,0.2)',   color:'#dc2626', border:'rgba(185,28,28,0.5)',   label:'💀 חוב',   tip:'הפסדית + חוב גבוה + הכנסות יורדות. הכי גרוע.' },
+                      unknown_debt:           { bg:'rgba(100,116,139,0.1)',  color:'#475569', border:'rgba(100,116,139,0.25)',label:'⚠️ חוב?', tip:'חוב גבוה, אין מידע פיננסי.' },
                     };
-                    const cfg = REASON_CFG[reason] || REASON_CFG.unknown;
+                    const cfg = EV_BADGES[m.ev_cash_reason];
+                    if (!cfg) return null;
                     return (
-                      <span title={cfg.tip} style={{
+                      <span key="ev-badge" title={cfg.tip} style={{
                         fontSize: 9, padding: '1px 5px', borderRadius: 4,
                         background: cfg.bg, color: cfg.color,
                         border: `1px solid ${cfg.border}`, fontWeight: 700,
@@ -686,15 +693,6 @@ function HotMovers() {
                       </span>
                     );
                   })()}
-                  {!m.ev_below_mc && m.ev_healthy && (
-                    <span title={`EV ≈ MC (יחס ${m.ev_mc_ratio}) — חברה יציבה, חוב ≈ מזומן, צמיחה נורמלית`} style={{
-                      fontSize: 9, padding: '1px 5px', borderRadius: 4,
-                      background: 'rgba(96,165,250,0.12)', color: '#60a5fa',
-                      border: '1px solid rgba(96,165,250,0.35)', fontWeight: 700,
-                    }}>
-                      ⚖️ EV ≈ MC
-                    </span>
-                  )}
                 </div>
               )}
 
