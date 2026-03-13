@@ -3424,33 +3424,31 @@ def _match_strategies(stock: dict) -> tuple[list[str], str | None]:
 
 def _health_label(stock: dict) -> dict:
     """
-    Returns {label, color} based on intraday momentum + fundamentals.
-    healthy   = green  — both 30m and 1h positive
-    warming   = yellow — 30m positive, 1h flat/negative (just turning)
-    cooling   = orange — 30m negative, 1h was positive (pulling back)
-    unhealthy = red    — both negative (fading)
+    Returns {label, tooltip, color} — MOMENTUM health, not fundamental health.
+    Measures whether the intraday move is continuing or fading.
+    green  = מומנטום ממשיך — both 30m and 1h still rising
+    yellow = מתחמם        — 30m turning positive after dip
+    orange = נסיגה        — 30m pulling back but 1h still up (normal consolidation)
+    red    = נחלש         — both 30m and 1h negative (move fading)
     """
     c30 = stock.get('chg_30m')
     c1h = stock.get('chg_1h')
-    rvol = _safe_float(stock.get('rel_volume'))
     short_f = _safe_float(stock.get('short_float'))
-
-    # Bonus: high short float = squeeze potential = healthier signal
     squeeze_bonus = short_f >= 10
 
     if c30 is None or c1h is None:
-        return {'label': '—', 'color': '#6b7280'}
+        return {'label': '—', 'tooltip': 'אין נתונים', 'color': '#6b7280'}
 
     if c30 > 0.5 and c1h > 0.5:
-        label = '🟢 בריא' if not squeeze_bonus else '🟢 בריא + שורט'
-        return {'label': label, 'color': '#4ade80'}
+        suffix = ' + שורט' if squeeze_bonus else ''
+        return {'label': f'▲ ממשיך{suffix}', 'tooltip': f'מומנטום ממשיך: 30m +{c30:.1f}%, 1h +{c1h:.1f}%', 'color': '#4ade80'}
     if c30 > 0.3 and c1h <= 0:
-        return {'label': '🟡 מתחמם', 'color': '#fbbf24'}
+        return {'label': '↗ מתחמם', 'tooltip': f'30m +{c30:.1f}% אחרי ירידה — אולי הפוך', 'color': '#fbbf24'}
     if c30 <= 0 and c1h > 0.5:
-        return {'label': '🟠 נסיגה', 'color': '#fb923c'}
+        return {'label': '↘ נסיגה', 'tooltip': f'30m {c30:.1f}% אבל 1h עדיין +{c1h:.1f}% — קונסולידציה', 'color': '#fb923c'}
     if c30 <= 0 and c1h <= 0:
-        return {'label': '🔴 נחלש', 'color': '#f87171'}
-    return {'label': '🟡 ניטרלי', 'color': '#fbbf24'}
+        return {'label': '▼ נחלש', 'tooltip': f'מומנטום נחלש: 30m {c30:.1f}%, 1h {c1h:.1f}%', 'color': '#f87171'}
+    return {'label': '→ ניטרלי', 'tooltip': f'30m {c30:.1f}%, 1h {c1h:.1f}%', 'color': '#fbbf24'}
 
 
 _STRATEGY_SCORE = {

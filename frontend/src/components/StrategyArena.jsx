@@ -655,8 +655,9 @@ function HotMovers() {
                   <div style={{ fontSize: 11, fontWeight: 700, color: chgColor(c1h) }}>{fmtChg(c1h)}{arrow(c1h)}</div>
                 </div>
                 {health.label && (
-                  <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-                    <div style={{ fontSize: 9, color: '#6b7280' }}>מצב</div>
+                  <div style={{ marginLeft: 'auto', textAlign: 'right' }}
+                       title={health.tooltip || ''}>
+                    <div style={{ fontSize: 9, color: '#6b7280' }}>מומנטום</div>
                     <div style={{ fontSize: 10, fontWeight: 600, color: health.color }}>{health.label}</div>
                   </div>
                 )}
