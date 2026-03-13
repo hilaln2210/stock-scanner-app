@@ -338,42 +338,85 @@ async def lifespan(app: FastAPI):
     print("Arena EOD: preview at 15:45, winner at 16:05 ET")
 
     # IB Auto-Reconnect — if arena trader is enabled and IB disconnected, reconnect automatically
-    _ib_reconnect_failures = [0]  # consecutive failure counter
+    _ib_reconnect_failures = [0]   # consecutive failure counter
+    _ib_was_connected = [False]    # True after we confirmed connection at least once this session
+    _ib_disconnect_alerted = [False]  # True after we sent the "disconnected" Telegram
 
     async def _ib_auto_reconnect():
         from app.services.ib_service import ib_service
-        if ib_service.is_connected():
+        from app.services.arena_ib_trader import _tg
+
+        # ── 1. Heartbeat check (every call — catches dead sockets) ─────────
+        import asyncio as _asyncio
+        loop = _asyncio.get_running_loop()
+        is_alive = await loop.run_in_executor(None, ib_service.heartbeat)
+
+        if is_alive:
+            # Connected and healthy
+            if _ib_disconnect_alerted[0]:
+                # Just recovered — send Telegram
+                _ib_reconnect_failures[0] = 0
+                _ib_disconnect_alerted[0] = False
+                account = ib_service._account or "?"
+                import time as _time
+                down_sec = int(_time.time() - (ib_service._disconnect_time or _time.time())) if ib_service._disconnect_time else 0
+                down_str = f" (ניתוק של {down_sec // 60}:{down_sec % 60:02d} דקות)" if down_sec > 0 else ""
+                print(f"[IB Reconnect] ✓ Gateway חזר לאוויר — {account}{down_str}")
+                await _tg(
+                    f"✅ <b>IB Gateway — חיבור חזר</b>\n"
+                    f"חשבון: <b>{account}</b>{down_str}\n"
+                    f"הארנה חוזרת לפעול."
+                )
+            _ib_was_connected[0] = True
             _ib_reconnect_failures[0] = 0
             return
-        # Only reconnect if IB was previously connected (user initiated at least once)
+
+        # ── 2. Only auto-reconnect if we were ever manually connected ──────
         if not ib_service._ever_connected:
             return
-        # Back off after repeated failures: retry every 5 attempts (~5 min)
-        if _ib_reconnect_failures[0] >= 5:
-            if _ib_reconnect_failures[0] % 5 == 0:
-                print("[IB Reconnect] Retrying after backoff...")
-            else:
-                _ib_reconnect_failures[0] += 1
-                return
+
+        # ── 3. First detection → send disconnect alert ─────────────────────
+        if not _ib_disconnect_alerted[0]:
+            _ib_disconnect_alerted[0] = True
+            print("[IB Reconnect] Gateway לא מגיב — שולח התראה")
+            await _tg(
+                f"🔴 <b>IB Gateway — ניתוק</b>\n"
+                f"Gateway לא מגיב על {ib_service._host}:{ib_service._port}\n"
+                f"מנסה reconnect אוטומטי...\n"
+                f"אם Gateway קרס — הפעל מחדש וכנס ל-IB."
+            )
+
+        # ── 4. Backoff: first 3 failures → aggressive (every tick=60s),
+        #                 4-10 → every 2 ticks, 11+ → every 5 ticks (~5min) ──
+        n = _ib_reconnect_failures[0]
+        if n >= 10 and n % 5 != 0:
+            _ib_reconnect_failures[0] += 1
+            return
+        if 3 <= n < 10 and n % 2 != 0:
+            _ib_reconnect_failures[0] += 1
+            return
+
         try:
-            print(f"[IB Reconnect] IB disconnected — reconnecting to {ib_service._host}:{ib_service._port}...")
+            print(f"[IB Reconnect] מנסה reconnect ל-{ib_service._host}:{ib_service._port} "
+                  f"(ניסיון #{_ib_reconnect_failures[0] + 1})...")
             result = await ib_service.connect(
                 host=ib_service._host, port=ib_service._port, client_id=20
             )
             if result.get("connected"):
+                # Success — alert will be sent on next heartbeat pass
                 _ib_reconnect_failures[0] = 0
                 print(f"[IB Reconnect] ✓ Connected to {result.get('account', '?')}")
             else:
                 _ib_reconnect_failures[0] += 1
-                print(f"[IB Reconnect] Failed: {result.get('error', 'unknown')} "
-                      f"(attempt {_ib_reconnect_failures[0]})")
+                print(f"[IB Reconnect] נכשל: {result.get('error', 'unknown')} "
+                      f"(ניסיון #{_ib_reconnect_failures[0]})")
         except Exception as e:
             _ib_reconnect_failures[0] += 1
-            print(f"[IB Reconnect] Error: {e} (attempt {_ib_reconnect_failures[0]})")
+            print(f"[IB Reconnect] שגיאה: {e} (ניסיון #{_ib_reconnect_failures[0]})")
 
     scheduler.add_job(_ib_auto_reconnect, "interval", seconds=60, id="ib_reconnect_job",
                       max_instances=1, coalesce=True)
-    print("IB Auto-Reconnect: checks every 60s when arena trader is enabled")
+    print("IB Auto-Reconnect: heartbeat + reconnect every 60s, Telegram alerts on disconnect/recover")
 
     # ── System Watchdog — self-healing monitor every 5 min ─────────────────
     async def _system_watchdog():

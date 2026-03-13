@@ -120,6 +120,9 @@ class IBService:
         self._orders_cache: List[Dict] = []
         self._orders_cache_time: float = 0
         self._CACHE_TTL = 20  # seconds
+        # Disconnect tracking
+        self._disconnect_time: Optional[float] = None  # epoch when disconnect was first detected
+        self._last_heartbeat_ok: float = 0
         # Local trade history (persists across reconnections)
         self._trade_history_file = Path(__file__).parent.parent.parent / "data" / "ib_trade_history.json"
         self._trade_history: List[Dict] = self._load_trade_history()
@@ -249,19 +252,52 @@ class IBService:
             self._connected = False
             return False
 
+    def heartbeat(self) -> bool:
+        """
+        Real liveness check: opens a short-lived connection and calls reqCurrentTime().
+        More reliable than isConnected() which can return True on a dead socket.
+        Updates self._connected if the persistent connection is found dead.
+        Returns True if Gateway is reachable.
+        """
+        if not _IB_AVAILABLE:
+            return False
+
+        def _ping(ib: "_ib.IB"):
+            t = ib.reqCurrentTime()
+            return t is not None
+
+        result = _run_in_ib_thread(_ping, timeout=8)
+        alive = bool(result)
+        if alive:
+            self._last_heartbeat_ok = time.time()
+        else:
+            # If persistent connection claimed it was alive, mark it dead now
+            if self._connected:
+                log.warning("[IB heartbeat] Gateway unreachable — marking disconnected")
+                self._connected = False
+        return alive
+
     def status(self) -> Dict:
+        disconnected_for: Optional[float] = None
+        if self._disconnect_time:
+            disconnected_for = round(time.time() - self._disconnect_time)
         return {
             "connected": self.is_connected(),
             "account": self._account,
             "ib_available": _IB_AVAILABLE,
+            "disconnected_for_seconds": disconnected_for,
+            "last_heartbeat_ok": self._last_heartbeat_ok or None,
         }
 
     def _force_disconnect(self):
         """Force-close stale IB connection so clientId can be reused."""
         with self._lock:
             old_ib = self._ib
+            was_connected = self._connected
             self._ib = None
             self._connected = False
+            if was_connected and self._disconnect_time is None:
+                self._disconnect_time = time.time()
         if old_ib:
             try:
                 old_ib.disconnect()
@@ -301,6 +337,8 @@ class IBService:
             self._port = port
             self._connected = True
             self._ever_connected = True
+            self._disconnect_time = None
+            self._last_heartbeat_ok = time.time()
         return {"connected": True, "account": self._account, "host": host, "port": port}
 
     async def disconnect(self) -> Dict:
