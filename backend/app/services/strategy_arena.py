@@ -72,33 +72,37 @@ STRATEGY_CONFIGS = {
     },
     "SqueezeHunter": {
         "label": "🔥 Hard Squeeze",
-        "description": "שורט סקוויז — שורט≥20%, partial TP ב-15% (50%), יעד +40%",
-        "min_health": 12, "min_conf": 15, "min_rvol": 1.5,
+        "description": "שורט סקוויז — שורט≥20%, rvol≥2x, מחיר<$50, partial TP ב-15%",
+        "min_health": 12, "min_conf": 15, "min_rvol": 2.0,
         "stop_pct": 8.0, "target_pct": 40.0,
         "max_day_chg": 999.0, "requires_short_float": 20.0,
         "requires_min_chg": 2.0, "max_positions": 2,
+        "max_price": 50.0, "min_volume": 500_000,
         "small_cap_only": True,
-        "partial_tp_trigger": 15.0, "partial_tp_pct": 0.5,  # sell 50% at +15%
+        "max_premarket_chg": 15.0,           # catalyst filter — don't chase 15%+ moves
+        "partial_tp_trigger": 15.0, "partial_tp_pct": 0.5,
         "trailing_trigger": 12.0, "trail_pct": 0.91,
     },
     "Scalper": {
         "label": "⚡ Scalper",
-        "description": "כניסות אגרסיביות — rvol ≥ 1.5, כניסה רק 9:30-10:00 ET, trail 0.92",
-        "min_health": 18, "min_conf": 20, "min_rvol": 1.5,
+        "description": "כניסות אגרסיביות — rvol ≥ 2x, מחיר<$50, 9:30-10:00 ET, trail 0.92",
+        "min_health": 18, "min_conf": 20, "min_rvol": 2.0,
         "stop_pct": 6.0, "target_pct": 20.0,
         "max_day_chg": 999.0, "requires_short_float": None,
         "requires_min_chg": 0.1, "max_positions": 2,
+        "max_price": 50.0, "min_volume": 500_000,
         "partial_tp_trigger": 10.0, "trailing_trigger": 8.0, "trail_pct": 0.92,
-        "entry_cutoff_et": 10 * 60,          # entries only 9:30–10:00 ET
+        "entry_cutoff_et": 10 * 60,
     },
     "MomentumBreaker": {
         "label": "🚀 Momentum Breaker",
-        "description": "פורצים עם נפח פנומנלי — rvol ≥ 1.5, תנועה > 1.5%, כניסה לפני 10:30 ET",
-        "min_health": 22, "min_conf": 28, "min_rvol": 1.5,
+        "description": "פורצים עם נפח פנומנלי — rvol ≥ 2x, מחיר<$50, תנועה > 1.5%",
+        "min_health": 22, "min_conf": 28, "min_rvol": 2.0,
         "stop_pct": 5.0, "target_pct": 16.0,
         "max_day_chg": 30.0, "requires_short_float": None,
         "requires_min_chg": 1.5, "max_positions": 2,
-        "entry_cutoff_et": 10 * 60 + 30,     # no new entries after 10:30 ET
+        "max_price": 50.0, "min_volume": 500_000,
+        "entry_cutoff_et": 10 * 60 + 30,
     },
     "SwingSetup": {
         "label": "⚡ Lightning Squeeze",
@@ -107,12 +111,13 @@ STRATEGY_CONFIGS = {
         "stop_pct": 8.0, "target_pct": 35.0,
         "max_day_chg": 999.0, "requires_short_float": 10.0,
         "requires_min_chg": 1.0, "max_positions": 2,
-        "max_price": 50.0,
+        "max_price": 50.0, "min_volume": 500_000,
         "requires_gap": True,
         "requires_float_shares_max": 50_000_000,
+        "max_premarket_chg": 15.0,
         "partial_tp_trigger": 10.0,
         "trailing_trigger": 8.0,
-        "trail_pct": 0.87,                   # wider trail — small float needs room
+        "trail_pct": 0.87,
     },
     "SeasonalityTrader": {
         "label": "🌪️ Gap & Squeeze",
@@ -136,19 +141,23 @@ STRATEGY_CONFIGS = {
         "stop_pct": 6.0, "target_pct": 50.0,
         "max_day_chg": 999.0, "requires_short_float": 15.0,
         "requires_min_chg": 1.0, "max_positions": 2,
+        "min_volume": 300_000,
         "small_cap_only": True,
-        "half_position_size": True,          # לוטרי — חצי מגודל רגיל
+        "max_premarket_chg": 15.0,
+        "half_position_size": True,
     },
     "GapScanner": {
         "label": "🚀 Premarket Gap",
-        "description": "gap > 8%, float < 50M, $2-$20 — daily runners מ-premarket",
+        "description": "gap > 8%, float < 50M, $2-$20 — רק 9:30-9:45 ET, daily runners",
         "min_health": 5, "min_conf": 8, "min_rvol": 2.0,
         "stop_pct": 8.0, "target_pct": 30.0,
         "max_day_chg": 999.0, "requires_short_float": None,
         "requires_min_chg": 8.0, "max_positions": 2,
         "min_price": 2.0, "max_price": 20.0,
+        "min_volume": 300_000,
         "requires_float_shares_max": 50_000_000,
-        "min_gap_pct": 8.0,                  # gap > 8% חובה
+        "min_gap_pct": 8.0,
+        "entry_cutoff_et": 9 * 60 + 45,      # window: 9:30–9:45 ET only
         "partial_tp_trigger": 12.0, "partial_tp_pct": 0.4,
         "trailing_trigger": 10.0, "trail_pct": 0.88,
     },
@@ -740,6 +749,13 @@ class StrategyArena:
                     if cfg.get("small_cap_only"):
                         cap = _safe_float(stock.get("market_cap", stock.get("cap", 0)))
                         if cap > 2_000_000_000 and price > 50:
+                            continue
+                    if cfg.get("min_volume"):
+                        vol = _safe_float(stock.get("volume", stock.get("cur_volume", 0)))
+                        if 0 < vol < cfg["min_volume"]:
+                            continue
+                    if session == "premarket" and cfg.get("max_premarket_chg"):
+                        if chg > cfg["max_premarket_chg"]:
                             continue
 
                     stop_override = cfg["stop_pct"] + extra_stop if extra_stop else None
