@@ -584,7 +584,7 @@ function HotMovers() {
     <div style={{ marginBottom: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b', letterSpacing: 1 }}>
-          🔥 HOT MOVERS היום +15%
+          🔥 HOT MOVERS היום +5%
         </span>
         <span style={{ fontSize: 11, color: '#6b7280' }}>
           {movers.length} מניות
@@ -598,25 +598,35 @@ function HotMovers() {
           const c1h = m.chg_1h;
           const health = m.health || {};
           const isTop = m.top_pick;
-          const borderColor = isTop ? '#fbbf24' : (health.color || '#374151');
+          const isCandidate = m.is_top_candidate;
+          const tier = m.financial_tier;
+          const borderColor = isCandidate ? '#22c55e' : isTop ? '#fbbf24' : (health.color || '#374151');
           const sfloat = typeof m.short_float === 'number' ? m.short_float : parseFloat(m.short_float) || 0;
           const rvol = typeof m.rel_volume === 'number' ? m.rel_volume : parseFloat(m.rel_volume) || 0;
           return (
             <div key={m.ticker} style={{
-              background: isTop ? 'rgba(251,191,36,0.07)' : 'rgba(17,24,39,0.9)',
-              border: `${isTop ? '2px' : '1.5px'} solid ${borderColor}`,
+              background: isCandidate ? 'rgba(34,197,94,0.07)' : isTop ? 'rgba(251,191,36,0.07)' : 'rgba(17,24,39,0.9)',
+              border: `${(isCandidate || isTop) ? '2px' : '1.5px'} solid ${borderColor}`,
               borderRadius: 8,
               padding: '8px 12px',
               minWidth: 155,
               maxWidth: 200,
-              boxShadow: isTop ? '0 0 14px rgba(251,191,36,0.25)' : 'none',
+              boxShadow: isCandidate ? '0 0 16px rgba(34,197,94,0.22)' : isTop ? '0 0 14px rgba(251,191,36,0.25)' : 'none',
             }}>
-              {/* Top pick crown badge */}
-              {isTop && (
+              {/* Priority badge */}
+              {isCandidate ? (
+                <div style={{ fontSize: 9, fontWeight: 700, color: '#22c55e', marginBottom: 3, letterSpacing: 0.5 }}>
+                  {tier} TOP CANDIDATE
+                </div>
+              ) : isTop ? (
                 <div style={{ fontSize: 9, fontWeight: 700, color: '#fbbf24', marginBottom: 3, letterSpacing: 0.5 }}>
                   👑 TOP PICK
                 </div>
-              )}
+              ) : tier ? (
+                <div style={{ fontSize: 9, fontWeight: 600, color: '#a3e635', marginBottom: 3 }}>
+                  {tier}
+                </div>
+              ) : null}
               {/* Row 1: ticker + day% */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
                 <span style={{ fontWeight: 800, fontSize: 14, color: '#f9fafb' }}>{m.ticker}</span>

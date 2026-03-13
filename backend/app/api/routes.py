@@ -3930,6 +3930,19 @@ async def arena_hot_movers(min_chg: float = Query(5.0)):
         best = max(enriched, key=lambda x: x.get('pick_score', 0))
         for m in enriched:
             m['top_pick'] = (m is best)
+    # Compute financial_tier + is_top_candidate for each mover
+    _EV_SCORE_MAP = {
+        'profitable_strong': 4, 'profitable': 3, 'profitable_weak': 2,
+        'breakeven_cash': 2, 'growing': 2, 'stable_cash': 1,
+        'breakeven': 1, 'profitable_strong_debt': 2, 'profitable_debt': 1,
+    }
+    for m in enriched:
+        ev_s = _EV_SCORE_MAP.get(m.get('ev_cash_reason') or '', 0)
+        tier = '💰💰💰' if ev_s >= 4 else ('💰💰' if ev_s >= 3 else ('💰' if ev_s >= 2 else None))
+        chg  = m.get('change_pct') or 0
+        rvol = _safe_float(m.get('rel_volume'))
+        m['financial_tier'] = tier
+        m['is_top_candidate'] = bool(tier and chg > 3.0 and rvol > 1.5)
     # Re-sort by pick_score so best appears first
     enriched.sort(key=lambda x: x.get('pick_score', 0), reverse=True)
 
