@@ -3361,6 +3361,111 @@ async def smart_portfolio_arena_status():
     return arena_singleton.get_status(live_prices)
 
 
+_HOT_MOVERS_CACHE: dict = {}
+_HOT_MOVERS_CACHE_TIME: float = 0.0
+_HOT_MOVERS_CACHE_TTL: int = 60  # 60s — refresh every minute
+
+
+@router.get("/smart-portfolio/arena/hot-movers")
+async def arena_hot_movers(min_chg: float = Query(15.0)):
+    """
+    Stocks up min_chg%+ today with intraday momentum (30m + 1h change).
+    Sources: _FV_TABLE_CACHE + _FV_SMALLCAP_CACHE.
+    Cached 60 seconds.
+    """
+    global _HOT_MOVERS_CACHE, _HOT_MOVERS_CACHE_TIME
+    import time as _tm2
+    now = _tm2.time()
+    cache_key = str(min_chg)
+    if (
+        _HOT_MOVERS_CACHE.get('_key') == cache_key
+        and _HOT_MOVERS_CACHE.get('count', 0) > 0   # never serve a stale empty result
+        and (now - _HOT_MOVERS_CACHE_TIME) < _HOT_MOVERS_CACHE_TTL
+    ):
+        return _HOT_MOVERS_CACHE
+
+    # Collect candidates from both caches
+    candidates: dict = {}  # ticker -> base info
+    for s in _FV_TABLE_CACHE.get('data', {}).get('stocks', []):
+        t = s.get('ticker')
+        chg = _safe_float(s.get('change_pct') or s.get('chg') or s.get('day_chg'))
+        if t and chg >= min_chg:
+            candidates[t] = {
+                'ticker': t,
+                'price': _safe_float(s.get('price')),
+                'change_pct': round(chg, 2),
+                'rel_volume': _safe_float(s.get('rel_volume') or s.get('rvol')),
+                'volume': _safe_float(s.get('volume') or s.get('cur_vol')),
+                'short_float': _safe_float(s.get('short_float')),
+                'float_shares': _safe_float(s.get('float_shares') or s.get('float_sh')),
+                'market_cap': s.get('market_cap', ''),
+            }
+    for s in _FV_SMALLCAP_CACHE:
+        t = s.get('ticker')
+        chg = _safe_float(s.get('change_pct') or s.get('chg'))
+        if t and chg >= min_chg and t not in candidates:
+            candidates[t] = {
+                'ticker': t,
+                'price': _safe_float(s.get('price')),
+                'change_pct': round(chg, 2),
+                'rel_volume': _safe_float(s.get('rel_volume') or s.get('rvol')),
+                'volume': _safe_float(s.get('volume') or s.get('cur_vol')),
+                'short_float': _safe_float(s.get('short_float')),
+                'float_shares': _safe_float(s.get('float_shares') or s.get('float_sh')),
+                'market_cap': s.get('market_cap', ''),
+            }
+
+    if not candidates:
+        return {'movers': [], 'count': 0, 'min_chg': min_chg}  # don't cache empty
+
+    # Sort by change_pct, take top 10 for intraday enrichment
+    top = sorted(candidates.values(), key=lambda x: x['change_pct'], reverse=True)[:10]
+
+    # Fetch intraday momentum in parallel (max 3 concurrent)
+    import yfinance as _yf2
+    from concurrent.futures import ThreadPoolExecutor as _TPE3
+    import asyncio as _aio2
+
+    def _get_intraday(ticker: str) -> dict:
+        try:
+            hist = _yf2.Ticker(ticker).history(period='1d', interval='5m', prepost=False, timeout=5)
+            if hist is None or len(hist) < 3:
+                return {}
+            closes = hist['Close'].dropna()
+            cur = float(closes.iloc[-1])
+            # 30m = 6 bars back, 1h = 12 bars back
+            ago30 = float(closes.iloc[-7]) if len(closes) >= 7 else float(closes.iloc[0])
+            ago60 = float(closes.iloc[-13]) if len(closes) >= 13 else float(closes.iloc[0])
+            result = {}
+            if ago30 > 0:
+                result['chg_30m'] = round((cur - ago30) / ago30 * 100, 2)
+            if ago60 > 0:
+                result['chg_1h'] = round((cur - ago60) / ago60 * 100, 2)
+            return result
+        except Exception:
+            return {}
+
+    loop = asyncio.get_event_loop()
+    sem = asyncio.Semaphore(3)
+
+    async def _enrich(item):
+        async with sem:
+            intraday = await loop.run_in_executor(None, _get_intraday, item['ticker'])
+            return {**item, **intraday}
+
+    enriched = await asyncio.gather(*[_enrich(s) for s in top])
+
+    result = {
+        'movers': enriched,
+        'count': len(enriched),
+        'min_chg': min_chg,
+        '_key': cache_key,
+    }
+    _HOT_MOVERS_CACHE = result
+    _HOT_MOVERS_CACHE_TIME = now
+    return result
+
+
 @router.post("/smart-portfolio/arena/force-reset/{strategy_name}")
 async def arena_force_reset_strategy(strategy_name: str):
     """Force-close all positions for a strategy and reload its config."""

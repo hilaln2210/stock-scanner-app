@@ -534,6 +534,122 @@ function StrategyCard({ strategy, rank, isLeader, livePrices = {}, flashState = 
   );
 }
 
+/* ── HotMovers ──────────────────────────────────────────────────────────── */
+function HotMovers() {
+  const [movers, setMovers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState(null);
+
+  const fetch = useCallback(async () => {
+    try {
+      const res = await axios.get('/api/smart-portfolio/arena/hot-movers');
+      setMovers(res.data.movers || []);
+      setLastUpdate(new Date());
+    } catch {
+      // keep previous data
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetch();
+    const id = setInterval(fetch, 60_000);
+    return () => clearInterval(id);
+  }, [fetch]);
+
+  if (loading && !movers.length) return null;
+  if (!movers.length) return null;
+
+  const fmtChg = (v) => {
+    if (v == null) return '—';
+    const sign = v >= 0 ? '+' : '';
+    return `${sign}${v.toFixed(1)}%`;
+  };
+  const chgColor = (v) => {
+    if (v == null) return '#6b7280';
+    if (v >= 2) return '#4ade80';
+    if (v >= 0) return '#a3e635';
+    if (v >= -2) return '#fbbf24';
+    return '#f87171';
+  };
+  const arrow = (v) => {
+    if (v == null) return '';
+    if (v >= 1) return ' ▲';
+    if (v <= -1) return ' ▼';
+    return ' →';
+  };
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b', letterSpacing: 1 }}>
+          🔥 HOT MOVERS היום +15%
+        </span>
+        <span style={{ fontSize: 11, color: '#6b7280' }}>
+          {movers.length} מניות
+          {lastUpdate && ` · ${lastUpdate.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}`}
+        </span>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {movers.map(m => {
+          const dayColor = m.change_pct >= 30 ? '#f97316' : m.change_pct >= 20 ? '#fb923c' : '#4ade80';
+          const c30 = m.chg_30m;
+          const c1h = m.chg_1h;
+          const momentum = c30 != null && c1h != null
+            ? (c30 > 0 && c1h > 0 ? 'hot' : c30 > 0 ? 'warming' : 'cooling')
+            : null;
+          const borderColor = momentum === 'hot' ? '#4ade80' : momentum === 'warming' ? '#fbbf24' : momentum === 'cooling' ? '#f87171' : '#374151';
+          return (
+            <div key={m.ticker} style={{
+              background: 'rgba(17,24,39,0.9)',
+              border: `1px solid ${borderColor}`,
+              borderRadius: 8,
+              padding: '8px 12px',
+              minWidth: 140,
+              position: 'relative',
+            }}>
+              {/* ticker + day change */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ fontWeight: 800, fontSize: 14, color: '#f9fafb' }}>{m.ticker}</span>
+                <span style={{ fontWeight: 700, fontSize: 15, color: dayColor }}>
+                  +{m.change_pct.toFixed(1)}%
+                </span>
+              </div>
+              {/* price */}
+              <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>
+                ${m.price > 0 ? m.price.toFixed(2) : '—'}
+                {m.rel_volume > 0 && <span style={{ marginLeft: 6, color: '#6366f1' }}>vol {m.rel_volume.toFixed(1)}x</span>}
+              </div>
+              {/* 30m / 1h intraday */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 2 }}>30 דק'</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: chgColor(c30) }}>
+                    {fmtChg(c30)}{arrow(c30)}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 2 }}>1 שעה</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: chgColor(c1h) }}>
+                    {fmtChg(c1h)}{arrow(c1h)}
+                  </div>
+                </div>
+                {m.short_float > 0 && (
+                  <div style={{ textAlign: 'center', marginLeft: 'auto' }}>
+                    <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 2 }}>שורט</div>
+                    <div style={{ fontSize: 11, color: '#a78bfa' }}>{m.short_float.toFixed(0)}%</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ── BestWorstBar ────────────────────────────────────────────────────────── */
 function BestWorstBar({ strategies = [] }) {
   // Collect all closed full-trades from all strategies
@@ -942,6 +1058,9 @@ export default function StrategyArena() {
 
       {/* ── Best / Worst trades ── */}
       <BestWorstBar strategies={strategies} />
+
+      {/* ── Hot Movers today ── */}
+      <HotMovers />
 
       {/* ── Strategy cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
