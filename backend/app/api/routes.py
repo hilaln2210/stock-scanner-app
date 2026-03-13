@@ -1780,6 +1780,27 @@ def _parse_fv_num(s) -> Optional[float]:
         return None
 
 
+def _fmt_num(n) -> str:
+    """Format a raw number to Finviz-style display string: 2190000 → '2.19M'."""
+    if n is None:
+        return ''
+    try:
+        n = float(n)
+    except Exception:
+        return ''
+    sign = '-' if n < 0 else ''
+    abs_n = abs(n)
+    if abs_n >= 1e12:
+        return f"{sign}{abs_n/1e12:.2f}T"
+    if abs_n >= 1e9:
+        return f"{sign}{abs_n/1e9:.2f}B"
+    if abs_n >= 1e6:
+        return f"{sign}{abs_n/1e6:.2f}M"
+    if abs_n >= 1e3:
+        return f"{sign}{abs_n/1e3:.2f}K"
+    return f"{sign}{abs_n:.2f}"
+
+
 def _compute_ev(fund: dict) -> Optional[float]:
     """
     Derive Enterprise Value from Finviz data.
@@ -3632,23 +3653,34 @@ async def arena_hot_movers(min_chg: float = Query(15.0)):
     import yfinance as _yf2
 
     def _get_intraday(ticker: str) -> dict:
+        result = {}
         try:
             hist = _yf2.Ticker(ticker).history(period='1d', interval='5m', prepost=False, timeout=5)
-            if hist is None or len(hist) < 3:
-                return {}
-            closes = hist['Close'].dropna()
-            cur = float(closes.iloc[-1])
-            # 30m = 6 bars back, 1h = 12 bars back
-            ago30 = float(closes.iloc[-7]) if len(closes) >= 7 else float(closes.iloc[0])
-            ago60 = float(closes.iloc[-13]) if len(closes) >= 13 else float(closes.iloc[0])
-            result = {}
-            if ago30 > 0:
-                result['chg_30m'] = round((cur - ago30) / ago30 * 100, 2)
-            if ago60 > 0:
-                result['chg_1h'] = round((cur - ago60) / ago60 * 100, 2)
-            return result
+            if hist is not None and len(hist) >= 3:
+                closes = hist['Close'].dropna()
+                cur = float(closes.iloc[-1])
+                # 30m = 6 bars back, 1h = 12 bars back
+                ago30 = float(closes.iloc[-7]) if len(closes) >= 7 else float(closes.iloc[0])
+                ago60 = float(closes.iloc[-13]) if len(closes) >= 13 else float(closes.iloc[0])
+                if ago30 > 0:
+                    result['chg_30m'] = round((cur - ago30) / ago30 * 100, 2)
+                if ago60 > 0:
+                    result['chg_1h'] = round((cur - ago60) / ago60 * 100, 2)
         except Exception:
-            return {}
+            pass
+        # Fetch yfinance .info for EV/MC fallback — with hang-protection (4s timeout)
+        try:
+            fut = _TPE(max_workers=1).submit(lambda: _yf2.Ticker(ticker).info)
+            info = fut.result(timeout=4)
+            ev = info.get('enterpriseValue')
+            mc = info.get('marketCap')
+            if ev is not None:
+                result['_yf_ev'] = ev
+            if mc is not None:
+                result['_yf_mc'] = mc
+        except Exception:
+            pass
+        return result
 
     loop = asyncio.get_event_loop()
     sem = asyncio.Semaphore(3)
@@ -3673,21 +3705,42 @@ async def arena_hot_movers(min_chg: float = Query(15.0)):
                             merged[sk] = v
             except Exception:
                 pass
-            # 3. EV vs Market Cap — cash-rich signal
+            # 2b. EV/MC fallback — fill from yfinance when Finviz omits it (e.g. micro-caps)
+            # If Finviz shows '-' (ambiguous: could mean no data or negative EV) but yfinance
+            # has a positive value, trust yfinance and override the display string.
+            yf_ev_raw = merged.get('_yf_ev')
+            fv_ev = str(merged.get('enterprise_value', '') or '').strip()
+            if yf_ev_raw is not None and float(yf_ev_raw) > 0 and fv_ev in ('', '-'):
+                merged['enterprise_value'] = _fmt_num(yf_ev_raw)
+            elif not fv_ev and yf_ev_raw is not None:
+                merged['enterprise_value'] = _fmt_num(yf_ev_raw)
+            if not merged.get('market_cap_str') and merged.get('_yf_mc') is not None:
+                merged['market_cap_str'] = _fmt_num(merged['_yf_mc'])
+            # 3. EV vs Market Cap — cash-rich & healthy signals
             ev_raw  = str(merged.get('enterprise_value', '') or '').strip()
             ev_val  = _parse_fv_num(ev_raw)
+            # Use raw yfinance numeric values when available (more precise for ratio math)
+            if ev_val is None and yf_ev_raw is not None:
+                ev_val = float(yf_ev_raw)
             mc_val  = _parse_fv_num(str(merged.get('market_cap_str') or merged.get('market_cap', '') or ''))
-            # "-" from Finviz = negative EV (company has more cash than mkt cap + debt)
-            ev_is_negative = ev_val is not None and ev_val < 0 or ev_raw == '-'
+            if mc_val is None and merged.get('_yf_mc') is not None:
+                mc_val = float(merged['_yf_mc'])
+            # Negative EV: ev_val < 0, OR Finviz '-' with no yfinance override (true negative EV)
+            ev_is_negative = (ev_val is not None and ev_val < 0) or (ev_raw == '-' and (yf_ev_raw is None or float(yf_ev_raw) <= 0))
             if ev_is_negative:
                 merged['ev_below_mc'] = True   # pure cash surplus — strongest signal
                 merged['ev_mc_ratio'] = None
+                merged['ev_healthy'] = False
             elif ev_val is not None and mc_val is not None and mc_val > 0:
+                ratio = round(ev_val / mc_val, 2)
                 merged['ev_below_mc'] = ev_val < mc_val
-                merged['ev_mc_ratio'] = round(ev_val / mc_val, 2)
+                merged['ev_mc_ratio'] = ratio
+                # EV ≈ MC (0.7–1.3): debt ≈ cash → stable, minimal net debt
+                merged['ev_healthy'] = (not merged['ev_below_mc']) and (0.7 <= ratio <= 1.3)
             else:
                 merged['ev_below_mc'] = False
                 merged['ev_mc_ratio'] = None
+                merged['ev_healthy'] = False
             # 4. Strategy matching (uses enriched data with real rvol/short_float)
             all_strats, top_strat = _match_strategies(merged)
             merged['strategies'] = all_strats

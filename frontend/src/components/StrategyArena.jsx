@@ -639,8 +639,11 @@ function HotMovers() {
                     <span>MC: <span style={{ color: '#d1d5db' }}>{m.market_cap_str || m.market_cap}</span></span>
                   )}
                   {m.enterprise_value && (
-                    <span title={m.ev_below_mc ? 'EV < Market Cap — החברה נסחרת מתחת לשווי המזומן שלה' : ''}>
-                      EV: <span style={{ color: m.ev_below_mc ? '#4ade80' : '#d1d5db', fontWeight: m.ev_below_mc ? 700 : 400 }}>
+                    <span title={m.ev_below_mc ? 'EV < Market Cap — החברה נסחרת מתחת לשווי המזומן שלה' : m.ev_healthy ? 'EV ≈ Market Cap — חברה יציבה עם מעט חוב' : ''}>
+                      EV: <span style={{
+                        color: m.ev_below_mc ? '#4ade80' : m.ev_healthy ? '#60a5fa' : '#d1d5db',
+                        fontWeight: (m.ev_below_mc || m.ev_healthy) ? 700 : 400,
+                      }}>
                         {m.enterprise_value}
                       </span>
                     </span>
@@ -652,6 +655,15 @@ function HotMovers() {
                       border: '1px solid rgba(74,222,128,0.4)', fontWeight: 700,
                     }}>
                       💰 EV &lt; MC
+                    </span>
+                  )}
+                  {!m.ev_below_mc && m.ev_healthy && (
+                    <span title={`EV ≈ MC (יחס ${m.ev_mc_ratio}) — חברה יציבה, חוב ≈ מזומן, צמיחה נורמלית`} style={{
+                      fontSize: 9, padding: '1px 5px', borderRadius: 4,
+                      background: 'rgba(96,165,250,0.12)', color: '#60a5fa',
+                      border: '1px solid rgba(96,165,250,0.35)', fontWeight: 700,
+                    }}>
+                      ⚖️ EV ≈ MC
                     </span>
                   )}
                 </div>
