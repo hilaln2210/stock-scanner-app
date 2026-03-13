@@ -609,6 +609,93 @@ async def lifespan(app: FastAPI):
                       id="eod_replace_job", max_instances=1, coalesce=True)
     print("EOD Strategy Auto-Replace: daily at 16:15 ET")
 
+    # ── Hot Movers Telegram alert every 5 minutes during market hours ────────
+    _hot_alert_sent: dict = {}  # ticker → last_sent timestamp (dedup 30min)
+
+    async def _hot_movers_alert():
+        import time as _tm3
+        from app.services.alerts_service import send_telegram
+        from app.api.routes import arena_hot_movers
+
+        now_et = datetime.now(tz=__import__('zoneinfo').ZoneInfo('America/New_York'))
+        if not (9 <= now_et.hour < 16):
+            return
+        # market open 9:30
+        if now_et.hour == 9 and now_et.minute < 30:
+            return
+
+        try:
+            result = await arena_hot_movers(min_chg=5.0)
+        except Exception as e:
+            print(f"[HotAlert] fetch error: {e}")
+            return
+
+        movers = result.get('movers', [])
+        # top picks: pick_score >= 6, not alerted in last 30 min
+        now_ts = _tm3.time()
+        picks = [
+            m for m in movers
+            if (m.get('pick_score') or 0) >= 6
+            and now_ts - _hot_alert_sent.get(m['ticker'], 0) > 1800
+        ][:3]
+
+        if not picks:
+            return
+
+        EV_EMOJI = {
+            'profitable_strong': '💰💰', 'profitable': '💰', 'profitable_weak': '💰',
+            'breakeven_cash': '⚖️', 'growing': '🚀', 'stable_cash': '💰',
+            'cash_unknown': '💰?', 'distressed': '⚠️',
+            'breakeven': '⚖️', 'stable': '📊', 'unknown': '',
+            'profitable_strong_debt': '💰💰⚠️', 'profitable_debt': '💰⚠️',
+            'profitable_weak_debt': '⚠️', 'losing_debt': '⚠️⚠️',
+            'distressed_debt': '💀', 'unknown_debt': '⚠️?',
+        }
+
+        lines = ['🔥 <b>Hot Movers Alert</b>']
+        for m in picks:
+            ticker  = m['ticker']
+            chg     = m.get('change_pct', 0)
+            score   = m.get('pick_score', 0)
+            reason  = m.get('ev_cash_reason') or 'unknown'
+            ev_em   = EV_EMOJI.get(reason, '')
+            ev_str  = f"{ev_em} {reason}" if ev_em else reason
+            ev_line = f"EV: {m['enterprise_value']}  MC: {m['market_cap_str']}" if m.get('enterprise_value') else ''
+            strat   = m.get('top_strategy') or ''
+            c30     = m.get('chg_30m')
+            c1h     = m.get('chg_1h')
+            price   = m.get('price', '')
+
+            def _pf(v):
+                try: return float(str(v).replace('%','').replace(',','').strip()) if v not in (None,'') else None
+                except: return None
+            sf   = _pf(m.get('short_float'))
+            rvol = _pf(m.get('rel_volume'))
+            sf_str   = f"Short {sf:.0f}%" if sf else ''
+            rvol_str = f"Vol {rvol:.1f}x" if rvol else ''
+            mom_str  = ''
+            if c30 is not None and c1h is not None:
+                mom_str = f"30m {c30:+.1f}%  1h {c1h:+.1f}%"
+            elif c30 is not None:
+                mom_str = f"30m {c30:+.1f}%"
+
+            meta = '  '.join(filter(None, [sf_str, rvol_str]))
+            lines.append(
+                f"\n<b>{ticker}</b> {chg:+.1f}%  ${price}  [score {score:.1f}]\n"
+                f"{ev_str}\n"
+                + (f"{ev_line}\n" if ev_line else '')
+                + (f"{meta}\n" if meta else '')
+                + (f"{mom_str}\n" if mom_str else '')
+                + (f"🎯 {strat}" if strat else '')
+            )
+            _hot_alert_sent[ticker] = now_ts
+
+        await send_telegram('\n'.join(lines))
+
+    scheduler.add_job(_hot_movers_alert, "interval", minutes=5, id="hot_movers_alert_job",
+                      max_instances=1, coalesce=True)
+    print("Hot Movers Alert: Telegram every 5min (market hours, score≥6, dedup 30min)")
+
     # Disabled — briefing tab hidden to save resources
     # async def _prewarm_briefing():
     #     import httpx
