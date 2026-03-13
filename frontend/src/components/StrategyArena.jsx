@@ -61,6 +61,7 @@ const STRATEGY_META = {
   SwingSetup:      { emoji: '🌊', color: '#22d3ee', bg: 'rgba(34,211,238,0.08)', border: 'rgba(34,211,238,0.25)'  },
   SeasonalityTrader: { emoji: '📅', color: '#38bdf8', bg: 'rgba(56,189,248,0.08)',  border: 'rgba(56,189,248,0.25)'  },
   PatternTrader:     { emoji: '🔁', color: '#e879f9', bg: 'rgba(232,121,249,0.08)', border: 'rgba(232,121,249,0.25)' },
+  GapScanner:        { emoji: '🚀', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)',  border: 'rgba(245,158,11,0.25)'  },
 };
 
 /* ── Strategy detailed info (for popover) ────────────────────────────────── */
@@ -112,6 +113,12 @@ const STRATEGY_INFO = {
     rules: ['Win rate ≥ 65% על חלון תוך-יומי ספציפי', 'כיוון LONG בלבד | interval 5 דקות', 'מניות ATR > $2, נפח > 5M'],
     exit:  ['Stop 2.5% | Target 7%', 'Trailing stop מ-4% | TP חלקי ב-5%', 'סגירה אחרי 2 ימים אם < +2%'],
     max_positions: 2, stop_pct: 2.5, target_pct: 7.0,
+  },
+  GapScanner: {
+    style: 'הכי חזק בבוט-עולם — gap > 8% premarket על float קטן = daily runner',
+    rules: ['Gap > 8% premarket | rvol ≥ 2x', 'Float < 50M | מחיר $2–$20', 'ללא דרישת short float — gap לבד מספיק'],
+    exit:  ['Stop 8% | Target 30%', 'Trailing stop מ-10% | TP חלקי ב-12%', 'סגירה אחרי יום אם < +2%'],
+    max_positions: 2, stop_pct: 8.0, target_pct: 30.0,
   },
 };
 

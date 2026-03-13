@@ -139,6 +139,19 @@ STRATEGY_CONFIGS = {
         "small_cap_only": True,
         "half_position_size": True,          # לוטרי — חצי מגודל רגיל
     },
+    "GapScanner": {
+        "label": "🚀 Premarket Gap",
+        "description": "gap > 8%, float < 50M, $2-$20 — daily runners מ-premarket",
+        "min_health": 5, "min_conf": 8, "min_rvol": 2.0,
+        "stop_pct": 8.0, "target_pct": 30.0,
+        "max_day_chg": 999.0, "requires_short_float": None,
+        "requires_min_chg": 8.0, "max_positions": 2,
+        "min_price": 2.0, "max_price": 20.0,
+        "requires_float_shares_max": 50_000_000,
+        "min_gap_pct": 8.0,                  # gap > 8% חובה
+        "partial_tp_trigger": 12.0, "partial_tp_pct": 0.4,
+        "trailing_trigger": 10.0, "trail_pct": 0.88,
+    },
 }
 
 _ARENA_TO_BRAIN_PARAMS = {
@@ -709,11 +722,16 @@ class StrategyArena:
                         continue
                     if cfg.get("requires_pattern") and _safe_float(stock.get("pattern_win_rate", 0)) < 60:
                         continue
+                    if cfg.get("min_price") and price < cfg["min_price"]:
+                        continue
                     if cfg.get("max_price") and price > cfg["max_price"]:
                         continue
-                    if cfg.get("requires_gap"):
+                    if cfg.get("requires_gap") or cfg.get("min_gap_pct"):
                         gap = _safe_float(stock.get("gap_pct", stock.get("gap", 0)))
-                        if gap <= 0 and chg < 3.0:
+                        min_gap = cfg.get("min_gap_pct", 0)
+                        if min_gap and gap < min_gap and chg < min_gap:
+                            continue
+                        if not min_gap and gap <= 0 and chg < 3.0:
                             continue
                     if cfg.get("requires_float_shares_max"):
                         float_shares = _safe_float(stock.get("float_shares", stock.get("float_shares_num", 0)))
