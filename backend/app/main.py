@@ -633,44 +633,57 @@ async def lifespan(app: FastAPI):
         movers = result.get('movers', [])
         # top picks: pick_score >= 6, not alerted in last 30 min
         now_ts = _tm3.time()
-        picks = [
-            m for m in movers
-            if (m.get('pick_score') or 0) >= 6
-            and now_ts - _hot_alert_sent.get(m['ticker'], 0) > 1800
-        ][:3]
+        def _pf(v):
+            try: return float(str(v).replace('%','').replace(',','').strip()) if v not in (None,'') else None
+            except: return None
+
+        EV_SCORE = {
+            'profitable_strong': 4, 'profitable': 3, 'profitable_weak': 2,
+            'breakeven_cash': 2, 'growing': 2, 'stable_cash': 1,
+            'breakeven': 1, 'profitable_strong_debt': 2, 'profitable_debt': 1,
+        }
+
+        def _financial_tier(m):
+            score = EV_SCORE.get(m.get('ev_cash_reason') or '', 0)
+            if score >= 4: return '💰💰💰'
+            if score >= 3: return '💰💰'
+            if score >= 2: return '💰'
+            return None
+
+        def _is_top_candidate(m):
+            chg  = m.get('change_pct') or 0
+            rvol = _pf(m.get('rel_volume')) or 0
+            tier = _financial_tier(m)
+            moving = chg > 3.0 and rvol > 1.5
+            if tier and moving:
+                return True, tier
+            return False, None
+
+        picks = []
+        for m in movers:
+            if now_ts - _hot_alert_sent.get(m['ticker'], 0) < 1800:
+                continue
+            ok, tier = _is_top_candidate(m)
+            if ok:
+                picks.append((m, tier))
+        picks = picks[:3]
 
         if not picks:
             return
 
-        EV_EMOJI = {
-            'profitable_strong': '💰💰', 'profitable': '💰', 'profitable_weak': '💰',
-            'breakeven_cash': '⚖️', 'growing': '🚀', 'stable_cash': '💰',
-            'cash_unknown': '💰?', 'distressed': '⚠️',
-            'breakeven': '⚖️', 'stable': '📊', 'unknown': '',
-            'profitable_strong_debt': '💰💰⚠️', 'profitable_debt': '💰⚠️',
-            'profitable_weak_debt': '⚠️', 'losing_debt': '⚠️⚠️',
-            'distressed_debt': '💀', 'unknown_debt': '⚠️?',
-        }
-
-        lines = ['🔥 <b>Hot Movers Alert</b>']
-        for m in picks:
+        lines = ['🔥 <b>Hot Movers — Top Candidates</b>']
+        for m, tier in picks:
             ticker  = m['ticker']
             chg     = m.get('change_pct', 0)
             score   = m.get('pick_score', 0)
-            reason  = m.get('ev_cash_reason') or 'unknown'
-            ev_em   = EV_EMOJI.get(reason, '')
-            ev_str  = f"{ev_em} {reason}" if ev_em else reason
+            reason  = m.get('ev_cash_reason') or ''
             ev_line = f"EV: {m['enterprise_value']}  MC: {m['market_cap_str']}" if m.get('enterprise_value') else ''
             strat   = m.get('top_strategy') or ''
             c30     = m.get('chg_30m')
             c1h     = m.get('chg_1h')
             price   = m.get('price', '')
-
-            def _pf(v):
-                try: return float(str(v).replace('%','').replace(',','').strip()) if v not in (None,'') else None
-                except: return None
-            sf   = _pf(m.get('short_float'))
-            rvol = _pf(m.get('rel_volume'))
+            sf      = _pf(m.get('short_float'))
+            rvol    = _pf(m.get('rel_volume'))
             sf_str   = f"Short {sf:.0f}%" if sf else ''
             rvol_str = f"Vol {rvol:.1f}x" if rvol else ''
             mom_str  = ''
@@ -681,8 +694,8 @@ async def lifespan(app: FastAPI):
 
             meta = '  '.join(filter(None, [sf_str, rvol_str]))
             lines.append(
-                f"\n<b>{ticker}</b> {chg:+.1f}%  ${price}  [score {score:.1f}]\n"
-                f"{ev_str}\n"
+                f"\n{tier} <b>{ticker}</b> {chg:+.1f}%  ${price}\n"
+                + (f"{reason}\n" if reason and reason != 'unknown' else '')
                 + (f"{ev_line}\n" if ev_line else '')
                 + (f"{meta}\n" if meta else '')
                 + (f"{mom_str}\n" if mom_str else '')

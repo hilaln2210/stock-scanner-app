@@ -3388,6 +3388,41 @@ _HOT_MOVERS_CACHE_TTL: int = 90  # 90s — dedicated scan, don't hammer
 # Raw (un-enriched) hot movers — injected into arena think so GapExplosion sees micro-caps
 _HOT_MOVERS_RAW_CACHE: list = []
 _HOT_MOVERS_RAW_CACHE_TIME: float = 0.0
+# yfinance .info cache — TTL 1h to avoid rate limits (fundamental data doesn't change intraday)
+_YF_INFO_CACHE: dict = {}  # ticker → (timestamp, data_dict)
+_YF_INFO_CACHE_TTL: int = 3600
+
+
+def _fetch_yf_info(ticker: str) -> dict:
+    """Fetch yfinance .info with 1h cache to avoid rate limits."""
+    import yfinance as _yf_mod
+    import time as _tm_yf
+    now = _tm_yf.time()
+    cached = _YF_INFO_CACHE.get(ticker)
+    if cached:
+        ts, data = cached
+        if now - ts < _YF_INFO_CACHE_TTL:
+            return data
+    try:
+        info = _yf_mod.Ticker(ticker).info
+        result = {}
+        for src_key, dst_key in [
+            ('enterpriseValue',  '_yf_ev'),
+            ('marketCap',        '_yf_mc'),
+            ('netIncomeToCommon','_yf_net_income'),
+            ('totalRevenue',     '_yf_revenue'),
+            ('revenueGrowth',    '_yf_rev_growth'),
+            ('trailingEps',      '_yf_eps'),
+            ('profitMargins',    '_yf_profit_margin'),
+            ('operatingMargins', '_yf_op_margin'),
+        ]:
+            v = info.get(src_key)
+            if v is not None:
+                result[dst_key] = v
+        _YF_INFO_CACHE[ticker] = (now, result)
+        return result
+    except Exception:
+        return {}
 
 
 def _classify_ev_health(ev, mc, net_income, revenue, rev_growth, profit_margin, op_margin, eps):
@@ -3789,26 +3824,7 @@ async def arena_hot_movers(min_chg: float = Query(5.0)):
             return {}
 
     def _get_yf_info(ticker: str) -> dict:
-        """Fetch yfinance .info for EV/MC/profitability — called via asyncio.wait_for."""
-        try:
-            info = _yf2.Ticker(ticker).info
-            result = {}
-            for src_key, dst_key in [
-                ('enterpriseValue',  '_yf_ev'),
-                ('marketCap',        '_yf_mc'),
-                ('netIncomeToCommon','_yf_net_income'),   # absolute net income
-                ('totalRevenue',     '_yf_revenue'),      # for margin calc fallback
-                ('revenueGrowth',    '_yf_rev_growth'),   # YoY growth e.g. 0.15 = +15%
-                ('trailingEps',      '_yf_eps'),          # per-share profit proxy
-                ('profitMargins',    '_yf_profit_margin'),# direct! e.g. 0.23 = 23% — best source
-                ('operatingMargins', '_yf_op_margin'),    # fallback for profit_margin
-            ]:
-                v = info.get(src_key)
-                if v is not None:
-                    result[dst_key] = v
-            return result
-        except Exception:
-            return {}
+        return _fetch_yf_info(ticker)
 
     loop = asyncio.get_event_loop()
     sem = asyncio.Semaphore(3)
