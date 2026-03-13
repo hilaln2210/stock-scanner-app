@@ -3385,6 +3385,9 @@ async def smart_portfolio_arena_status():
 _HOT_MOVERS_CACHE: dict = {}
 _HOT_MOVERS_CACHE_TIME: float = 0.0
 _HOT_MOVERS_CACHE_TTL: int = 90  # 90s — dedicated scan, don't hammer
+# Raw (un-enriched) hot movers — injected into arena think so GapExplosion sees micro-caps
+_HOT_MOVERS_RAW_CACHE: list = []
+_HOT_MOVERS_RAW_CACHE_TIME: float = 0.0
 
 
 # Strategy priority: most specific (hardest filters) first → used for top_strategy pick
@@ -3620,7 +3623,13 @@ async def _scrape_hot_movers(min_chg: float) -> list:
                         'market_cap': s.get('market_cap', ''),
                     })
 
-    return sorted(raw_stocks, key=lambda x: x['change_pct'], reverse=True)
+    result = sorted(raw_stocks, key=lambda x: x['change_pct'], reverse=True)
+    # Keep a lightweight raw copy so arena think() can inject these micro-caps
+    global _HOT_MOVERS_RAW_CACHE, _HOT_MOVERS_RAW_CACHE_TIME
+    if result:
+        _HOT_MOVERS_RAW_CACHE = result
+        _HOT_MOVERS_RAW_CACHE_TIME = _time.time()
+    return result
 
 
 @router.get("/smart-portfolio/arena/hot-movers")
@@ -3857,6 +3866,27 @@ async def smart_portfolio_arena_think():
         for sc in _FV_SMALLCAP_CACHE:
             if sc.get('ticker') not in existing_tickers:
                 stocks.append(sc)
+
+    # Inject hot movers (for GapExplosion / GapScanner — micro-caps up 15%+ not in main scan)
+    if _HOT_MOVERS_RAW_CACHE:
+        existing_tickers = {s.get('ticker') for s in stocks}
+        for m in _HOT_MOVERS_RAW_CACHE:
+            t = m.get('ticker')
+            if not t or t in existing_tickers:
+                continue
+            stocks.append({
+                'ticker': t,
+                'price': _safe_float(m.get('price')),
+                'change_pct': _safe_float(m.get('change_pct')),
+                'rel_volume': _safe_float(m.get('rel_volume') or 1.5),
+                'short_float': _safe_float(m.get('short_float') or 0),
+                'float_shares': _safe_float(m.get('float_shares') or 0),
+                'gap_pct': _safe_float(m.get('change_pct')),  # day chg ≈ gap for premarket runners
+                'volume': _safe_float(m.get('volume') or 0),
+                'health_score': 20,
+                'squeeze_total_score': 50,
+                'market_cap': m.get('market_cap', ''),
+            })
 
     # Augment stocks with seasonal/pattern flags (caches refreshed by background job)
     for s in stocks:

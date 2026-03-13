@@ -139,6 +139,14 @@ async def lifespan(app: FastAPI):
                     except Exception:
                         pass
 
+                # 1.5. Refresh hot movers raw list every 60s (GapExplosion needs micro-caps)
+                hot_age = _t.time() - _routes._HOT_MOVERS_RAW_CACHE_TIME
+                if hot_age > 60:
+                    try:
+                        await _routes._scrape_hot_movers(15.0)
+                    except Exception:
+                        pass
+
                 # 2. Fetch live prices for open positions (yfinance, fast)
                 open_tickers = set()
                 for pf in arena_singleton.portfolios.values():
