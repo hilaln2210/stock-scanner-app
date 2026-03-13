@@ -3436,6 +3436,14 @@ def _classify_ev_health(ev, mc, net_income, revenue, rev_growth, profit_margin, 
     elif net_income is not None and revenue and revenue > 0:
         margin = net_income / revenue
 
+    # --- Early exit: fundamentally distressed regardless of EV/MC ---
+    # Micro-cap with tiny revenue + deep losses: EV < MC here means "nothing left",
+    # not "cash-rich". e.g. revenue $6M, margin -96% → distressed always.
+    if margin is not None and margin < -0.50:
+        rev = revenue or (net_income / margin if net_income and margin else None)
+        if rev is not None and rev < 10_000_000:
+            return 'distressed', -1
+
     # --- income fallback (EPS as proxy) ---
     income = net_income
     if income is None and eps is not None:
