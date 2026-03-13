@@ -3653,34 +3653,38 @@ async def arena_hot_movers(min_chg: float = Query(15.0)):
     import yfinance as _yf2
 
     def _get_intraday(ticker: str) -> dict:
-        result = {}
+        """Fetch 5m intraday bars → chg_30m / chg_1h. Kept lean — no extra HTTP calls."""
         try:
             hist = _yf2.Ticker(ticker).history(period='1d', interval='5m', prepost=False, timeout=5)
-            if hist is not None and len(hist) >= 3:
-                closes = hist['Close'].dropna()
-                cur = float(closes.iloc[-1])
-                # 30m = 6 bars back, 1h = 12 bars back
-                ago30 = float(closes.iloc[-7]) if len(closes) >= 7 else float(closes.iloc[0])
-                ago60 = float(closes.iloc[-13]) if len(closes) >= 13 else float(closes.iloc[0])
-                if ago30 > 0:
-                    result['chg_30m'] = round((cur - ago30) / ago30 * 100, 2)
-                if ago60 > 0:
-                    result['chg_1h'] = round((cur - ago60) / ago60 * 100, 2)
+            if hist is None or len(hist) < 1:
+                return {}
+            closes = hist['Close'].dropna()
+            cur = float(closes.iloc[-1])
+            ago30 = float(closes.iloc[-7])  if len(closes) >= 7  else float(closes.iloc[0])
+            ago60 = float(closes.iloc[-13]) if len(closes) >= 13 else float(closes.iloc[0])
+            result = {}
+            if ago30 > 0:
+                result['chg_30m'] = round((cur - ago30) / ago30 * 100, 2)
+            if ago60 > 0:
+                result['chg_1h'] = round((cur - ago60) / ago60 * 100, 2)
+            return result
         except Exception:
-            pass
-        # Fetch yfinance .info for EV/MC fallback — with hang-protection (4s timeout)
+            return {}
+
+    def _get_yf_info(ticker: str) -> dict:
+        """Fetch yfinance .info for EV/MC — called via asyncio.wait_for for hang-safety."""
         try:
-            fut = _TPE(max_workers=1).submit(lambda: _yf2.Ticker(ticker).info)
-            info = fut.result(timeout=4)
+            info = _yf2.Ticker(ticker).info
+            result = {}
             ev = info.get('enterpriseValue')
             mc = info.get('marketCap')
             if ev is not None:
                 result['_yf_ev'] = ev
             if mc is not None:
                 result['_yf_mc'] = mc
+            return result
         except Exception:
-            pass
-        return result
+            return {}
 
     loop = asyncio.get_event_loop()
     sem = asyncio.Semaphore(3)
@@ -3689,20 +3693,33 @@ async def arena_hot_movers(min_chg: float = Query(15.0)):
         async with sem:
             ticker = item['ticker']
             # 1. Intraday momentum (yfinance)
-            intraday = await loop.run_in_executor(None, _get_intraday, ticker)
-            merged = {**item, **intraday}
+            # Run intraday history + yfinance info concurrently (independent calls)
+            intraday, yf_info = await asyncio.gather(
+                loop.run_in_executor(None, _get_intraday, ticker),
+                asyncio.wait_for(loop.run_in_executor(None, _get_yf_info, ticker), timeout=5.0),
+                return_exceptions=True,
+            )
+            if isinstance(intraday, Exception):
+                intraday = {}
+            if isinstance(yf_info, Exception):
+                yf_info = {}
+            merged = {**item, **intraday, **yf_info}
             # 2. Fundamentals (rel_volume, short_float, float_shares, EV)
             try:
                 funds = await finviz_fundamentals.get_fundamentals_batch([ticker])
                 f = funds.get(ticker, {})
                 if f:
-                    # override with richer data from quote page
+                    # override with richer data from quote page (skip non-numeric market_cap text)
                     for fk, sk in [('rel_volume','rel_volume'), ('short_float','short_float'),
                                    ('float_shares','float_shares'), ('enterprise_value','enterprise_value'),
                                    ('market_cap','market_cap_str')]:
                         v = f.get(fk)
-                        if v is not None and v != '' and v != 0:
-                            merged[sk] = v
+                        if v is None or v == '' or v == 0:
+                            continue
+                        # Skip Finviz text placeholders like "Large Cap", "Small Cap"
+                        if sk == 'market_cap_str' and isinstance(v, str) and not any(c.isdigit() for c in v):
+                            continue
+                        merged[sk] = v
             except Exception:
                 pass
             # 2b. EV/MC fallback — fill from yfinance when Finviz omits it (e.g. micro-caps)
