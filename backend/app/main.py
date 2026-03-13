@@ -618,10 +618,8 @@ async def lifespan(app: FastAPI):
         from app.api.routes import arena_hot_movers
 
         now_et = datetime.now(tz=__import__('zoneinfo').ZoneInfo('America/New_York'))
-        if not (9 <= now_et.hour < 16):
-            return
-        # market open 9:30
-        if now_et.hour == 9 and now_et.minute < 30:
+        # premarket 4:00–9:30, regular 9:30–16:00, aftermarket 16:00–20:00
+        if not (4 <= now_et.hour < 20):
             return
 
         try:
