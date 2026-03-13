@@ -640,7 +640,7 @@ function HotMovers() {
             }}>
               {/* Priority badge */}
               {isTooLate ? (
-                <div title="המניה עלתה יותר מ-80% היום — כניסה מסוכנת בשלב זה" style={{ fontSize: 9, fontWeight: 700, color: '#ef4444', marginBottom: 3, letterSpacing: 0.5 }}>
+                <div title="המניה עלתה יותר מ-50% היום — כניסה מסוכנת בשלב זה" style={{ fontSize: 9, fontWeight: 700, color: '#ef4444', marginBottom: 3, letterSpacing: 0.5 }}>
                   ⚠️ Late Entry
                 </div>
               ) : isCandidate ? (
@@ -712,24 +712,24 @@ function HotMovers() {
                   {m.ev_cash_reason && m.ev_cash_reason !== 'unknown' && (() => {
                     const EV_BADGES = {
                       // Case A — EV < MC (cash-rich)
-                      profitable_strong: { bg:'rgba(34,197,94,0.2)',   color:'#22c55e', border:'rgba(34,197,94,0.5)',   label:'💰💰💰 EV<MC', tip:'רווח נקי > 20% מההכנסות + EV < MC (מזומן עודף). הסיגנל הכי חזק.' },
-                      profitable:        { bg:'rgba(74,222,128,0.18)',  color:'#4ade80', border:'rgba(74,222,128,0.45)', label:'💰💰 EV<MC',  tip:'רווח נקי 10-20% + EV < MC. החברה צוברת מזומן מהפעילות.' },
-                      profitable_weak:   { bg:'rgba(250,204,21,0.15)',  color:'#facc15', border:'rgba(250,204,21,0.4)',  label:'💰 EV<MC',    tip:'רווח נקי 2-10% + EV < MC. רווחית בקושי אבל יש מזומן.' },
-                      breakeven_cash:    { bg:'rgba(250,204,21,0.12)',  color:'#fbbf24', border:'rgba(250,204,21,0.3)',  label:'⚖️ EV<MC',    tip:'Breakeven: הכנסות ≈ הוצאות, margin 0-2%. EV < MC — עדיין יש מזומן עודף.' },
-                      growing:           { bg:'rgba(139,92,246,0.15)',  color:'#a78bfa', border:'rgba(139,92,246,0.4)',  label:'🚀 EV<MC ↑',  tip:'מפסידה אבל הכנסות עולות 10%+ + EV < MC. שורפת כסף לצמיחה — risk/reward גבוה.' },
-                      stable_cash:       { bg:'rgba(148,163,184,0.12)', color:'#94a3b8', border:'rgba(148,163,184,0.35)',label:'💰 EV<MC',    tip:'מפסידה, הכנסות יציבות + EV < MC. כנראה גייסה הון ועדיין לא הוציאה.' },
-                      cash_unknown:      { bg:'rgba(100,116,139,0.12)', color:'#64748b', border:'rgba(100,116,139,0.3)', label:'💰 EV<MC ?',  tip:'EV < MC — אין מידע פיננסי מספיק לסיווג. ייתכן חיובי.' },
-                      distressed:        { bg:'rgba(251,146,60,0.15)',  color:'#fb923c', border:'rgba(251,146,60,0.4)',  label:'⚠️ EV<MC',   tip:'EV < MC אך הכנסות יורדות >15%. ייתכן מכירת נכסים כדי לשרוד — לא מזומן אמיתי.' },
+                      profitable_strong: { bg:'rgba(34,197,94,0.2)',   color:'#22c55e', border:'rgba(34,197,94,0.5)',   label:'💰💰💰', tip:'רווח נקי > 20% מההכנסות + EV < MC (מזומן עודף). הסיגנל הכי חזק.' },
+                      profitable:        { bg:'rgba(74,222,128,0.18)',  color:'#4ade80', border:'rgba(74,222,128,0.45)', label:'💰💰',  tip:'רווח נקי 10-20% + EV < MC. החברה צוברת מזומן מהפעילות.' },
+                      profitable_weak:   { bg:'rgba(250,204,21,0.15)',  color:'#facc15', border:'rgba(250,204,21,0.4)',  label:'💰',    tip:'רווח נקי 2-10% + EV < MC. רווחית בקושי אבל יש מזומן.' },
+                      breakeven_cash:    { bg:'rgba(250,204,21,0.12)',  color:'#fbbf24', border:'rgba(250,204,21,0.3)',  label:'⚖️',    tip:'Breakeven: הכנסות ≈ הוצאות, margin 0-2%. EV < MC — עדיין יש מזומן עודף.' },
+                      growing:           { bg:'rgba(139,92,246,0.15)',  color:'#a78bfa', border:'rgba(139,92,246,0.4)',  label:'🚀',  tip:'מפסידה אבל הכנסות עולות 10%+ + EV < MC. שורפת כסף לצמיחה — risk/reward גבוה.' },
+                      stable_cash:       { bg:'rgba(148,163,184,0.12)', color:'#94a3b8', border:'rgba(148,163,184,0.35)',label:'💰',    tip:'מפסידה, הכנסות יציבות + EV < MC. כנראה גייסה הון ועדיין לא הוציאה.' },
+                      cash_unknown:      { bg:'rgba(100,116,139,0.12)', color:'#64748b', border:'rgba(100,116,139,0.3)', label:'💰?',  tip:'EV < MC — אין מידע פיננסי מספיק לסיווג. ייתכן חיובי.' },
+                      distressed:        { bg:'rgba(251,146,60,0.15)',  color:'#fb923c', border:'rgba(251,146,60,0.4)',  label:'⚠️',   tip:'EV < MC אך הכנסות יורדות >15%. ייתכן מכירת נכסים כדי לשרוד — לא מזומן אמיתי.' },
                       // Case B — EV ≈ MC (normal leverage)
-                      breakeven:         { bg:'rgba(148,163,184,0.1)',  color:'#94a3b8', border:'rgba(148,163,184,0.3)', label:'⚖️ breakeven', tip:'Breakeven: החברה לא מרוויחה ולא מפסידה — בדיוק על הקו. Margin 0-2%. EV ≈ MC (חוב רגיל).' },
-                      stable:            { bg:'rgba(100,116,139,0.1)',  color:'#64748b', border:'rgba(100,116,139,0.25)',label:'📊 stable',    tip:'מפסידה, הכנסות יציבות (לא גדלות ולא יורדות). EV ≈ MC.' },
+                      breakeven:         { bg:'rgba(148,163,184,0.1)',  color:'#94a3b8', border:'rgba(148,163,184,0.3)', label:'⚖️', tip:'Breakeven: החברה לא מרוויחה ולא מפסידה — בדיוק על הקו. Margin 0-2%. EV ≈ MC (חוב רגיל).' },
+                      stable:            { bg:'rgba(100,116,139,0.1)',  color:'#64748b', border:'rgba(100,116,139,0.25)',label:'📊',    tip:'מפסידה, הכנסות יציבות (לא גדלות ולא יורדות). EV ≈ MC.' },
                       // Case C — EV >> MC (high debt)
-                      profitable_strong_debt: { bg:'rgba(250,204,21,0.15)', color:'#fbbf24', border:'rgba(250,204,21,0.4)',  label:'💰💰 ⚠️חוב', tip:'רווח נקי > 20% — אבל חוב גבוה (EV >> MC). רווחית למרות החוב.' },
-                      profitable_debt:        { bg:'rgba(251,191,36,0.12)', color:'#f59e0b', border:'rgba(251,191,36,0.35)', label:'💰 ⚠️חוב',   tip:'רווח נקי 10-20% אבל EV >> MC — יש חוב משמעותי.' },
-                      profitable_weak_debt:   { bg:'rgba(251,146,60,0.12)', color:'#fb923c', border:'rgba(251,146,60,0.3)',  label:'⚠️ חוב',    tip:'Breakeven (margin 2-10%) + חוב גבוה. מסוכן.' },
-                      losing_debt:            { bg:'rgba(239,68,68,0.15)',  color:'#ef4444', border:'rgba(239,68,68,0.4)',   label:'🔴 losing_debt', tip:'מפסידה + חוב גבוה (EV >> MC). שילוב רע.' },
-                      distressed_debt:        { bg:'rgba(185,28,28,0.2)',   color:'#dc2626', border:'rgba(185,28,28,0.5)',   label:'💀 distressed', tip:'הכי גרוע: הפסד + חוב גבוה + הכנסות יורדות 15%+. סכנת פשיטת רגל.' },
-                      unknown_debt:           { bg:'rgba(100,116,139,0.1)',  color:'#475569', border:'rgba(100,116,139,0.25)',label:'⚠️ חוב?',   tip:'EV >> MC (חוב גבוה) אבל אין מידע פיננסי לסיווג.' },
+                      profitable_strong_debt: { bg:'rgba(250,204,21,0.15)', color:'#fbbf24', border:'rgba(250,204,21,0.4)',  label:'💰💰⚠️', tip:'רווח נקי > 20% — אבל חוב גבוה (EV >> MC). רווחית למרות החוב.' },
+                      profitable_debt:        { bg:'rgba(251,191,36,0.12)', color:'#f59e0b', border:'rgba(251,191,36,0.35)', label:'💰⚠️',   tip:'רווח נקי 10-20% אבל EV >> MC — יש חוב משמעותי.' },
+                      profitable_weak_debt:   { bg:'rgba(251,146,60,0.12)', color:'#fb923c', border:'rgba(251,146,60,0.3)',  label:'⚠️',    tip:'Breakeven (margin 2-10%) + חוב גבוה. מסוכן.' },
+                      losing_debt:            { bg:'rgba(239,68,68,0.15)',  color:'#ef4444', border:'rgba(239,68,68,0.4)',   label:'🔴', tip:'מפסידה + חוב גבוה (EV >> MC). שילוב רע.' },
+                      distressed_debt:        { bg:'rgba(185,28,28,0.2)',   color:'#dc2626', border:'rgba(185,28,28,0.5)',   label:'💀', tip:'הכי גרוע: הפסד + חוב גבוה + הכנסות יורדות 15%+. סכנת פשיטת רגל.' },
+                      unknown_debt:           { bg:'rgba(100,116,139,0.1)',  color:'#475569', border:'rgba(100,116,139,0.25)',label:'⚠️?',   tip:'EV >> MC (חוב גבוה) אבל אין מידע פיננסי לסיווג.' },
                     };
                     const cfg = EV_BADGES[m.ev_cash_reason];
                     if (!cfg) return null;

@@ -51,130 +51,210 @@ def _today() -> str:
 # ─── Strategy Configs ─────────────────────────────────────────────────────────
 
 STRATEGY_CONFIGS = {
-    "Balanced": {
-        "label": "⚖️ Balanced",
-        "description": "כניסות מאוזנות — health טוב + מומנטום, rvol ≥ 1.2, כניסה לפני 11:00 ET",
-        "min_health": 30, "min_conf": 35, "min_rvol": 1.2,
-        "stop_pct": 6.0, "target_pct": 18.0,
-        "max_day_chg": 12.0, "requires_short_float": None,
-        "requires_min_chg": None, "max_positions": 2,
-        "entry_cutoff_et": 11 * 60,          # no new entries after 11:00 ET
-    },
-    "HighConviction": {
-        "label": "🎯 High Conviction",
-        "description": "רק הכי טובים — partial TP ב-8% (50%), יעד +15%",
-        "min_health": 45, "min_conf": 48, "min_rvol": 0.6,
+    # ─── SCALP ───────────────────────────────────────────────────────────────
+    "First5Min": {
+        "label": "⚡ First5Min",
+        "description": "כניסה בדקות הראשונות — chg>3%, rvol>3x, float<100M, $2-50",
+        "min_health": 10, "min_conf": 10, "min_rvol": 3.0,
         "stop_pct": 5.0, "target_pct": 15.0,
-        "max_day_chg": 8.0, "requires_short_float": None,
-        "requires_min_chg": None, "max_positions": 2,
-        "partial_tp_trigger": 8.0, "partial_tp_pct": 0.5,  # sell 50% at +8%
-        "trailing_trigger": 8.0, "trail_pct": 0.91,
+        "max_day_chg": 50.0, "requires_short_float": None,
+        "requires_min_chg": 3.0, "max_positions": 2,
+        "min_price": 2.0, "max_price": 50.0,
+        "requires_float_shares_max": 100_000_000,
+        "entry_start_et": 9 * 60 + 30,
+        "entry_cutoff_et": 9 * 60 + 35,
+        "partial_tp_trigger": 8.0,  "partial_tp_pct": 0.4,
+        "partial_tp2_trigger": 15.0, "partial_tp2_pct": 0.3,
+        "trailing_trigger": 8.0, "trail_pct": 0.85,
+        "stale_hours": 2.0,
     },
-    "SqueezeHunter": {
-        "label": "🔥 Hard Squeeze",
-        "description": "שורט סקוויז — שורט≥20%, rvol≥2x, מחיר<$50, partial TP ב-15%",
-        "min_health": 12, "min_conf": 15, "min_rvol": 2.0,
-        "stop_pct": 8.0, "target_pct": 40.0,
-        "max_day_chg": 999.0, "requires_short_float": 20.0,
-        "requires_min_chg": 2.0, "max_positions": 2,
-        "max_price": 50.0, "min_volume": 500_000,
-        "small_cap_only": True,
-        "max_premarket_chg": 15.0,           # catalyst filter — don't chase 15%+ moves
-        "partial_tp_trigger": 15.0, "partial_tp_pct": 0.5,
-        "trailing_trigger": 12.0, "trail_pct": 0.91,
+    "VWAPReclaim": {
+        "label": "📈 VWAPReclaim",
+        "description": "VWAP reclaim — rvol>2x, chg_30m>0, 9:30-13:00",
+        "min_health": 10, "min_conf": 10, "min_rvol": 2.0,
+        "stop_pct": 4.0, "target_pct": 12.0,
+        "max_day_chg": 50.0, "requires_short_float": None,
+        "requires_min_chg": 0.5, "max_positions": 2,
+        "min_price": 1.0,
+        "entry_start_et": 9 * 60 + 30,
+        "entry_cutoff_et": 13 * 60,
+        "requires_vwap_reclaim": True,
+        "partial_tp_trigger": 8.0,  "partial_tp_pct": 0.4,
+        "partial_tp2_trigger": 12.0, "partial_tp2_pct": 0.3,
+        "trailing_trigger": 6.0, "trail_pct": 0.88,
+        "stale_hours": 1.5,
     },
-    "Scalper": {
-        "label": "⚡ Scalper",
-        "description": "כניסות אגרסיביות — rvol ≥ 2x, מחיר<$50, 9:30-10:00 ET, trail 0.92",
-        "min_health": 18, "min_conf": 20, "min_rvol": 2.0,
-        "stop_pct": 6.0, "target_pct": 20.0,
-        "max_day_chg": 999.0, "requires_short_float": None,
-        "requires_min_chg": 0.1, "max_positions": 2,
-        "max_price": 50.0, "min_volume": 500_000,
-        "partial_tp_trigger": 10.0, "trailing_trigger": 8.0, "trail_pct": 0.92,
-        "entry_cutoff_et": 10 * 60,
+    "PowerHour": {
+        "label": "⚡ PowerHour",
+        "description": "Power Hour — rvol>2x, chg>3%, chg_1h>1%, 15:00-15:30",
+        "min_health": 15, "min_conf": 15, "min_rvol": 2.0,
+        "stop_pct": 5.0, "target_pct": 10.0,
+        "max_day_chg": 50.0, "requires_short_float": None,
+        "requires_min_chg": 3.0, "max_positions": 2,
+        "entry_start_et": 15 * 60,
+        "entry_cutoff_et": 15 * 60 + 30,
+        "partial_tp_trigger": 10.0, "partial_tp_pct": 0.5,
+        "trailing_trigger": 8.0, "trail_pct": 0.87,
+        "stale_hours": 1.0,
     },
-    "MomentumBreaker": {
-        "label": "🚀 Momentum Breaker",
-        "description": "פורצים עם נפח פנומנלי — rvol ≥ 2x, מחיר<$50, תנועה > 1.5%",
-        "min_health": 22, "min_conf": 28, "min_rvol": 2.0,
-        "stop_pct": 5.0, "target_pct": 16.0,
-        "max_day_chg": 30.0, "requires_short_float": None,
-        "requires_min_chg": 1.5, "max_positions": 2,
-        "max_price": 50.0, "min_volume": 500_000,
-        "entry_cutoff_et": 10 * 60 + 30,
-    },
-    "SwingSetup": {
-        "label": "⚡ Lightning Squeeze",
-        "description": "Float<50M, שורט≥10%, GAP UP — trail רחב 0.87 לנשימה",
-        "min_health": 10, "min_conf": 12, "min_rvol": 2.0,
-        "stop_pct": 8.0, "target_pct": 35.0,
-        "max_day_chg": 999.0, "requires_short_float": 10.0,
-        "requires_min_chg": 1.0, "max_positions": 2,
-        "max_price": 50.0, "min_volume": 500_000,
-        "requires_gap": True,
-        "requires_float_shares_max": 50_000_000,
-        "max_premarket_chg": 15.0,
-        "partial_tp_trigger": 10.0,
-        "trailing_trigger": 8.0,
-        "trail_pct": 0.87,
-    },
-    "SeasonalityTrader": {
-        "label": "🌪️ Gap & Squeeze",
-        "description": "גאפ + שורט — partial TP ב-20% (30%) + ב-40% (30%), runner ל-60%",
-        "min_health": 8, "min_conf": 10, "min_rvol": 5.0,
-        "stop_pct": 10.0, "target_pct": 60.0,
-        "max_day_chg": 999.0, "requires_short_float": 20.0,
-        "requires_min_chg": 1.0, "max_positions": 2,
-        "small_cap_only": True,
-        "max_price": 20.0,
-        "requires_gap": True,
-        "requires_float_shares_max": 30_000_000,
-        "partial_tp_trigger": 20.0, "partial_tp_pct": 0.3,   # sell 30% at +20%
-        "partial_tp2_trigger": 40.0, "partial_tp2_pct": 0.3, # sell 30% at +40%, runner ל-60%
-        "trailing_trigger": 20.0, "trail_pct": 0.88,
-    },
-    "PatternTrader": {
-        "label": "💥 Nano Squeeze",
-        "description": "מיקרו שורט סקוויז — stop קטן 6%, half position size, יעד +50%",
-        "min_health": 10, "min_conf": 12, "min_rvol": 2.0,
-        "stop_pct": 6.0, "target_pct": 50.0,
-        "max_day_chg": 999.0, "requires_short_float": 15.0,
-        "requires_min_chg": 1.0, "max_positions": 2,
-        "min_volume": 300_000,
-        "small_cap_only": True,
-        "max_premarket_chg": 15.0,
-        "half_position_size": True,
-    },
-    "GapScanner": {
-        "label": "🚀 Premarket Gap",
-        "description": "gap > 8%, float < 50M, $2-$20 — רק 9:30-9:45 ET, daily runners",
+    # ─── INTRADAY ────────────────────────────────────────────────────────────
+    "GapHold": {
+        "label": "🚀 GapHold",
+        "description": "Gap>8%, float<50M, rvol>2x, 9:30-9:45",
         "min_health": 5, "min_conf": 8, "min_rvol": 2.0,
-        "stop_pct": 8.0, "target_pct": 30.0,
-        "max_day_chg": 999.0, "requires_short_float": None,
+        "stop_pct": 6.0, "target_pct": 20.0,
+        "max_day_chg": 50.0, "requires_short_float": None,
         "requires_min_chg": 8.0, "max_positions": 2,
-        "min_price": 2.0, "max_price": 20.0,
-        "min_volume": 300_000,
+        "max_price": 50.0,
         "requires_float_shares_max": 50_000_000,
         "min_gap_pct": 8.0,
-        "entry_cutoff_et": 9 * 60 + 45,      # window: 9:30–9:45 ET only
-        "partial_tp_trigger": 12.0, "partial_tp_pct": 0.4,
-        "trailing_trigger": 10.0, "trail_pct": 0.88,
+        "entry_start_et": 9 * 60 + 30,
+        "entry_cutoff_et": 9 * 60 + 45,
+        "partial_tp_trigger": 10.0,  "partial_tp_pct": 0.4,
+        "partial_tp2_trigger": 20.0, "partial_tp2_pct": 0.3,
+        "trailing_trigger": 10.0, "trail_pct": 0.85,
+        "stale_hours": 24.0,
     },
-    "GapExplosion": {
-        "label": "💣 Gap Explosion",
-        "description": "gap > 20%, שורט≥10%, float<50M, $1-$30 — רק 9:30-9:50 ET, runner 0.88",
-        "min_health": 5, "min_conf": 8, "min_rvol": 2.0,
-        "stop_pct": 12.0, "target_pct": 60.0,
-        "max_day_chg": 999.0, "requires_short_float": 10.0,
-        "requires_min_chg": 20.0, "max_positions": 2,
-        "min_price": 1.0, "max_price": 30.0,
-        "min_volume": 300_000,
-        "requires_float_shares_max": 50_000_000,
-        "min_gap_pct": 20.0,
-        "entry_cutoff_et": 9 * 60 + 50,      # window: 9:30–9:50 ET only
-        "partial_tp_trigger": 15.0, "partial_tp_pct": 0.5,  # sell 50% at +15%
-        "trailing_trigger": 15.0, "trail_pct": 0.88,
+    "CatalystMover": {
+        "label": "🎯 CatalystMover",
+        "description": "Catalyst (gap>5%, rvol>5x) — 9:30-11:00",
+        "min_health": 15, "min_conf": 15, "min_rvol": 5.0,
+        "stop_pct": 6.0, "target_pct": 20.0,
+        "max_day_chg": 50.0, "requires_short_float": None,
+        "requires_min_chg": 5.0, "max_positions": 2,
+        "min_price": 1.0, "max_price": 100.0,
+        "min_gap_pct": 5.0,
+        "entry_start_et": 9 * 60 + 30,
+        "entry_cutoff_et": 11 * 60,
+        "partial_tp_trigger": 10.0,  "partial_tp_pct": 0.4,
+        "partial_tp2_trigger": 20.0, "partial_tp2_pct": 0.3,
+        "trailing_trigger": 10.0, "trail_pct": 0.85,
+        "stale_hours": 24.0,
+    },
+    "MomentumCont": {
+        "label": "🚀 MomentumCont",
+        "description": "Continuation rally>5% + rvol>2x + chg_30m>0, 9:30-12:00",
+        "min_health": 15, "min_conf": 15, "min_rvol": 2.0,
+        "stop_pct": 5.0, "target_pct": 20.0,
+        "max_day_chg": 50.0, "requires_short_float": None,
+        "requires_min_chg": 5.0, "max_positions": 2,
+        "entry_start_et": 9 * 60 + 30,
+        "entry_cutoff_et": 12 * 60,
+        "requires_positive_30m": True,
+        "partial_tp_trigger": 10.0,  "partial_tp_pct": 0.4,
+        "partial_tp2_trigger": 20.0, "partial_tp2_pct": 0.3,
+        "trailing_trigger": 10.0, "trail_pct": 0.85,
+        "stale_hours": 24.0,
+    },
+    "FloatRotation": {
+        "label": "🌪️ FloatRotation",
+        "description": "Float<10M + rvol>5x + price<$5, 9:30-14:00",
+        "min_health": 8, "min_conf": 10, "min_rvol": 5.0,
+        "stop_pct": 8.0, "target_pct": 30.0,
+        "max_day_chg": 50.0, "requires_short_float": None,
+        "requires_min_chg": 5.0, "max_positions": 2,
+        "max_price": 5.0,
+        "requires_float_shares_max": 10_000_000,
+        "entry_start_et": 9 * 60 + 30,
+        "entry_cutoff_et": 14 * 60,
+        "partial_tp_trigger": 15.0,  "partial_tp_pct": 0.4,
+        "partial_tp2_trigger": 30.0, "partial_tp2_pct": 0.3,
+        "trailing_trigger": 15.0, "trail_pct": 0.83,
+        "stale_hours": 24.0,
+    },
+    # ─── AGGRESSIVE ──────────────────────────────────────────────────────────
+    "ShortSqueeze": {
+        "label": "💥 ShortSqueeze",
+        "description": "שורט>25%, float<20M, rvol>3x, 9:30-14:00",
+        "min_health": 10, "min_conf": 12, "min_rvol": 3.0,
+        "stop_pct": 7.0, "target_pct": 30.0,
+        "max_day_chg": 50.0, "requires_short_float": 25.0,
+        "requires_min_chg": 3.0, "max_positions": 2,
+        "requires_float_shares_max": 20_000_000,
+        "entry_start_et": 9 * 60 + 30,
+        "entry_cutoff_et": 14 * 60,
+        "partial_tp_trigger": 15.0,  "partial_tp_pct": 0.4,
+        "partial_tp2_trigger": 30.0, "partial_tp2_pct": 0.3,
+        "trailing_trigger": 15.0, "trail_pct": 0.83,
+        "stale_hours": 24.0,
+    },
+    "NanoRunner": {
+        "label": "💣 NanoRunner",
+        "description": "Float<5M + שורט>20% + rvol>10x + chg>10%, price<$10",
+        "min_health": 5, "min_conf": 8, "min_rvol": 10.0,
+        "stop_pct": 10.0, "target_pct": 40.0,
+        "max_day_chg": 50.0, "requires_short_float": 20.0,
+        "requires_min_chg": 10.0, "max_positions": 2,
+        "max_price": 10.0,
+        "requires_float_shares_max": 5_000_000,
+        "half_position_size": True,
+        "entry_start_et": 9 * 60 + 30,
+        "entry_cutoff_et": 12 * 60,
+        "partial_tp_trigger": 20.0,  "partial_tp_pct": 0.4,
+        "partial_tp2_trigger": 40.0, "partial_tp2_pct": 0.3,
+        "trailing_trigger": 20.0, "trail_pct": 0.80,
+        "stale_hours": 24.0,
+    },
+    "HCNews": {
+        "label": "🎯 HCNews",
+        "description": "High Conviction + catalyst — health>40, rvol>3x, gap>5%, 9:30-11:00",
+        "min_health": 40, "min_conf": 40, "min_rvol": 3.0,
+        "stop_pct": 5.0, "target_pct": 25.0,
+        "max_day_chg": 50.0, "requires_short_float": None,
+        "requires_min_chg": 5.0, "max_positions": 2,
+        "min_gap_pct": 5.0,
+        "entry_start_et": 9 * 60 + 30,
+        "entry_cutoff_et": 11 * 60,
+        "partial_tp_trigger": 12.0,  "partial_tp_pct": 0.4,
+        "partial_tp2_trigger": 25.0, "partial_tp2_pct": 0.3,
+        "trailing_trigger": 12.0, "trail_pct": 0.85,
+        "stale_hours": 48.0,
+    },
+    # ─── SWING ───────────────────────────────────────────────────────────────
+    "TrendRider": {
+        "label": "📈 TrendRider",
+        "description": "3+ ימים עולים + volume עולה + above MA20, daily check",
+        "min_health": 30, "min_conf": 30, "min_rvol": 1.5,
+        "stop_pct": 8.0, "target_pct": 30.0,
+        "max_day_chg": 50.0, "requires_short_float": None,
+        "requires_min_chg": 5.0, "max_positions": 2,
+        "min_price": 5.0,
+        "is_swing": True,
+        "partial_tp_trigger": 15.0,  "partial_tp_pct": 0.3,
+        "partial_tp2_trigger": 30.0, "partial_tp2_pct": 0.3,
+        "trailing_trigger": 15.0, "trail_pct": 0.80,
+        "stale_hours": 72.0,
+        "max_hold_hours": 168.0,
+    },
+    "BaseBreakout": {
+        "label": "🔲 BaseBreakout",
+        "description": "Base consolidation breakout + rvol>2x + above MA20+MA50",
+        "min_health": 25, "min_conf": 25, "min_rvol": 2.0,
+        "stop_pct": 7.0, "target_pct": 35.0,
+        "max_day_chg": 50.0, "requires_short_float": None,
+        "requires_min_chg": 3.0, "max_positions": 2,
+        "min_price": 3.0,
+        "is_swing": True,
+        "partial_tp_trigger": 15.0,  "partial_tp_pct": 0.3,
+        "partial_tp2_trigger": 35.0, "partial_tp2_pct": 0.3,
+        "trailing_trigger": 15.0, "trail_pct": 0.80,
+        "stale_hours": 72.0,
+        "max_hold_hours": 336.0,
+    },
+    "MomentumSwing": {
+        "label": "🚀 MomentumSwing",
+        "description": "rvol>2x + RSI 55-75 + above MA50 + SPY green + up>5%",
+        "min_health": 25, "min_conf": 25, "min_rvol": 2.0,
+        "stop_pct": 8.0, "target_pct": 50.0,
+        "max_day_chg": 50.0, "requires_short_float": None,
+        "requires_min_chg": 5.0, "max_positions": 2,
+        "min_rsi": 55, "max_rsi": 75,
+        "is_swing": True,
+        "partial_tp_trigger": 15.0,  "partial_tp_pct": 0.3,
+        "partial_tp2_trigger": 50.0, "partial_tp2_pct": 0.3,
+        "trailing_trigger": 15.0, "trail_pct": 0.78,
+        "stale_hours": 72.0,
+        "max_hold_hours": 240.0,
     },
 }
 
@@ -353,11 +433,17 @@ class MiniPortfolio:
             entry   = pos["entry_price"]
             pnl_pct = (price - entry) / entry * 100
 
-            # Stale exit: held >2 calendar days with <2% gain
+            # Stale exit: held past stale_hours with <2% gain / max hold exceeded
             try:
-                age_days = (now - datetime.fromisoformat(pos["entry_time"])).days
-                if age_days >= 1 and pnl_pct < 2.0:
-                    t = self.close_position(ticker, price, "Stale exit (2d < 2%)")
+                age_hours = (now - datetime.fromisoformat(pos["entry_time"])).total_seconds() / 3600
+                max_hold_hours = cfg.get("max_hold_hours")
+                stale_hours = cfg.get("stale_hours", 48.0)
+                if max_hold_hours and age_hours >= max_hold_hours:
+                    t = self.close_position(ticker, price, f"Max hold ({max_hold_hours:.0f}h)")
+                    if t: closed.append(t)
+                    continue
+                if age_hours >= stale_hours and pnl_pct < 2.0:
+                    t = self.close_position(ticker, price, f"Stale ({stale_hours:.0f}h, <2%)")
                     if t: closed.append(t)
                     continue
             except Exception:
@@ -642,16 +728,24 @@ class StrategyArena:
     # ── Core Logic ───────────────────────────────────────────────────────────
 
     @staticmethod
-    def _spy_is_bearish(live_prices: dict) -> bool:
+    def _spy_regime(live_prices: dict) -> str:
         """
-        Global rule #1: if SPY is down > 0.5% on the day, block new entries.
-        Uses live_prices cache; if SPY not present, allows trading (fail open).
+        SPY regime — returns 'close_all' | 'no_new_intraday' | 'normal'.
+        SPY < -1.5%  → CLOSE_ALL (market crash — exit everything)
+        SPY < -0.7%  → NO_NEW_INTRADAY (swing entries only)
+        Otherwise    → NORMAL
+        Fails open (normal) if SPY data not available.
         """
         spy = live_prices.get("SPY") or live_prices.get("spy")
         spy_prev = live_prices.get("SPY_prev_close") or live_prices.get("spy_prev_close")
         if not spy or not spy_prev or spy_prev <= 0:
-            return False
-        return (spy - spy_prev) / spy_prev * 100 < -0.5
+            return "normal"
+        spy_chg = (spy - spy_prev) / spy_prev * 100
+        if spy_chg < -1.5:
+            return "close_all"
+        if spy_chg < -0.7:
+            return "no_new_intraday"
+        return "normal"
 
     def think(self, stocks: list, live_prices: dict) -> dict:
         """Run one tick for all strategies. Works in all market sessions."""
@@ -671,8 +765,22 @@ class StrategyArena:
             # Session overrides
             ov = _SESSION_OVERRIDES.get(session, _SESSION_OVERRIDES["regular"])
 
-            # Global rule #1: SPY regime — block all new entries on red market days
-            spy_bearish = self._spy_is_bearish(live_prices)
+            # Global rule #1: SPY regime
+            spy_regime = self._spy_regime(live_prices)
+
+            # CLOSE_ALL: SPY crashed > 1.5% — exit all open positions
+            if spy_regime == "close_all":
+                for pf in self.portfolios.values():
+                    for ticker in list(pf.positions.keys()):
+                        price = live_prices.get(ticker) or pf.positions[ticker]["entry_price"]
+                        trade = pf.close_position(ticker, price, "SPY crash — close_all")
+                        if trade:
+                            self._add_event("SELL", pf.name, ticker, price,
+                                            trade.get("pnl_pct", 0), "SPY crash")
+                self.tick_count += 1
+                self.last_tick = datetime.now().isoformat()
+                self._save(live_prices)
+                return self.get_status(live_prices)
 
             # Current ET time in minutes for entry_cutoff_et checks
             et_now   = _et_now()
@@ -709,13 +817,16 @@ class StrategyArena:
                 if new_positions_this_tick[pf.name] >= ov["max_new_pos"]:
                     continue
 
-                # Global rule #1: no new entries when SPY is bearish (regular session only)
-                if spy_bearish and session == "regular":
-                    continue
+                # Global rule #1: SPY regime — block new intraday entries on red days
+                if spy_regime == "no_new_intraday" and session == "regular":
+                    if not cfg.get("is_swing"):
+                        continue
 
                 # Global rule #2: entry time window (regular session only)
-                if session == "regular" and cfg.get("entry_cutoff_et"):
-                    if et_mins > cfg["entry_cutoff_et"]:
+                if session == "regular":
+                    if cfg.get("entry_start_et") and et_mins < cfg["entry_start_et"]:
+                        continue
+                    if cfg.get("entry_cutoff_et") and et_mins > cfg["entry_cutoff_et"]:
                         continue
 
                 effective_min_rvol = cfg["min_rvol"] * ov["rvol_factor"]
@@ -734,6 +845,14 @@ class StrategyArena:
                         continue
                     conf   = min(95, int(raw_conf))
 
+                    # Global entry disqualifiers
+                    chg_30m = _safe_float(stock.get("chg_30m", stock.get("change_30m", 0)))
+                    chg_1h  = _safe_float(stock.get("chg_1h",  stock.get("change_1h",  0)))
+                    if chg > 50:                              continue  # late entry
+                    if chg_1h != 0 and chg_1h < -3.0:        continue  # weakening
+                    if chg_30m < 0 and chg_1h < 0 and (chg_30m != 0 or chg_1h != 0):
+                        continue  # no momentum
+
                     if health < cfg["min_health"]:          continue
                     if conf   < cfg["min_conf"]:            continue
                     if rvol   < effective_min_rvol:         continue
@@ -742,14 +861,23 @@ class StrategyArena:
                         continue
                     if not ov["skip_min_chg"] and cfg["requires_min_chg"]:
                         if chg < cfg["requires_min_chg"]:  continue
-                    if cfg.get("requires_seasonal") and not _safe_float(stock.get("seasonal_score")):
-                        continue
-                    if cfg.get("requires_pattern") and _safe_float(stock.get("pattern_win_rate", 0)) < 60:
-                        continue
                     if cfg.get("min_price") and price < cfg["min_price"]:
                         continue
                     if cfg.get("max_price") and price > cfg["max_price"]:
                         continue
+                    if cfg.get("min_rsi") or cfg.get("max_rsi"):
+                        rsi = _safe_float(stock.get("rsi"), 0)
+                        if rsi > 0:
+                            if cfg.get("min_rsi") and rsi < cfg["min_rsi"]: continue
+                            if cfg.get("max_rsi") and rsi > cfg["max_rsi"]: continue
+                    if cfg.get("requires_vwap_reclaim"):
+                        vwap = _safe_float(stock.get("vwap", 0))
+                        if vwap > 0:
+                            if price < vwap: continue
+                        elif chg_30m <= 0:
+                            continue
+                    if cfg.get("requires_positive_30m"):
+                        if chg_30m <= 0: continue
                     if cfg.get("requires_gap") or cfg.get("min_gap_pct"):
                         gap = _safe_float(stock.get("gap_pct", stock.get("gap", 0)))
                         min_gap = cfg.get("min_gap_pct", 0)

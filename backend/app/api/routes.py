@@ -3944,20 +3944,47 @@ async def arena_hot_movers(min_chg: float = Query(5.0)):
         for m in enriched:
             m['top_pick'] = (m is best)
     # Compute financial_tier + is_top_candidate for each mover
-    _EV_SCORE_MAP = {
+    _EV_TIERS = {
+        # EV < MC (cash-rich)
         'profitable_strong': 4, 'profitable': 3, 'profitable_weak': 2,
         'breakeven_cash': 2, 'growing': 2, 'stable_cash': 1,
-        'breakeven': 1, 'profitable_strong_debt': 2, 'profitable_debt': 1,
+        'cash_unknown': 1, 'distressed': -1,
+        # EV ≈ MC (normal)
+        'breakeven': 1, 'stable': 0, 'unknown': 0,
+        # EV >> MC (high debt)
+        'profitable_strong_debt': 2, 'profitable_debt': 1,
+        'profitable_weak_debt': 0, 'losing_debt': -2,
+        'distressed_debt': -3, 'unknown_debt': -1,
     }
     for m in enriched:
-        ev_s = _EV_SCORE_MAP.get(m.get('ev_cash_reason') or '', 0)
+        ev_reason = m.get('ev_cash_reason') or 'unknown'
+        ev_s = _EV_TIERS.get(ev_reason, 0)
         tier = '💰💰💰' if ev_s >= 4 else ('💰💰' if ev_s >= 3 else ('💰' if ev_s >= 2 else None))
-        chg  = m.get('change_pct') or 0
-        rvol = _safe_float(m.get('rel_volume'))
-        too_late = chg > 80  # up >80% today — dangerous late entry
+        chg     = m.get('change_pct') or 0
+        rvol    = _safe_float(m.get('rel_volume'))
+        chg_1h  = m.get('chg_1h') or 0
+        chg_30m = m.get('chg_30m') or 0
+        # Volume badge
+        if rvol >= 100:   m['rvol_badge'] = '⚠️ Late'
+        elif rvol >= 10:  m['rvol_badge'] = '🔥🔥 Spike'
+        elif rvol >= 5:   m['rvol_badge'] = '🔥'
+        elif rvol >= 2:   m['rvol_badge'] = '⚡'
+        else:             m['rvol_badge'] = None
+        # Entry disqualifiers
+        too_late  = chg > 50                                  # changed from 80
+        weakening = chg_1h != 0 and chg_1h < -3.0
+        has_momentum = (chg_30m > 0 or chg_1h > 0) if (chg_30m != 0 or chg_1h != 0) else True
         m['financial_tier'] = tier
         m['too_late'] = too_late
-        m['is_top_candidate'] = bool(tier and chg > 3.0 and rvol > 1.5 and not too_late)
+        m['weakening'] = weakening
+        m['is_top_candidate'] = bool(
+            tier and ev_s >= 2
+            and chg > 3.0
+            and rvol > 1.5
+            and not too_late
+            and not weakening
+            and has_momentum
+        )
         # strong_conviction: momentum still going — chg_30m > 0 AND health label = "ממשיך"
         health_label = (m.get('health') or {}).get('label', '')
         momentum_still_up = (m.get('chg_30m') or 0) > 0 and 'ממשיך' in health_label
@@ -3965,16 +3992,19 @@ async def arena_hot_movers(min_chg: float = Query(5.0)):
         # Trade suggestion — only when bot has real conviction
         if m['strong_conviction']:
             _TRADE_PARAMS = {
-                '⚡ Lightning Squeeze': (0.08, 0.10),
-                '🌪️ Gap & Squeeze':     (0.10, 0.12),
-                '💥 Nano Squeeze':      (0.10, 0.12),
-                '🔥 Hard Squeeze':      (0.08, 0.12),
-                '💣 Gap Explosion':     (0.12, 0.15),
-                '🚀 Premarket Gap':     (0.08, 0.12),
-                '🚀 Momentum Breaker':  (0.05, 0.12),
-                '⚡ Scalper':           (0.06, 0.10),
-                '🎯 High Conviction':   (0.05, 0.12),
-                '⚖️ Balanced':          (0.06, 0.12),
+                '⚡ First5Min':       (0.05, 0.15),
+                '📈 VWAPReclaim':     (0.04, 0.12),
+                '⚡ PowerHour':       (0.05, 0.10),
+                '🚀 GapHold':         (0.06, 0.20),
+                '🎯 CatalystMover':   (0.06, 0.20),
+                '🚀 MomentumCont':    (0.05, 0.20),
+                '🌪️ FloatRotation':   (0.08, 0.30),
+                '💥 ShortSqueeze':    (0.07, 0.30),
+                '💣 NanoRunner':      (0.10, 0.40),
+                '🎯 HCNews':          (0.05, 0.25),
+                '📈 TrendRider':      (0.08, 0.30),
+                '🔲 BaseBreakout':    (0.07, 0.35),
+                '🚀 MomentumSwing':   (0.08, 0.50),
             }
             strat = m.get('top_strategy') or ''
             stop_pct, tgt_pct = _TRADE_PARAMS.get(strat, (0.06, 0.12))
