@@ -298,7 +298,7 @@ class MiniPortfolio:
         closed = []
         now    = datetime.now()
         cfg    = self.config
-        partial_tp_trigger  = cfg.get("partial_tp_trigger",  12.0)
+        partial_tp_trigger  = cfg.get("partial_tp_trigger",   6.0)
         partial_tp_pct      = cfg.get("partial_tp_pct",       0.4)   # fraction to sell at TP1
         partial_tp2_trigger = cfg.get("partial_tp2_trigger",  None)  # optional second TP level
         partial_tp2_pct     = cfg.get("partial_tp2_pct",      0.3)
@@ -319,7 +319,7 @@ class MiniPortfolio:
             # Stale exit: held >2 calendar days with <2% gain
             try:
                 age_days = (now - datetime.fromisoformat(pos["entry_time"])).days
-                if age_days >= 2 and pnl_pct < 2.0:
+                if age_days >= 1 and pnl_pct < 2.0:
                     t = self.close_position(ticker, price, "Stale exit (2d < 2%)")
                     if t: closed.append(t)
                     continue

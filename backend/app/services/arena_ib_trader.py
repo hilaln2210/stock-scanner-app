@@ -153,15 +153,16 @@ class ArenaIBTrader:
         leader_changed = None  # (old, new) if leader switched
 
         with self._lock:
-            # Auto-follow: update active_strategy to leaderboard #1
+            # Auto-follow: update active_strategy to leaderboard #1 (display only — no position selling)
             if self.strategy_name == AUTO_FOLLOW and leaderboard:
                 leader_name = leaderboard[0].get("name", "")
                 if leader_name and leader_name != self.active_strategy:
                     old = self.active_strategy
                     self.active_strategy = leader_name
                     leader_changed = (old, leader_name)
-                    print(f"[ArenaIB] Leader changed: {old} → {leader_name}")
-                    orders.extend(self._plan_leader_switch(leader_name, leaderboard))
+                    print(f"[ArenaIB] Leader changed: {old} → {leader_name} (display only)")
+                    # NOTE: no position selling on leader change — existing positions
+                    # stay open and are managed by the arena's own exit logic
 
             target_strategy = self.active_strategy
             if not target_strategy:
@@ -184,17 +185,26 @@ class ArenaIBTrader:
                     continue
                 self.seen_event_ids.add(eid)
 
-                if strategy != target_strategy:
-                    continue
-                if not ticker or not action or price <= 0:
+                if not ticker or not action:
                     continue
 
-                if action == "BUY" and ticker not in self.ib_positions:
-                    qty = max(1, int(self.trade_amount / price))
-                    orders.append(("BUY", ticker, qty, price, target_strategy, "event"))
+                if action == "BUY":
+                    # Only buy new positions for the active strategy
+                    if strategy != target_strategy:
+                        continue
+                    if price <= 0:
+                        continue
+                    if ticker not in self.ib_positions:
+                        qty = max(1, int(self.trade_amount / price))
+                        orders.append(("BUY", ticker, qty, price, target_strategy, "event"))
+
                 elif action == "SELL" and ticker in self.ib_positions:
+                    # Close any held ticker when ANY strategy fires a sell — avoids orphan positions
+                    if price <= 0:
+                        print(f"[ArenaIB] SELL {ticker} skipped — price=0 (strategy={strategy})")
+                        continue
                     qty = self.ib_positions[ticker]["qty"]
-                    orders.append(("SELL", ticker, qty, price, target_strategy, "event"))
+                    orders.append(("SELL", ticker, qty, price, strategy, "event"))
 
             self._save()
 
@@ -220,17 +230,6 @@ class ArenaIBTrader:
                 continue
             qty = max(1, int(self.trade_amount / price))
             orders.append(("BUY", ticker, qty, price, strategy_name, "sync"))
-        return orders
-
-    def _plan_leader_switch(self, new_leader: str, leaderboard: list) -> list:
-        leader_data = next((s for s in leaderboard if s.get("name") == new_leader), None)
-        leader_tickers = set()
-        if leader_data and isinstance(leader_data.get("positions"), dict):
-            leader_tickers = set(leader_data["positions"].keys())
-        orders = []
-        for ticker, pos in self.ib_positions.items():
-            if ticker not in leader_tickers:
-                orders.append(("SELL", ticker, pos["qty"], 0, new_leader, "leader_switch"))
         return orders
 
     async def _execute_orders(self, orders: list, ib_svc,
@@ -263,9 +262,10 @@ class ArenaIBTrader:
             # ── Execute orders ────────────────────────────────────────────────
             for action, ticker, qty, price, strategy, reason in orders:
                 try:
-                    # For SELL with price=0, use live price from leaderboard
-                    if action == "SELL" and price <= 0 and ticker in live_prices:
-                        price = live_prices[ticker]
+                    # Hard block: never sell at price=0
+                    if action == "SELL" and price <= 0:
+                        print(f"[ArenaIB] SELL {ticker} BLOCKED — price=0 [{reason}]")
+                        continue
 
                     result = await ib_svc.place_order(ticker, action, qty)
                     if result.get("error"):
