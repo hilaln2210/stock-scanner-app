@@ -210,6 +210,46 @@ STRATEGY_CONFIGS = {
         "trailing_trigger": 12.0, "trail_pct": 0.85,
         "stale_hours": 48.0,
     },
+    # ─── AFTER-HOURS ─────────────────────────────────────────────────────────
+    "EarningsRunner": {
+        "label": "🌙 EarningsRunner",
+        "description": "earnings היום AH — AH chg>8%, volume>150k, float<50M",
+        "min_health": 5, "min_conf": 5, "min_rvol": 1.0,
+        "stop_pct": 8.0, "target_pct": 30.0,
+        "max_day_chg": 999.0, "requires_short_float": None,
+        "requires_min_chg": 0.0, "max_positions": 2,
+        "min_price": 2.0, "max_price": 100.0,
+        "requires_float_shares_max": 50_000_000,
+        "entry_session": ["aftermarket"],    # aftermarket only
+        "ah_min_chg": 8.0,                  # AH change > 8%
+        "ah_max_chg": 40.0,                 # blocked if > 40%
+        "ah_min_volume": 150_000,
+        "requires_earnings": True,          # must have earnings today
+        "half_position_size": True,
+        "partial_tp_trigger": 15.0, "partial_tp_pct": 0.4,
+        "partial_tp2_trigger": 30.0, "partial_tp2_pct": 0.3,
+        "trailing_trigger": 15.0, "trail_pct": 0.82,
+        "stale_hours": 2.0,
+    },
+    "AHMomentum": {
+        "label": "🌙 AHMomentum",
+        "description": "AH momentum — news/catalyst, AH chg>5%, volume>100k, float<30M",
+        "min_health": 5, "min_conf": 5, "min_rvol": 0.5,
+        "stop_pct": 7.0, "target_pct": 25.0,
+        "max_day_chg": 999.0, "requires_short_float": None,
+        "requires_min_chg": 0.0, "max_positions": 2,
+        "requires_float_shares_max": 30_000_000,
+        "entry_session": ["aftermarket"],
+        "entry_cutoff_et": 18 * 60,         # no new entries after 18:00 ET
+        "ah_min_chg": 5.0,
+        "ah_max_chg": 40.0,
+        "ah_min_volume": 100_000,
+        "half_position_size": True,
+        "partial_tp_trigger": 12.0, "partial_tp_pct": 0.4,
+        "partial_tp2_trigger": 25.0, "partial_tp2_pct": 0.3,
+        "trailing_trigger": 12.0, "trail_pct": 0.85,
+        "stale_hours": 1.5,
+    },
     # ─── SWING ───────────────────────────────────────────────────────────────
     "TrendRider": {
         "label": "📈 TrendRider",
@@ -822,12 +862,16 @@ class StrategyArena:
                     if not cfg.get("is_swing"):
                         continue
 
-                # Global rule #2: entry time window (regular session only)
-                if session == "regular":
-                    if cfg.get("entry_start_et") and et_mins < cfg["entry_start_et"]:
-                        continue
-                    if cfg.get("entry_cutoff_et") and et_mins > cfg["entry_cutoff_et"]:
-                        continue
+                # Session restriction — some strategies run in specific sessions only
+                allowed_sessions = cfg.get("entry_session")
+                if allowed_sessions and session not in allowed_sessions:
+                    continue
+
+                # Global rule #2: entry time window
+                if cfg.get("entry_start_et") and et_mins < cfg["entry_start_et"]:
+                    continue
+                if cfg.get("entry_cutoff_et") and et_mins > cfg["entry_cutoff_et"]:
+                    continue
 
                 effective_min_rvol = cfg["min_rvol"] * ov["rvol_factor"]
                 extra_stop         = ov["stop_add_pct"]
@@ -900,6 +944,31 @@ class StrategyArena:
                     if session == "premarket" and cfg.get("max_premarket_chg"):
                         if chg > cfg["max_premarket_chg"]:
                             continue
+                    # After-hours specific filters
+                    if cfg.get("ah_min_chg") or cfg.get("ah_max_chg") or cfg.get("ah_min_volume"):
+                        ah_chg = _safe_float(stock.get("ext_change_pct",
+                                             stock.get("ah_change",
+                                             stock.get("after_close_change", chg))))
+                        ah_vol = _safe_float(stock.get("ext_volume",
+                                             stock.get("ah_volume",
+                                             stock.get("after_volume", 0))))
+                        if cfg.get("ah_min_chg") and ah_chg < cfg["ah_min_chg"]:
+                            continue
+                        if cfg.get("ah_max_chg") and ah_chg > cfg["ah_max_chg"]:
+                            continue  # too late — blocked
+                        if cfg.get("ah_min_volume") and 0 < ah_vol < cfg["ah_min_volume"]:
+                            continue  # too thin
+                    if cfg.get("requires_earnings"):
+                        # accept if earnings_date field is today, or field just truthy
+                        earnings_field = stock.get("earnings_date", stock.get("earnings", ""))
+                        today_str = _today()
+                        if not earnings_field:
+                            continue
+                        # accept if today's date appears in the earnings string
+                        if isinstance(earnings_field, str) and today_str not in earnings_field:
+                            # fallback: any non-empty value means earnings today in AH context
+                            if len(earnings_field) < 3:
+                                continue
 
                     stop_override = cfg["stop_pct"] + extra_stop if extra_stop else None
                     if pf.open_position(ticker, price, stop_override=stop_override):

@@ -53,79 +53,124 @@ const SESSION_META = {
 };
 
 const STRATEGY_META = {
-  Balanced:        { emoji: '⚖️', color: '#60a5fa', bg: 'rgba(96,165,250,0.08)',  border: 'rgba(96,165,250,0.25)'  },
-  HighConviction:  { emoji: '🎯', color: '#a78bfa', bg: 'rgba(167,139,250,0.08)', border: 'rgba(167,139,250,0.25)' },
-  SqueezeHunter:   { emoji: '🔥', color: '#fb923c', bg: 'rgba(251,146,60,0.08)',  border: 'rgba(251,146,60,0.25)'  },
-  Scalper:         { emoji: '⚡', color: '#34d399', bg: 'rgba(52,211,153,0.08)',  border: 'rgba(52,211,153,0.25)'  },
-  MomentumBreaker: { emoji: '🚀', color: '#f43f5e', bg: 'rgba(244,63,94,0.08)',   border: 'rgba(244,63,94,0.25)'   },
-  SwingSetup:      { emoji: '🌊', color: '#22d3ee', bg: 'rgba(34,211,238,0.08)', border: 'rgba(34,211,238,0.25)'  },
-  SeasonalityTrader: { emoji: '📅', color: '#38bdf8', bg: 'rgba(56,189,248,0.08)',  border: 'rgba(56,189,248,0.25)'  },
-  PatternTrader:     { emoji: '🔁', color: '#e879f9', bg: 'rgba(232,121,249,0.08)', border: 'rgba(232,121,249,0.25)' },
-  GapScanner:        { emoji: '🚀', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)',  border: 'rgba(245,158,11,0.25)'  },
-  GapExplosion:      { emoji: '💣', color: '#ef4444', bg: 'rgba(239,68,68,0.08)',   border: 'rgba(239,68,68,0.25)'   },
+  // SCALP
+  First5Min:      { emoji: '⚡', color: '#34d399', bg: 'rgba(52,211,153,0.08)',   border: 'rgba(52,211,153,0.25)'   },
+  VWAPReclaim:    { emoji: '📈', color: '#60a5fa', bg: 'rgba(96,165,250,0.08)',   border: 'rgba(96,165,250,0.25)'   },
+  PowerHour:      { emoji: '⚡', color: '#fbbf24', bg: 'rgba(251,191,36,0.08)',   border: 'rgba(251,191,36,0.25)'   },
+  // INTRADAY
+  GapHold:        { emoji: '🚀', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)',   border: 'rgba(245,158,11,0.25)'   },
+  CatalystMover:  { emoji: '🎯', color: '#a78bfa', bg: 'rgba(167,139,250,0.08)',  border: 'rgba(167,139,250,0.25)'  },
+  MomentumCont:   { emoji: '🚀', color: '#f43f5e', bg: 'rgba(244,63,94,0.08)',    border: 'rgba(244,63,94,0.25)'    },
+  FloatRotation:  { emoji: '🌪️', color: '#22d3ee', bg: 'rgba(34,211,238,0.08)',  border: 'rgba(34,211,238,0.25)'   },
+  // AGGRESSIVE
+  ShortSqueeze:   { emoji: '💥', color: '#fb923c', bg: 'rgba(251,146,60,0.08)',   border: 'rgba(251,146,60,0.25)'   },
+  NanoRunner:     { emoji: '💣', color: '#ef4444', bg: 'rgba(239,68,68,0.08)',    border: 'rgba(239,68,68,0.25)'    },
+  HCNews:         { emoji: '🎯', color: '#4ade80', bg: 'rgba(74,222,128,0.08)',   border: 'rgba(74,222,128,0.25)'   },
+  // SWING
+  TrendRider:     { emoji: '📈', color: '#38bdf8', bg: 'rgba(56,189,248,0.08)',   border: 'rgba(56,189,248,0.25)'   },
+  BaseBreakout:   { emoji: '🔲', color: '#e879f9', bg: 'rgba(232,121,249,0.08)',  border: 'rgba(232,121,249,0.25)'  },
+  MomentumSwing:  { emoji: '🚀', color: '#818cf8', bg: 'rgba(129,140,248,0.08)',  border: 'rgba(129,140,248,0.25)'  },
+  // AFTER-HOURS
+  EarningsRunner: { emoji: '🌙', color: '#a78bfa', bg: 'rgba(167,139,250,0.08)', border: 'rgba(167,139,250,0.25)'  },
+  AHMomentum:     { emoji: '🌙', color: '#818cf8', bg: 'rgba(129,140,248,0.08)', border: 'rgba(129,140,248,0.25)'  },
 };
 
 /* ── Strategy detailed info (for popover) ────────────────────────────────── */
 const STRATEGY_INFO = {
-  Balanced: {
-    style: 'כניסות מאוזנות לשוק נורמלי — לא קיצוני, לא שמרני',
-    rules: ['Health ≥ 40 | Confidence ≥ 45', 'rvol ≥ 0.5 — נפח סביר', 'שינוי יומי מקס׳ 8%'],
-    exit:  ['Stop 4% | Target 12%', 'Trailing stop מ-4% | TP חלקי ב-5%', 'סגירה אחרי 2 ימים אם < +2%'],
-    max_positions: 3, stop_pct: 4.0, target_pct: 12.0,
-  },
-  HighConviction: {
-    style: 'רק הכי טובים — פחות עסקאות, R:R גבוה יותר',
-    rules: ['Health ≥ 55 | Confidence ≥ 58', 'rvol ≥ 0.8 — נפח גבוה', 'שינוי יומי מקס׳ 5%'],
-    exit:  ['Stop 3.5% | Target 17.5%', 'Trailing stop מ-4% | TP חלקי ב-5%', 'סגירה אחרי 2 ימים אם < +2%'],
-    max_positions: 2, stop_pct: 3.5, target_pct: 17.5,
-  },
-  SqueezeHunter: {
-    style: 'מחפשת מניות עם שורט גבוה — לחץ כיסוי שורטים',
-    rules: ['Health ≥ 35 | Confidence ≥ 40', 'Short Float ≥ 8% — חובה', 'rvol ≥ 0.5 | ללא מגבלת שינוי'],
-    exit:  ['Stop 4% | Target 20%', 'Trailing stop מ-4% | TP חלקי ב-5%', 'סגירה אחרי 2 ימים אם < +2%'],
-    max_positions: 3, stop_pct: 4.0, target_pct: 20.0,
-  },
-  Scalper: {
-    style: 'כניסות אגרסיביות עם סיכון גבוה — יעדי רווח גדולים',
-    rules: ['Health ≥ 22 | Confidence ≥ 25 — threshold נמוך', 'rvol ≥ 0.6 | שינוי מינימלי 0.1%', 'ללא מגבלת שינוי יומי'],
-    exit:  ['Stop 4.5% | Target 14%', 'Trailing צמוד מ-6% (4% מהשיא)', 'TP חלקי ב-8% — נשאר זמן יותר'],
-    max_positions: 3, stop_pct: 4.5, target_pct: 14.0,
-  },
-  MomentumBreaker: {
-    style: 'פורצים עם נפח חריג — מחפש ספייקים אמיתיים',
-    rules: ['Health ≥ 30 | Confidence ≥ 35', 'rvol ≥ 1.8 — נפח חריג, חובה', 'שינוי > 1% | שינוי מקס׳ 20%'],
-    exit:  ['Stop 3.5% | Target 10%', 'Trailing stop מ-4% | TP חלקי ב-5%', 'סגירה אחרי 2 ימים אם < +2%'],
-    max_positions: 3, stop_pct: 3.5, target_pct: 10.0,
-  },
-  SwingSetup: {
-    style: 'כניסות איכותיות, יעדים גדולים — סבלנות ומשמעת',
-    rules: ['Health ≥ 50 | Confidence ≥ 50 — איכות גבוהה', 'rvol ≥ 0.4 | שינוי יומי מקס׳ 4%', 'ללא תנאי מינימום שינוי'],
-    exit:  ['Stop 5% | Target 18%', 'Trailing stop מ-4% | TP חלקי ב-5%', 'סגירה אחרי 2 ימים אם < +2%'],
-    max_positions: 2, stop_pct: 5.0, target_pct: 18.0,
-  },
-  SeasonalityTrader: {
-    style: 'מניות עם דפוס עונתי חזק — win rate > 70% על עשור נתונים מ-Seasonax',
-    rules: ['Win ratio היסטורי ≥ 70% לחלון הנוכחי', 'נתוני 10 שנים | חלון 5-30 ימים', 'מניות NASDAQ 100 בלבד'],
-    exit:  ['Stop 5% | Target 15%', 'Trailing stop מ-4% | TP חלקי ב-5%', 'סגירה אחרי 2 ימים אם < +2%'],
+  // SCALP
+  First5Min: {
+    style: 'כניסה בדקות הראשונות של המסחר — ספייק תנועה + נפח',
+    rules: ['rvol ≥ 3x | chg > 3% | Float < 100M', 'מחיר $2–$50 | 9:30–9:35 ET בלבד'],
+    exit:  ['Stop 5% | TP1 8% (40%) | TP2 15% (30%)', 'Trail 0.85 | סטייל תוך 2 שעות'],
     max_positions: 2, stop_pct: 5.0, target_pct: 15.0,
   },
-  PatternTrader: {
-    style: 'דפוסים תוך-יומיים — חלונות זמן עם win rate > 65% מהיסטוריה של 45 ימים',
-    rules: ['Win rate ≥ 65% על חלון תוך-יומי ספציפי', 'כיוון LONG בלבד | interval 5 דקות', 'מניות ATR > $2, נפח > 5M'],
-    exit:  ['Stop 2.5% | Target 7%', 'Trailing stop מ-4% | TP חלקי ב-5%', 'סגירה אחרי 2 ימים אם < +2%'],
-    max_positions: 2, stop_pct: 2.5, target_pct: 7.0,
+  VWAPReclaim: {
+    style: 'מניה ירדה מתחת VWAP וחזרה מעליו — momentum reclaim',
+    rules: ['rvol ≥ 2x | chg_30m > 0 | מחיר > $1', '9:30–13:00 ET | בדיקת VWAP'],
+    exit:  ['Stop 4% | TP1 8% (40%) | TP2 12% (30%)', 'Trail 0.88 | סטייל תוך 90 דקות'],
+    max_positions: 2, stop_pct: 4.0, target_pct: 12.0,
   },
-  GapScanner: {
-    style: 'הכי חזק בבוט-עולם — gap > 8% premarket על float קטן = daily runner',
-    rules: ['Gap > 8% premarket | rvol ≥ 2x', 'Float < 50M | מחיר $2–$20', 'ללא דרישת short float — gap לבד מספיק'],
-    exit:  ['Stop 8% | Target 30%', 'Trailing stop מ-10% | TP חלקי ב-12%', 'סגירה אחרי יום אם < +2%'],
+  PowerHour: {
+    style: 'Power Hour — ריצת סגירה עם נפח + מומנטום',
+    rules: ['rvol ≥ 2x | chg > 3% | chg_1h > 1%', '15:00–15:30 ET בלבד'],
+    exit:  ['Stop 5% | TP1 10% (50%)', 'Trail 0.87 | סטייל תוך שעה'],
+    max_positions: 2, stop_pct: 5.0, target_pct: 10.0,
+  },
+  // INTRADAY
+  GapHold: {
+    style: 'Gap > 8% שמחזיק מעל רמת הגאפ — daily runner פוטנציאלי',
+    rules: ['Gap > 8% | rvol ≥ 2x | Float < 50M', 'מחיר < $50 | 9:30–9:45 ET'],
+    exit:  ['Stop 6% | TP1 10% (40%) | TP2 20% (30%)', 'Trail 0.85 | סטייל תוך יום'],
+    max_positions: 2, stop_pct: 6.0, target_pct: 20.0,
+  },
+  CatalystMover: {
+    style: 'קטליסט ברור — חדשות/רווחים/FDA + gap + נפח חריג',
+    rules: ['Gap > 5% | rvol ≥ 5x | מחיר $1–$100', '9:30–11:00 ET'],
+    exit:  ['Stop 6% | TP1 10% (40%) | TP2 20% (30%)', 'Trail 0.85 | סטייל תוך יום'],
+    max_positions: 2, stop_pct: 6.0, target_pct: 20.0,
+  },
+  MomentumCont: {
+    style: 'Continuation — ריצה > 5% + פולבק קטן + המשך',
+    rules: ['rvol ≥ 2x | chg > 5% | chg_30m > 0', '9:30–12:00 ET | מעל VWAP'],
+    exit:  ['Stop 5% | TP1 10% (40%) | TP2 20% (30%)', 'Trail 0.85 | סטייל תוך יום'],
+    max_positions: 2, stop_pct: 5.0, target_pct: 20.0,
+  },
+  FloatRotation: {
+    style: 'Float קטן מאוד + נפח ענק = rotation מהיר',
+    rules: ['Float < 10M | rvol ≥ 5x | מחיר < $5', 'chg > 5% | 9:30–14:00 ET'],
+    exit:  ['Stop 8% | TP1 15% (40%) | TP2 30% (30%)', 'Trail 0.83 | סטייל תוך יום'],
     max_positions: 2, stop_pct: 8.0, target_pct: 30.0,
   },
-  GapExplosion: {
-    style: 'פיצוץ גאפ — gap > 20% + שורט≥10% + float<50M = מתפוצץ תוך 20 דקות פתיחה',
-    rules: ['Gap > 20% premarket | rvol ≥ 2x', 'Float < 50M | Short ≥ 10% | מחיר $1–$30', 'כניסה רק 9:30–9:50 ET — מפסיד הזדמנות אחר כך'],
-    exit:  ['Stop 12% | Target 60%', 'Partial TP 15% (50% מהפוז\') | Trail 0.88 מהשיא', 'סגירה אחרי יום אם < +2%'],
-    max_positions: 2, stop_pct: 12.0, target_pct: 60.0,
+  // AGGRESSIVE
+  ShortSqueeze: {
+    style: 'Short squeeze — שורט גבוה + float קטן + ספייק',
+    rules: ['Short > 25% | Float < 20M | rvol ≥ 3x', 'chg > 3% | 9:30–14:00 ET'],
+    exit:  ['Stop 7% | TP1 15% (40%) | TP2 30% (30%)', 'Trail 0.83 | סטייל תוך יום'],
+    max_positions: 2, stop_pct: 7.0, target_pct: 30.0,
+  },
+  NanoRunner: {
+    style: 'Nano squeeze — float ענן + שורט + נפח x10',
+    rules: ['Float < 5M | Short > 20% | rvol ≥ 10x', 'chg > 10% | מחיר < $10 | 9:30–12:00 ET'],
+    exit:  ['Stop 10% | TP1 20% (40%) | TP2 40% (30%)', 'Trail 0.80 | סטייל תוך יום'],
+    max_positions: 2, stop_pct: 10.0, target_pct: 40.0,
+  },
+  HCNews: {
+    style: 'High Conviction + קטליסט — כניסה חזקה מאוד',
+    rules: ['Health ≥ 40 | rvol ≥ 3x | Gap > 5%', 'chg > 5% | 9:30–11:00 ET'],
+    exit:  ['Stop 5% | TP1 12% (40%) | TP2 25% (30%)', 'Trail 0.85 | סטייל תוך 2 ימים'],
+    max_positions: 2, stop_pct: 5.0, target_pct: 25.0,
+  },
+  // SWING
+  TrendRider: {
+    style: '3+ ימים עולים ברציפות עם volume עולה — trend following',
+    rules: ['rvol ≥ 1.5x | chg > 5% | Health ≥ 30', 'מחיר > $5 | above MA20'],
+    exit:  ['Stop 8% EOD | TP1 15% (30%) | TP2 30% (30%)', 'Trail 0.80 | סטייל 3 ימים / max 7 ימים'],
+    max_positions: 2, stop_pct: 8.0, target_pct: 30.0,
+  },
+  BaseBreakout: {
+    style: 'פריצה מבסיס קונסולידציה עם נפח — swing entry קלאסי',
+    rules: ['rvol ≥ 2x | chg > 3% | Health ≥ 25', 'מחיר > $3 | above MA20+MA50'],
+    exit:  ['Stop 7% EOD | TP1 15% (30%) | TP2 35% (30%)', 'Trail 0.80 | סטייל 3 ימים / max 14 ימים'],
+    max_positions: 2, stop_pct: 7.0, target_pct: 35.0,
+  },
+  MomentumSwing: {
+    style: 'Momentum swing — RSI 55-75 + above MA50 + SPY green',
+    rules: ['rvol ≥ 2x | RSI 55–75 | chg > 5%', 'Health ≥ 25 | above MA50 | SPY green'],
+    exit:  ['Stop 8% EOD | TP1 15% (30%) | TP2 50% (30%)', 'Trail 0.78 | סטייל 3 ימים / max 10 ימים'],
+    max_positions: 2, stop_pct: 8.0, target_pct: 50.0,
+  },
+  // AFTER-HOURS
+  EarningsRunner: {
+    style: 'רווחים אחרי הסגירה — חדשות + AH spike = early entry',
+    rules: ['AH chg > 8% | AH Volume > 150k | Float < 50M', 'מחיר $2–$100 | 16:05–20:00 ET | earnings היום', 'חצי פוזיציה — $500 (נזילות נמוכה AH)'],
+    exit:  ['Stop 8% | TP1 15% (40%) | TP2 30% (30%)', 'Trail 0.82 | סטייל 2 שעות', 'AH chg > 40% — blocked (too late)'],
+    max_positions: 2, stop_pct: 8.0, target_pct: 30.0,
+  },
+  AHMomentum: {
+    style: 'AH momentum — news/catalyst אחרי סגירה על float קטן',
+    rules: ['AH chg > 5% | AH Volume > 100k | Float < 30M', '16:05–18:00 ET בלבד | AH chg ≤ 40%', 'חצי פוזיציה — $500'],
+    exit:  ['Stop 7% | TP1 12% (40%) | TP2 25% (30%)', 'Trail 0.85 | סטייל 90 דקות'],
+    max_positions: 2, stop_pct: 7.0, target_pct: 25.0,
   },
 };
 
@@ -1106,10 +1151,78 @@ export default function StrategyArena() {
   const apiSession = data.session || sessionLabel;
   const sm = SESSION_META[apiSession] || SESSION_META.closed;
 
+  const TIER_LABELS = [
+    { key: 'scalp',      label: '⚡ Scalp',      names: ['First5Min','VWAPReclaim','PowerHour'] },
+    { key: 'intraday',   label: '🚀 Intraday',   names: ['GapHold','CatalystMover','MomentumCont','FloatRotation'] },
+    { key: 'aggressive', label: '💥 Aggressive', names: ['ShortSqueeze','NanoRunner','HCNews'] },
+    { key: 'swing',      label: '📊 Swing',      names: ['TrendRider','BaseBreakout','MomentumSwing'] },
+    { key: 'afterhours', label: '🌙 After-Hours', names: ['EarningsRunner','AHMomentum'] },
+  ];
+
   return (
     <div style={{ padding: '16px', maxWidth: 980, margin: '0 auto' }}>
       <style>{STYLES}</style>
       <HotMovers />
+
+      {/* Strategy Leaderboard */}
+      {data && (
+        <div style={{ marginTop: 24 }}>
+          {/* Total row */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            marginBottom: 16, padding: '10px 16px',
+            background: 'rgba(17,24,39,0.6)', border: '1px solid #1e293b', borderRadius: 10,
+          }}>
+            <div style={{ fontSize: 11, color: '#475569' }}>
+              <span className="session-dot" style={{
+                display: 'inline-block', width: 7, height: 7, borderRadius: '50%',
+                background: (SESSION_META[apiSession] || SESSION_META.closed).dot, marginRight: 6,
+              }} />
+              {(SESSION_META[apiSession] || SESSION_META.closed).label}
+              {data.last_tick && (
+                <span style={{ marginLeft: 8, color: '#334155' }}>· עדכון {timeAgo(data.last_tick)}</span>
+              )}
+            </div>
+            <div style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 900, color: totalReturn >= 0 ? W : L }}>
+              {totalReturn >= 0 ? '+' : ''}{totalReturn.toFixed(2)}% · ${totalEquity.toFixed(0)}
+            </div>
+          </div>
+
+          {/* Tier sections */}
+          {TIER_LABELS.map(tier => {
+            const tierStrategies = sorted.filter(s => tier.names.includes(s.name));
+            if (!tierStrategies.length) return null;
+            return (
+              <div key={tier.key} style={{ marginBottom: 20 }}>
+                <div style={{
+                  fontSize: 10, fontWeight: 700, color: '#475569', letterSpacing: 1,
+                  textTransform: 'uppercase', marginBottom: 8, paddingLeft: 2,
+                }}>
+                  {tier.label}
+                </div>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                  gap: 12,
+                }}>
+                  {tierStrategies.map(s => (
+                    <StrategyCard
+                      key={s.name}
+                      strategy={s}
+                      rank={sorted.indexOf(s)}
+                      isLeader={s.name === leaderName}
+                      livePrices={livePrices}
+                      flashState={flashState}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }
