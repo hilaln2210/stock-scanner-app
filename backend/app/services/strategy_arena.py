@@ -944,14 +944,19 @@ class StrategyArena:
                     if session == "premarket" and cfg.get("max_premarket_chg"):
                         if chg > cfg["max_premarket_chg"]:
                             continue
-                    # After-hours specific filters
+                    # After-hours specific filters — fail safe: no AH data = no entry
                     if cfg.get("ah_min_chg") or cfg.get("ah_max_chg") or cfg.get("ah_min_volume"):
-                        ah_chg = _safe_float(stock.get("ext_change_pct",
-                                             stock.get("ah_change",
-                                             stock.get("after_close_change", chg))))
-                        ah_vol = _safe_float(stock.get("ext_volume",
-                                             stock.get("ah_volume",
-                                             stock.get("after_volume", 0))))
+                        ah_chg_raw = stock.get("ext_change_pct",
+                                     stock.get("ah_change",
+                                     stock.get("after_close_change")))
+                        ah_vol_raw = stock.get("ext_volume",
+                                     stock.get("ah_volume",
+                                     stock.get("after_volume")))
+                        # No AH data available → skip (don't fall back to regular chg)
+                        if ah_chg_raw is None and ah_vol_raw is None:
+                            continue
+                        ah_chg = _safe_float(ah_chg_raw) if ah_chg_raw is not None else 0.0
+                        ah_vol = _safe_float(ah_vol_raw) if ah_vol_raw is not None else 0.0
                         if cfg.get("ah_min_chg") and ah_chg < cfg["ah_min_chg"]:
                             continue
                         if cfg.get("ah_max_chg") and ah_chg > cfg["ah_max_chg"]:
