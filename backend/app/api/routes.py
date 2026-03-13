@@ -3366,6 +3366,53 @@ _HOT_MOVERS_CACHE_TIME: float = 0.0
 _HOT_MOVERS_CACHE_TTL: int = 90  # 90s — dedicated scan, don't hammer
 
 
+def _match_strategies(stock: dict) -> list[str]:
+    """
+    Returns list of strategy labels that would identify this stock as a candidate.
+    Checks the stock's metrics against each strategy's entry filters.
+    """
+    chg        = _safe_float(stock.get('change_pct'))
+    rvol       = _safe_float(stock.get('rel_volume'))
+    price      = _safe_float(stock.get('price'))
+    short_f    = _safe_float(stock.get('short_float'))
+    float_sh   = _safe_float(stock.get('float_shares'))   # in millions if from screener
+    # float_shares from Finviz screener is in raw form (e.g. 15M → 15_000_000 or 15.0)
+    # normalise: if < 1000, assume it's already in millions
+    if float_sh > 0 and float_sh < 1000:
+        float_sh = float_sh * 1_000_000
+
+    matches = []
+    for name, cfg in _ARENA_STRATEGY_CONFIGS.items():
+        # 1. min_chg / requires_min_chg
+        min_chg_req = cfg.get('requires_min_chg') or 0
+        if chg < min_chg_req:
+            continue
+        # 2. rel volume
+        min_rv = cfg.get('min_rvol', 0)
+        if rvol > 0 and rvol < min_rv:
+            continue
+        # 3. short float requirement
+        sf_req = cfg.get('requires_short_float')
+        if sf_req and (short_f <= 0 or short_f < sf_req):
+            continue
+        # 4. float shares max
+        fs_max = cfg.get('requires_float_shares_max')
+        if fs_max and float_sh > 0 and float_sh > fs_max:
+            continue
+        # 5. price range
+        min_p = cfg.get('min_price', 0)
+        max_p = cfg.get('max_price', 99999)
+        if price > 0 and not (min_p <= price <= max_p):
+            continue
+        # 6. min_gap_pct (use change_pct as proxy since gap_pct not in screener data)
+        min_gap = cfg.get('min_gap_pct')
+        if min_gap and chg < min_gap:
+            continue
+        matches.append(cfg.get('label', name))
+
+    return matches
+
+
 async def _scrape_hot_movers(min_chg: float) -> list:
     """
     Dedicated Finviz scan for stocks up min_chg%+ today.
@@ -3491,7 +3538,8 @@ async def arena_hot_movers(min_chg: float = Query(15.0)):
     async def _enrich(item):
         async with sem:
             intraday = await loop.run_in_executor(None, _get_intraday, item['ticker'])
-            return {**item, **intraday}
+            strategies = _match_strategies(item)
+            return {**item, **intraday, 'strategies': strategies}
 
     enriched = await asyncio.gather(*[_enrich(s) for s in top])
 

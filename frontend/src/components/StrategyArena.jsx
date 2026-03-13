@@ -642,6 +642,23 @@ function HotMovers() {
                   </div>
                 )}
               </div>
+              {/* Matching strategies */}
+              {m.strategies && m.strategies.length > 0 && (
+                <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                  {m.strategies.map(s => (
+                    <span key={s} style={{
+                      fontSize: 9, padding: '1px 5px', borderRadius: 4,
+                      background: 'rgba(99,102,241,0.15)', color: '#a5b4fc',
+                      border: '1px solid rgba(99,102,241,0.3)', whiteSpace: 'nowrap',
+                    }}>{s}</span>
+                  ))}
+                </div>
+              )}
+              {m.strategies && m.strategies.length === 0 && (
+                <div style={{ marginTop: 5, fontSize: 9, color: '#4b5563', fontStyle: 'italic' }}>
+                  אין התאמה לאסטרטגיה
+                </div>
+              )}
             </div>
           );
         })}
