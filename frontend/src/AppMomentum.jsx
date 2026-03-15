@@ -27,7 +27,7 @@ const queryClient = new QueryClient({
   },
 });
 
-const API_BASE = '/api';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const api = axios.create({ baseURL: API_BASE, timeout: 45000 });
 
 // Derive a short Hebrew reason label from a news headline
