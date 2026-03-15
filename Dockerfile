@@ -19,7 +19,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
 COPY --from=frontend /app/frontend/dist ./frontend/dist
 
-WORKDIR /app/backend
-EXPOSE 8000
+# Save default data files — copied to volume on first run (if volume is empty)
+RUN cp -r /app/backend/data /app/backend/data_defaults
 
-CMD sh -c "python3 -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
+COPY docker-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+WORKDIR /app/backend
+EXPOSE 8080
+
+ENTRYPOINT ["/entrypoint.sh"]
