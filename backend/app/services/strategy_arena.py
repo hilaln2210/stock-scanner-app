@@ -296,6 +296,44 @@ STRATEGY_CONFIGS = {
         "stale_hours": 72.0,
         "max_hold_hours": 240.0,
     },
+    # ─── SEASONAL / CRYPTO ────────────────────────────────────────────────────
+    "SeasonalSwing": {
+        "label": "📅 SeasonalSwing",
+        "description": "Seasonal win>60%, avg_ret>2%, drawdown<25% — aggressive swing",
+        "min_health": 10, "min_conf": 10, "min_rvol": 0.5,
+        "stop_pct": 8.0, "target_pct": 60.0,
+        "max_day_chg": 30.0, "requires_short_float": None,
+        "requires_min_chg": 0.0, "max_positions": 5,
+        "min_price": 2.0,
+        "is_swing": True,
+        "requires_seasonal_swing": True,
+        "seasonal_min_win": 60.0,
+        "seasonal_min_avg_return": 2.0,
+        "seasonal_max_drawdown": 25.0,
+        "partial_tp_trigger": 5.0,   "partial_tp_pct": 0.5,
+        "partial_tp2_trigger": 12.0, "partial_tp2_pct": 0.3,
+        "trailing_trigger": 5.0, "trail_pct": 0.97,
+        "stale_hours": 240.0,
+        "max_hold_hours": 720.0,
+    },
+    "CryptoMomentumSync": {
+        "label": "₿ CryptoSync",
+        "description": "BTC +1.5% in 60min → Long MARA/RIOT/COIN/WULF/CLSK — 3h window",
+        "min_health": 5, "min_conf": 5, "min_rvol": 1.0,
+        "stop_pct": 3.0, "target_pct": 15.0,
+        "max_day_chg": 40.0, "requires_short_float": None,
+        "requires_min_chg": 0.0, "max_positions": 4,
+        "entry_start_et": 9 * 60 + 30,
+        "entry_cutoff_et": 15 * 60 + 30,
+        "requires_crypto_correlate": True,
+        "crypto_tickers": ["MARA", "RIOT", "COIN", "CIFR", "WULF", "CLSK", "BTBT", "HUT"],
+        "btc_trigger_pct": 1.5,
+        "partial_tp_trigger": 4.0,   "partial_tp_pct": 0.5,
+        "partial_tp2_trigger": 8.0,  "partial_tp2_pct": 0.3,
+        "trailing_trigger": 4.0, "trail_pct": 0.97,
+        "stale_hours": 3.0,
+        "max_hold_hours": 3.0,
+    },
 }
 
 _ARENA_TO_BRAIN_PARAMS = {
@@ -974,6 +1012,27 @@ class StrategyArena:
                             # fallback: any non-empty value means earnings today in AH context
                             if len(earnings_field) < 3:
                                 continue
+
+                    # SeasonalSwing: require seasonal data meeting thresholds
+                    if cfg.get("requires_seasonal_swing"):
+                        sw = stock.get("seasonal_swing_data", {})
+                        if not sw:
+                            continue
+                        if sw.get("win_ratio", 0) < cfg.get("seasonal_min_win", 60):
+                            continue
+                        if sw.get("avg_return", 0) < cfg.get("seasonal_min_avg_return", 2):
+                            continue
+                        # max_loss is negative — drawdown = abs(max_loss)
+                        if abs(sw.get("max_loss", -999)) > cfg.get("seasonal_max_drawdown", 25):
+                            continue
+
+                    # CryptoMomentumSync: BTC must have moved 1.5%+ in the last 60 min
+                    if cfg.get("requires_crypto_correlate"):
+                        if ticker not in cfg.get("crypto_tickers", []):
+                            continue
+                        btc_move = live_prices.get("BTC_MOVE_60M", 0)
+                        if btc_move < cfg.get("btc_trigger_pct", 1.5):
+                            continue
 
                     stop_override = cfg["stop_pct"] + extra_stop if extra_stop else None
                     if pf.open_position(ticker, price, stop_override=stop_override):

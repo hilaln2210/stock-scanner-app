@@ -317,6 +317,38 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 print(f"[Arena:Pattern] refresh error: {e}")
 
+        # SeasonalSwing — aggressive seasonal data (win≥60%, includes avg_return + max_loss)
+        if now - _routes._ARENA_SEASONAL_SWING_UPDATED > 7200:
+            try:
+                today = __import__("datetime").datetime.now().strftime("%Y-%m-%d")
+                async with httpx.AsyncClient() as c:
+                    r = await c.get(
+                        f"http://localhost:8000/api/seasonality?market=ndx100"
+                        f"&start_date={today}&min_win_pct=60&years=10&days_min=5&days_max=30",
+                        timeout=120
+                    )
+                    data = r.json()
+                if isinstance(data, dict) and not data.get("loading"):
+                    pats = data.get("patterns", [])
+                    if pats:
+                        swing_map = {}
+                        for p in pats:
+                            wr = p.get("win_ratio", 0)
+                            ar = p.get("avg_return", 0)
+                            ml = p.get("max_loss", -999)
+                            if wr >= 60 and ar >= 2.0 and abs(ml) <= 25:
+                                swing_map[p["ticker"]] = {
+                                    "win_ratio":  wr,
+                                    "avg_return": ar,
+                                    "max_loss":   ml,
+                                }
+                        _routes._ARENA_SEASONAL_SWING_DATA    = swing_map
+                        _routes._ARENA_SEASONAL_SWING_UPDATED = _t.time()
+                        print(f"[Arena:SeasonalSwing] {len(swing_map)} tickers: "
+                              f"{list(swing_map.keys())[:8]}")
+            except Exception as e:
+                print(f"[Arena:SeasonalSwing] refresh error: {e}")
+
     scheduler.add_job(_refresh_arena_aux_caches, "interval", minutes=30, id="arena_aux_cache_job",
                       max_instances=1, coalesce=True)
     print("Smart Portfolio Brain: every 5min | Arena: autonomous every 30s | Seasonal/Pattern: every 30min")

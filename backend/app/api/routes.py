@@ -4135,6 +4135,8 @@ async def smart_portfolio_arena_think():
             s["seasonal_score"] = _ARENA_SEASONAL_TICKERS[t]
         if t in _ARENA_PATTERN_SIGNALS:
             s["pattern_win_rate"] = _ARENA_PATTERN_SIGNALS[t]
+        if t in _ARENA_SEASONAL_SWING_DATA:
+            s["seasonal_swing_data"] = _ARENA_SEASONAL_SWING_DATA[t]
 
     live_prices = {
         s['ticker']: _safe_float(s.get('price'))
@@ -4157,6 +4159,27 @@ async def smart_portfolio_arena_think():
     if _spy_cache.get('prev_close'):
         live_prices.setdefault('SPY', live_prices.get('SPY', 0) or _spy_cache.get('prev_close', 0))
         live_prices['SPY_prev_close'] = _spy_cache['prev_close']
+
+    # BTC price tracking for CryptoMomentumSync
+    import time as _btc_t
+    if _btc_t.time() - _BTC_LAST_FETCH > 60:
+        try:
+            import yfinance as _yf
+            _btc_hist = _yf.Ticker("BTC-USD").history(period="1d", interval="1m", timeout=4)
+            if not _btc_hist.empty:
+                _btc_price = float(_btc_hist['Close'].iloc[-1])
+                _BTC_PRICE_HISTORY.append((_btc_t.time(), _btc_price))
+                globals()['_BTC_LAST_FETCH'] = _btc_t.time()
+        except Exception:
+            pass
+    # Calculate BTC move over last 60 minutes
+    if len(_BTC_PRICE_HISTORY) >= 2:
+        _now_ts = _btc_t.time()
+        _cutoff  = _now_ts - 3600
+        _old     = next((p for ts, p in _BTC_PRICE_HISTORY if ts >= _cutoff), None)
+        _cur_btc = _BTC_PRICE_HISTORY[-1][1]
+        if _old and _old > 0:
+            live_prices['BTC_MOVE_60M'] = round((_cur_btc - _old) / _old * 100, 2)
 
     result = arena_singleton.think(stocks, live_prices)
 
@@ -4457,6 +4480,15 @@ _ARENA_PATTERN_SIGNALS: dict  = {}   # {ticker: win_rate}
 _ARENA_PATTERN_UPDATED: float  = 0.0
 _ARENA_SEASONAL_LOCK: asyncio.Lock = None   # prevent concurrent refreshes
 _SPY_PREV_CLOSE_CACHE: dict = {}     # {prev_close: float, ts: float}
+
+# SeasonalSwing — aggressive seasonal data (win≥60%, avg_ret, max_loss)
+_ARENA_SEASONAL_SWING_DATA: dict  = {}   # {ticker: {win_ratio, avg_return, max_loss}}
+_ARENA_SEASONAL_SWING_UPDATED: float = 0.0
+
+# CryptoMomentumSync — BTC-USD 60-min price history
+from collections import deque as _deque
+_BTC_PRICE_HISTORY: _deque = _deque(maxlen=400)  # (timestamp, price)
+_BTC_LAST_FETCH: float = 0.0
 
 _seasonality_cache: dict = {}
 _seasonality_lock:  asyncio.Lock = None    # prevent concurrent yfinance downloads
