@@ -71,8 +71,11 @@ const STRATEGY_META = {
   BaseBreakout:   { emoji: '🔲', color: '#e879f9', bg: 'rgba(232,121,249,0.08)',  border: 'rgba(232,121,249,0.25)'  },
   MomentumSwing:  { emoji: '🚀', color: '#818cf8', bg: 'rgba(129,140,248,0.08)',  border: 'rgba(129,140,248,0.25)'  },
   // AFTER-HOURS
-  EarningsRunner: { emoji: '🌙', color: '#a78bfa', bg: 'rgba(167,139,250,0.08)', border: 'rgba(167,139,250,0.25)'  },
-  AHMomentum:     { emoji: '🌙', color: '#818cf8', bg: 'rgba(129,140,248,0.08)', border: 'rgba(129,140,248,0.25)'  },
+  EarningsRunner:     { emoji: '🌙', color: '#a78bfa', bg: 'rgba(167,139,250,0.08)', border: 'rgba(167,139,250,0.25)'  },
+  AHMomentum:         { emoji: '🌙', color: '#818cf8', bg: 'rgba(129,140,248,0.08)', border: 'rgba(129,140,248,0.25)'  },
+  // SEASONAL / CRYPTO
+  SeasonalSwing:      { emoji: '📅', color: '#34d399', bg: 'rgba(52,211,153,0.08)',  border: 'rgba(52,211,153,0.25)'   },
+  CryptoMomentumSync: { emoji: '₿',  color: '#f59e0b', bg: 'rgba(245,158,11,0.08)',  border: 'rgba(245,158,11,0.25)'   },
 };
 
 /* ── Strategy detailed info (for popover) ────────────────────────────────── */
@@ -171,6 +174,19 @@ const STRATEGY_INFO = {
     rules: ['AH chg > 5% | AH Volume > 100k | Float < 30M', '16:05–18:00 ET בלבד | AH chg ≤ 40%', 'חצי פוזיציה — $500'],
     exit:  ['Stop 7% | TP1 12% (40%) | TP2 25% (30%)', 'Trail 0.85 | סטייל 90 דקות'],
     max_positions: 2, stop_pct: 7.0, target_pct: 25.0,
+  },
+  // SEASONAL / CRYPTO
+  SeasonalSwing: {
+    style: 'Seasonal pattern אגרסיבי — win>60%, avg_ret>2%, drawdown<25%',
+    rules: ['seasonal win ≥ 60% | avg return ≥ 2% | max drawdown ≤ 25%', 'rvol ≥ 0.5x | מחיר > $2 | swing'],
+    exit:  ['Stop 8% | TP1 5% (50%) | TP2 12% (30%)', 'Trail 0.97 | max 30 ימים'],
+    max_positions: 5, stop_pct: 8.0, target_pct: 60.0,
+  },
+  CryptoMomentumSync: {
+    style: 'BTC זז +1.5% ב-60 דקות → Long על מניות קריפטו מתואמות',
+    rules: ['BTC_MOVE_60M ≥ 1.5% | MARA/RIOT/COIN/WULF/CLSK/BTBT/CIFR/HUT', 'rvol ≥ 1x | 9:30–15:30 ET'],
+    exit:  ['Stop 3% | TP1 4% (50%) | TP2 8% (30%)', 'Trail 0.97 | Time stop 3 שעות'],
+    max_positions: 4, stop_pct: 3.0, target_pct: 15.0,
   },
 };
 
@@ -1157,6 +1173,7 @@ export default function StrategyArena() {
     { key: 'aggressive', label: '💥 Aggressive', names: ['ShortSqueeze','NanoRunner','HCNews'] },
     { key: 'swing',      label: '📊 Swing',      names: ['TrendRider','BaseBreakout','MomentumSwing'] },
     { key: 'afterhours', label: '🌙 After-Hours', names: ['EarningsRunner','AHMomentum'] },
+    { key: 'seasonal',   label: '📅 Seasonal / Crypto', names: ['SeasonalSwing','CryptoMomentumSync'] },
   ];
 
   return (
