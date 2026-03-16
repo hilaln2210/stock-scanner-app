@@ -857,6 +857,7 @@ function HotMovers() {
                       profitable_weak:   { bg:'rgba(250,204,21,0.15)',  color:'#facc15', border:'rgba(250,204,21,0.4)',  label:'💰',    tip:'רווח נקי 2-10% + EV < MC. רווחית בקושי אבל יש מזומן.' },
                       breakeven_cash:    { bg:'rgba(250,204,21,0.12)',  color:'#fbbf24', border:'rgba(250,204,21,0.3)',  label:'⚖️',    tip:'Breakeven: הכנסות ≈ הוצאות, margin 0-2%. EV < MC — עדיין יש מזומן עודף.' },
                       growing:           { bg:'rgba(139,92,246,0.15)',  color:'#a78bfa', border:'rgba(139,92,246,0.4)',  label:'🚀',  tip:'מפסידה אבל הכנסות עולות 10%+ + EV < MC. שורפת כסף לצמיחה — risk/reward גבוה.' },
+                      growing_normal:    { bg:'rgba(100,116,139,0.12)', color:'#94a3b8', border:'rgba(100,116,139,0.3)', label:'📈',  tip:'הכנסות עולות 10%+ אבל מפסידה + EV ≈ MC (אין מזומן עודף). צמיחה ללא גב פיננסי.' },
                       stable_cash:       { bg:'rgba(148,163,184,0.12)', color:'#94a3b8', border:'rgba(148,163,184,0.35)',label:'💰',    tip:'מפסידה, הכנסות יציבות + EV < MC. כנראה גייסה הון ועדיין לא הוציאה.' },
                       cash_unknown:      { bg:'rgba(100,116,139,0.12)', color:'#64748b', border:'rgba(100,116,139,0.3)', label:'💰?',  tip:'EV < MC — אין מידע פיננסי מספיק לסיווג. ייתכן חיובי.' },
                       distressed:        { bg:'rgba(251,146,60,0.15)',  color:'#fb923c', border:'rgba(251,146,60,0.4)',  label:'⚠️',   tip:'EV < MC אך הכנסות יורדות >15%. ייתכן מכירת נכסים כדי לשרוד — לא מזומן אמיתי.' },

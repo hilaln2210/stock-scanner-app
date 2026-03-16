@@ -3379,7 +3379,118 @@ async def smart_portfolio_arena_status():
                     _LIVE_PRICES_CACHE[t] = d
         except Exception:
             pass
-    return arena_singleton.get_status(live_prices)
+    # Inject BTC move + price into live_prices (same calc as tick job)
+    import time as _st
+    btc_price = None
+    if _BTC_PRICE_HISTORY:
+        btc_price = round(_BTC_PRICE_HISTORY[-1][1], 0)
+    if len(_BTC_PRICE_HISTORY) >= 2:
+        _cutoff = _st.time() - 3600
+        _old = next((p for ts, p in _BTC_PRICE_HISTORY if ts >= _cutoff), None)
+        _cur = _BTC_PRICE_HISTORY[-1][1]
+        if _old and _old > 0:
+            live_prices['BTC_MOVE_60M'] = round((_cur - _old) / _old * 100, 2)
+
+    # Fetch crypto stock prices for CryptoMomentumSync display
+    _CRYPTO_TICKERS = ['MARA', 'RIOT', 'COIN', 'WULF', 'CLSK']
+    fv_stocks = {s['ticker']: s for s in _FV_TABLE_CACHE.get('data', {}).get('stocks', []) if s.get('ticker')}
+    crypto_stocks = {}
+    for t in _CRYPTO_TICKERS:
+        src = fv_stocks.get(t) or (_LIVE_PRICES_CACHE.get(t) if isinstance(_LIVE_PRICES_CACHE.get(t), dict) else None)
+        if src:
+            p = _safe_float(src.get('price'))
+            chg = src.get('change_pct') or src.get('chg') or src.get('change') or '0%'
+            if p > 0:
+                crypto_stocks[t] = {'price': p, 'change_pct': str(chg)}
+    if len(crypto_stocks) < len(_CRYPTO_TICKERS):
+        missing_crypto = [t for t in _CRYPTO_TICKERS if t not in crypto_stocks]
+        try:
+            fresh = await finviz_fundamentals.get_prices_batch(missing_crypto)
+            for t, d in fresh.items():
+                p = _safe_float(d.get('price') if isinstance(d, dict) else d)
+                if p > 0:
+                    crypto_stocks[t] = {'price': p, 'change_pct': str(d.get('change_pct', '0%') if isinstance(d, dict) else '0%')}
+        except Exception:
+            pass
+
+    # BTC 24h change + top news from CoinMarketCap (cached 10min)
+    import time as _nt
+    btc_24h_pct = None
+    btc_news = _BTC_NEWS_CACHE.get("headlines")
+    if _nt.time() - _BTC_NEWS_CACHE.get("ts", 0) > 600:
+        def _fetch_btc_news():
+            headlines_en = []
+            chg = None
+            try:
+                import requests as _req
+                r = _req.get(
+                    "https://api.coinmarketcap.com/content/v3/news?coins=1&page=1&size=4",
+                    timeout=5, headers={"User-Agent": "Mozilla/5.0"}
+                )
+                if r.status_code == 200:
+                    data = r.json().get("data", {})
+                    items = data.get("list") if isinstance(data, dict) else data
+                    if isinstance(items, list):
+                        for item in items[:4]:
+                            title = (item.get("meta") or {}).get("title") or item.get("title", "")
+                            if title:
+                                headlines_en.append(title)
+            except Exception:
+                pass
+            try:
+                import yfinance as _yf2
+                from concurrent.futures import ThreadPoolExecutor
+                def _hist():
+                    h = _yf2.Ticker("BTC-USD").history(period="2d", interval="1d", timeout=4)
+                    if len(h) >= 2:
+                        return round((float(h['Close'].iloc[-1]) - float(h['Close'].iloc[-2])) / float(h['Close'].iloc[-2]) * 100, 2)
+                with ThreadPoolExecutor(max_workers=1) as ex:
+                    chg = ex.submit(_hist).result(timeout=6)
+            except Exception:
+                pass
+            return chg, headlines_en
+
+        loop = asyncio.get_event_loop()
+        chg, headlines_en = await loop.run_in_executor(None, _fetch_btc_news)
+
+        # Translate to Hebrew via Groq
+        headlines_he = headlines_en
+        if headlines_en and settings.groq_api_key:
+            try:
+                from groq import Groq as _Groq
+                _gc = _Groq(api_key=settings.groq_api_key)
+                joined = "\n".join(f"{i+1}. {h}" for i, h in enumerate(headlines_en))
+                _resp = await asyncio.to_thread(
+                    lambda: _gc.chat.completions.create(
+                        messages=[
+                            {"role": "system", "content": "תרגם כותרות חדשות פיננסיות לעברית תמציתית. החזר רק את הכותרות המתורגמות, ממוספרות."},
+                            {"role": "user", "content": joined},
+                        ],
+                        model="llama-3.3-70b-versatile",
+                        temperature=0.1,
+                        max_completion_tokens=300,
+                    )
+                )
+                raw = _resp.choices[0].message.content.strip()
+                parsed = [line.lstrip("1234567890. ").strip() for line in raw.splitlines() if line.strip()]
+                if len(parsed) >= len(headlines_en):
+                    headlines_he = parsed[:len(headlines_en)]
+            except Exception:
+                pass
+
+        if headlines_he:
+            _BTC_NEWS_CACHE["headlines"] = headlines_he
+            _BTC_NEWS_CACHE["ts"] = _nt.time()
+            btc_news = headlines_he
+        if chg is not None:
+            btc_24h_pct = chg
+
+    status = arena_singleton.get_status(live_prices)
+    status['btc_price'] = btc_price
+    status['btc_24h_pct'] = btc_24h_pct
+    status['btc_news'] = btc_news
+    status['crypto_stocks'] = crypto_stocks
+    return status
 
 
 _HOT_MOVERS_CACHE: dict = {}
@@ -3488,14 +3599,14 @@ def _classify_ev_health(ev, mc, net_income, revenue, rev_growth, profit_margin, 
             elif margin > 0:    return 'breakeven', 1
             else:
                 if rev_growth is None:        return 'unknown', 0
-                elif rev_growth > 0.10:       return 'growing', 1
+                elif rev_growth > 0.10:       return 'growing_normal', 1
                 elif rev_growth < -0.15:      return 'distressed', -1
                 else:                         return 'stable', 0
         elif income is not None:
             if income > 0:      return 'profitable_weak', 2
             else:
                 if rev_growth is None:        return 'unknown', 0
-                elif rev_growth > 0.10:       return 'growing', 1
+                elif rev_growth > 0.10:       return 'growing_normal', 1
                 elif rev_growth < -0.15:      return 'distressed', -1
                 else:                         return 'stable', 0
         else:
@@ -3950,7 +4061,7 @@ async def arena_hot_movers(min_chg: float = Query(5.0)):
         'breakeven_cash': 2, 'growing': 2, 'stable_cash': 1,
         'cash_unknown': 1, 'distressed': -1,
         # EV ≈ MC (normal)
-        'breakeven': 1, 'stable': 0, 'unknown': 0,
+        'growing_normal': 1, 'breakeven': 1, 'stable': 0, 'unknown': 0,
         # EV >> MC (high debt)
         'profitable_strong_debt': 2, 'profitable_debt': 1,
         'profitable_weak_debt': 0, 'losing_debt': -2,
@@ -4489,6 +4600,7 @@ _ARENA_SEASONAL_SWING_UPDATED: float = 0.0
 from collections import deque as _deque
 _BTC_PRICE_HISTORY: _deque = _deque(maxlen=400)  # (timestamp, price)
 _BTC_LAST_FETCH: float = 0.0
+_BTC_NEWS_CACHE: dict = {"headline": None, "ts": 0.0}  # TTL 10min
 
 _seasonality_cache: dict = {}
 _seasonality_lock:  asyncio.Lock = None    # prevent concurrent yfinance downloads
