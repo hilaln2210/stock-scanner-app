@@ -82,104 +82,104 @@ const STRATEGY_META = {
 const STRATEGY_INFO = {
   // SCALP
   First5Min: {
-    style: 'כניסה בדקות הראשונות של המסחר — ספייק תנועה + נפח',
+    style: 'מחפש מניות שזזו חזק בפתיחה (מעל 3%) עם ווליום מטורף (פי 3 מהרגיל) ו-float קטן. קונה תוך 5 דקות מהפתיחה ורוכב על הגל הראשון.',
     rules: ['rvol ≥ 3x | chg > 3% | Float < 100M', 'מחיר $2–$50 | 9:30–9:35 ET בלבד'],
     exit:  ['Stop 5% | TP1 8% (40%) | TP2 15% (30%)', 'Trail 0.85 | סטייל תוך 2 שעות'],
     max_positions: 2, stop_pct: 5.0, target_pct: 15.0,
   },
   VWAPReclaim: {
-    style: 'מניה ירדה מתחת VWAP וחזרה מעליו — momentum reclaim',
+    style: 'מניה שירדה מתחת ל-VWAP (מחיר ממוצע משוקלל של היום) ואז חזרה מעליו. זה סימן שהקונים חזרו. נכנס רק אם הווליום גבוה, עד 13:00.',
     rules: ['rvol ≥ 2x | chg_30m > 0 | מחיר > $1', '9:30–13:00 ET | בדיקת VWAP'],
     exit:  ['Stop 4% | TP1 8% (40%) | TP2 12% (30%)', 'Trail 0.88 | סטייל תוך 90 דקות'],
     max_positions: 2, stop_pct: 4.0, target_pct: 12.0,
   },
   PowerHour: {
-    style: 'Power Hour — ריצת סגירה עם נפח + מומנטום',
+    style: 'סוחר רק בשעה האחרונה של היום (15:00–15:30). הרבה מניות עושות מהלך חזק לפני סגירת השוק כי מוסדיים מסיימים לבצע הזמנות.',
     rules: ['rvol ≥ 2x | chg > 3% | chg_1h > 1%', '15:00–15:30 ET בלבד'],
     exit:  ['Stop 5% | TP1 10% (50%)', 'Trail 0.87 | סטייל תוך שעה'],
     max_positions: 2, stop_pct: 5.0, target_pct: 10.0,
   },
   // INTRADAY
   GapHold: {
-    style: 'Gap > 8% שמחזיק מעל רמת הגאפ — daily runner פוטנציאלי',
+    style: 'מניה שפתחה עם gap ענק (מעל 8%) ו-float קטן. קונה ב-15 הדקות הראשונות בלבד. הרעיון: אם gap כזה גדול מחזיק מעמד בפתיחה — הוא ימשיך.',
     rules: ['Gap > 8% | rvol ≥ 2x | Float < 50M', 'מחיר < $50 | 9:30–9:45 ET'],
     exit:  ['Stop 6% | TP1 10% (40%) | TP2 20% (30%)', 'Trail 0.85 | סטייל תוך יום'],
     max_positions: 2, stop_pct: 6.0, target_pct: 20.0,
   },
   CatalystMover: {
-    style: 'קטליסט ברור — חדשות/רווחים/FDA + gap + נפח חריג',
+    style: 'מניה שקפצה 5%+ עם ווליום פי 5 מהרגיל. ווליום כזה חריג אומר שיש סיבה — חדשות, דוח, FDA, חוזה. נכנס ורוכב על הקטליסט עד 11:00.',
     rules: ['Gap > 5% | rvol ≥ 5x | מחיר $1–$100', '9:30–11:00 ET'],
     exit:  ['Stop 6% | TP1 10% (40%) | TP2 20% (30%)', 'Trail 0.85 | סטייל תוך יום'],
     max_positions: 2, stop_pct: 6.0, target_pct: 20.0,
   },
   MomentumCont: {
-    style: 'Continuation — ריצה > 5% + פולבק קטן + המשך',
+    style: 'מניה שכבר עולה 5% היום וממשיכה לעלות. לא מחפש את ההתחלה — מחפש את ההמשך. נכנס רק עם ווליום חזק, עד 12:00.',
     rules: ['rvol ≥ 2x | chg > 5% | chg_30m > 0', '9:30–12:00 ET | מעל VWAP'],
     exit:  ['Stop 5% | TP1 10% (40%) | TP2 20% (30%)', 'Trail 0.85 | סטייל תוך יום'],
     max_positions: 2, stop_pct: 5.0, target_pct: 20.0,
   },
   FloatRotation: {
-    style: 'Float קטן מאוד + נפח ענק = rotation מהיר',
+    style: 'מניות פאני מתחת ל-$5 עם float זעיר (מתחת ל-10M) שפתאום זזות עם ווליום מטורף. המניות האלה יכולות לעשות 20–50% ביום כי אין מספיק מניות במחזור.',
     rules: ['Float < 10M | rvol ≥ 5x | מחיר < $5', 'chg > 5% | 9:30–14:00 ET'],
     exit:  ['Stop 8% | TP1 15% (40%) | TP2 30% (30%)', 'Trail 0.83 | סטייל תוך יום'],
     max_positions: 2, stop_pct: 8.0, target_pct: 30.0,
   },
   // AGGRESSIVE
   ShortSqueeze: {
-    style: 'Short squeeze — שורט גבוה + float קטן + ספייק',
+    style: 'מניה ששורטיסטים מהמרים נגדה (מעל 25% שורט) עם float קטן. כשהמניה מתחילה לעלות, השורטיסטים נאלצים לקנות בחזרה — מה שדוחף אותה עוד למעלה. אפקט שרשרת.',
     rules: ['Short > 25% | Float < 20M | rvol ≥ 3x', 'chg > 3% | 9:30–14:00 ET'],
     exit:  ['Stop 7% | TP1 15% (40%) | TP2 30% (30%)', 'Trail 0.83 | סטייל תוך יום'],
     max_positions: 2, stop_pct: 7.0, target_pct: 30.0,
   },
   NanoRunner: {
-    style: 'Nano squeeze — float ענן + שורט + נפח x10',
+    style: 'הגרסה הקיצונית של ShortSqueeze. Float זעיר (מתחת ל-5M), שורט גבוה, ווליום פי 10 מהרגיל, כבר עולה 10%+. זו מניה שפשוט רצה ואין מי שיעצור אותה. סיכון גבוה, פוטנציאל ענק.',
     rules: ['Float < 5M | Short > 20% | rvol ≥ 10x', 'chg > 10% | מחיר < $10 | 9:30–12:00 ET'],
     exit:  ['Stop 10% | TP1 20% (40%) | TP2 40% (30%)', 'Trail 0.80 | סטייל תוך יום'],
     max_positions: 2, stop_pct: 10.0, target_pct: 40.0,
   },
   HCNews: {
-    style: 'High Conviction + קטליסט — כניסה חזקה מאוד',
+    style: 'מניה עם ציון "בריאות פיננסית" גבוה (מעל 40) שקפצה עם חדשות. הרעיון: אם חברה חזקה פונדמנטלית זזה על חדשות — זה לא pump and dump, זה מהלך אמיתי. עד 11:00.',
     rules: ['Health ≥ 40 | rvol ≥ 3x | Gap > 5%', 'chg > 5% | 9:30–11:00 ET'],
     exit:  ['Stop 5% | TP1 12% (40%) | TP2 25% (30%)', 'Trail 0.85 | סטייל תוך 2 ימים'],
     max_positions: 2, stop_pct: 5.0, target_pct: 25.0,
   },
   // SWING
   TrendRider: {
-    style: '3+ ימים עולים ברציפות עם volume עולה — trend following',
+    style: 'מניה שעולה 3 ימים ברציפות, עם ווליום שעולה כל יום, ומעל הממוצע נע של 20 יום. זה טרנד מבוסס — לא קפיצה של יום אחד. מחזיק כמה ימים.',
     rules: ['rvol ≥ 1.5x | chg > 5% | Health ≥ 30', 'מחיר > $5 | above MA20'],
     exit:  ['Stop 8% EOD | TP1 15% (30%) | TP2 30% (30%)', 'Trail 0.80 | סטייל 3 ימים / max 7 ימים'],
     max_positions: 2, stop_pct: 8.0, target_pct: 30.0,
   },
   BaseBreakout: {
-    style: 'פריצה מבסיס קונסולידציה עם נפח — swing entry קלאסי',
+    style: 'מניה שנעה הצידה כמה ימים (קונסולידציה) ואז פורצת למעלה מעל הממוצעים של 20 ו-50 יום. הפריצה מהבסיס היא אחד הדפוסים הכי אמינים בטכניקל.',
     rules: ['rvol ≥ 2x | chg > 3% | Health ≥ 25', 'מחיר > $3 | above MA20+MA50'],
     exit:  ['Stop 7% EOD | TP1 15% (30%) | TP2 35% (30%)', 'Trail 0.80 | סטייל 3 ימים / max 14 ימים'],
     max_positions: 2, stop_pct: 7.0, target_pct: 35.0,
   },
   MomentumSwing: {
-    style: 'Momentum swing — RSI 55-75 + above MA50 + SPY green',
+    style: 'מניה עם RSI בטווח 55–75 (עולה אבל לא overbought), מעל ממוצע 50 יום, ו-SPY ירוק (השוק הכללי תומך). מחזיק כמה ימים עם הרוח של השוק.',
     rules: ['rvol ≥ 2x | RSI 55–75 | chg > 5%', 'Health ≥ 25 | above MA50 | SPY green'],
     exit:  ['Stop 8% EOD | TP1 15% (30%) | TP2 50% (30%)', 'Trail 0.78 | סטייל 3 ימים / max 10 ימים'],
     max_positions: 2, stop_pct: 8.0, target_pct: 50.0,
   },
   // AFTER-HOURS
   EarningsRunner: {
-    style: 'רווחים אחרי הסגירה — חדשות + AH spike = early entry',
+    style: 'מניה שפרסמה דוחות אחרי סגירת השוק וזינקה 8%+ באפטר. הבוט קונה באפטר ורוכב על המומנטום שנמשך למחרת בפתיחה.',
     rules: ['AH chg > 8% | AH Volume > 150k | Float < 50M', 'מחיר $2–$100 | 16:05–20:00 ET | earnings היום', 'חצי פוזיציה — $500 (נזילות נמוכה AH)'],
     exit:  ['Stop 8% | TP1 15% (40%) | TP2 30% (30%)', 'Trail 0.82 | סטייל 2 שעות', 'AH chg > 40% — blocked (too late)'],
     max_positions: 2, stop_pct: 8.0, target_pct: 30.0,
   },
   AHMomentum: {
-    style: 'AH momentum — news/catalyst אחרי סגירה על float קטן',
+    style: 'כמו EarningsRunner אבל לא חייב דוחות. כל מניה שזזה חזק באפטר עם ווליום — נכנס. יכול להיות FDA, חוזה, שמועה.',
     rules: ['AH chg > 5% | AH Volume > 100k | Float < 30M', '16:05–18:00 ET בלבד | AH chg ≤ 40%', 'חצי פוזיציה — $500'],
     exit:  ['Stop 7% | TP1 12% (40%) | TP2 25% (30%)', 'Trail 0.85 | סטייל 90 דקות'],
     max_positions: 2, stop_pct: 7.0, target_pct: 25.0,
   },
   // SEASONAL / CRYPTO
   SeasonalSwing: {
-    style: 'Seasonal pattern אגרסיבי — win>60%, avg_ret>2%, drawdown<25%',
-    rules: ['seasonal win ≥ 60% | avg return ≥ 2% | max drawdown ≤ 25%', 'rvol ≥ 0.5x | מחיר > $2 | swing'],
-    exit:  ['Stop 8% | TP1 5% (50%) | TP2 12% (30%)', 'Trail 0.97 | max 30 ימים'],
+    style: 'בודק 10 שנות היסטוריה — אם מניה עלתה בתקופה הזו של השנה ב-7 מתוך 10 שנים, קונה אותה השנה. למשל MCD שעולה כמעט כל שנה מרץ–אפריל בגלל דוחות, עונתיות עסקית, והרגלים מוסדיים.',
+    rules: ['win rate ≥ 60% | avg return ≥ 2% | max drawdown ≤ 25%', 'עד 5 מניות במקביל | swing | מחזיק עד 30 יום'],
+    exit:  ['Stop 8% | TP1 5% (50%) | TP2 12% (30%)', 'Trail 0.97 | סגירה אחרי 30 יום'],
     max_positions: 5, stop_pct: 8.0, target_pct: 60.0,
   },
   CryptoMomentumSync: {
@@ -389,7 +389,7 @@ function TradeLog({ trades = [] }) {
 }
 
 /* ── StrategyCard ────────────────────────────────────────────────────────── */
-function StrategyCard({ strategy, rank, isLeader, livePrices = {}, flashState = {} }) {
+function StrategyCard({ strategy, rank, isLeader, livePrices = {}, flashState = {}, btcMove = null, btcPrice = null, btc24h = null, btcNews = null, cryptoStocks = null }) {
   const [popover, setPopover]   = useState(null); // 'method' | 'sizing' | null
   const [showLog, setShowLog]   = useState(false);
   const cardRef  = useRef(null);
@@ -436,8 +436,63 @@ function StrategyCard({ strategy, rank, isLeader, livePrices = {}, flashState = 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 10, paddingRight: 56 }}>
         <span style={{ fontSize: 22 }}>{meta.emoji}</span>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: meta.color }}>{strategy.label}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: meta.color }}>{strategy.label}</span>
+            {strategy.name === 'CryptoMomentumSync' && btcMove !== null && (
+              <span style={{
+                fontSize: 9, fontWeight: 800, fontFamily: 'monospace',
+                padding: '1px 6px', borderRadius: 5,
+                background: btcMove >= 0 ? 'rgba(74,222,128,0.12)' : 'rgba(248,113,113,0.12)',
+                border: `1px solid ${btcMove >= 0 ? '#166534' : '#7f1d1d'}`,
+                color: btcMove >= 0 ? W : L,
+              }}>
+                ₿ {btcMove >= 0 ? '+' : ''}{btcMove.toFixed(2)}% / 60m
+              </span>
+            )}
+          </div>
           <div style={{ fontSize: 9, color: '#475569', marginTop: 1 }}>{strategy.description || ''}</div>
+          {/* BTC + crypto stocks row */}
+          {strategy.name === 'CryptoMomentumSync' && (btcPrice || cryptoStocks) && (
+            <div style={{ marginTop: 5 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {btcPrice && (
+                  <span style={{
+                    fontSize: 9, fontWeight: 800, fontFamily: 'monospace',
+                    padding: '2px 6px', borderRadius: 5,
+                    background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', color: '#f59e0b',
+                  }}>
+                    ₿ ${btcPrice.toLocaleString()}
+                    {btc24h !== null && (
+                      <span style={{ marginLeft: 4, color: btc24h >= 0 ? W : L }}>
+                        {btc24h >= 0 ? '+' : ''}{btc24h.toFixed(2)}% 24h
+                      </span>
+                    )}
+                  </span>
+                )}
+                {cryptoStocks && Object.entries(cryptoStocks).map(([ticker, d]) => {
+                  const chgStr = String(d.change_pct || '0').replace('%','');
+                  const chg = parseFloat(chgStr);
+                  const isUp = chg >= 0;
+                  return (
+                    <span key={ticker} style={{
+                      fontSize: 9, fontWeight: 700, fontFamily: 'monospace',
+                      padding: '2px 6px', borderRadius: 5,
+                      background: isUp ? 'rgba(74,222,128,0.08)' : 'rgba(248,113,113,0.08)',
+                      border: `1px solid ${isUp ? '#166534' : '#7f1d1d'}`,
+                      color: isUp ? W : L,
+                    }}>
+                      {ticker} {isUp ? '+' : ''}{chg.toFixed(1)}%
+                    </span>
+                  );
+                })}
+              </div>
+              {btcNews && Array.isArray(btcNews) && btcNews.length > 0 && (
+                <div style={{ marginTop: 4, fontSize: 8, color: '#64748b' }}>
+                  ↑ ראה חדשות BTC בראש העמוד
+                </div>
+              )}
+            </div>
+          )}
           {/* Info buttons */}
           <div style={{ display: 'flex', gap: 5, marginTop: 6, position: 'relative' }}>
             <button
@@ -615,12 +670,23 @@ function HotMovers() {
 
   useEffect(() => {
     fetch();
-    const id = setInterval(fetch, 60_000);
+    const id = setInterval(fetch, 30_000);
     return () => clearInterval(id);
   }, [fetch]);
 
   if (loading && !movers.length) return null;
   if (!movers.length) return null;
+
+  // Compute special highlights
+  const PROFITABLE_RANK = { profitable_strong: 6, profitable: 5, profitable_weak: 4, breakeven: 3, breakeven_cash: 3, growing: 2, stable: 1, stable_cash: 1 };
+  const biggestGainerIdx = movers.reduce((best, m, i) => (m.change_pct || 0) > (movers[best]?.change_pct || 0) ? i : best, 0);
+  const mostStableIdx = movers.reduce((best, m, i) => {
+    const score = (PROFITABLE_RANK[m.ev_cash_reason] || 0) * 10 + (m.health?.score || 0) / 10;
+    const bestScore = (PROFITABLE_RANK[movers[best]?.ev_cash_reason] || 0) * 10 + (movers[best]?.health?.score || 0) / 10;
+    return score > bestScore ? i : best;
+  }, 0);
+  const biggestGainerTicker = movers[biggestGainerIdx]?.ticker;
+  const mostStableTicker    = movers[mostStableIdx]?.ticker;
 
   const fmtChg = (v) => {
     if (v == null) return '—';
@@ -686,19 +752,32 @@ function HotMovers() {
           const isCandidate = m.is_top_candidate;
           const isTooLate = m.too_late;
           const tier = m.financial_tier;
-          const borderColor = isTooLate ? '#dc2626' : isCandidate ? '#22c55e' : isTop ? '#fbbf24' : (health.color || '#374151');
+          const isHotStable = m.ticker === mostStableTicker;
+          const isHotGainer = m.ticker === biggestGainerTicker;
+          const borderColor = isTooLate ? '#dc2626' : isHotStable ? '#06b6d4' : isHotGainer ? '#f97316' : isCandidate ? '#22c55e' : isTop ? '#fbbf24' : (health.color || '#374151');
           const sfloat = typeof m.short_float === 'number' ? m.short_float : parseFloat(m.short_float) || 0;
           const rvol = typeof m.rel_volume === 'number' ? m.rel_volume : parseFloat(m.rel_volume) || 0;
           return (
             <div key={m.ticker} style={{
-              background: isTooLate ? 'rgba(220,38,38,0.06)' : isCandidate ? 'rgba(34,197,94,0.07)' : isTop ? 'rgba(251,191,36,0.07)' : 'rgba(17,24,39,0.9)',
-              border: `${(isTooLate || isCandidate || isTop) ? '2px' : '1.5px'} solid ${borderColor}`,
+              background: isTooLate ? 'rgba(220,38,38,0.06)' : isHotStable ? 'rgba(6,182,212,0.09)' : isHotGainer ? 'rgba(249,115,22,0.08)' : isCandidate ? 'rgba(34,197,94,0.07)' : isTop ? 'rgba(251,191,36,0.07)' : 'rgba(17,24,39,0.9)',
+              border: `${(isTooLate || isHotStable || isHotGainer || isCandidate || isTop) ? '2px' : '1.5px'} solid ${borderColor}`,
               borderRadius: 8,
               padding: '8px 12px',
               minWidth: 155,
               maxWidth: 200,
-              boxShadow: isTooLate ? '0 0 10px rgba(220,38,38,0.18)' : isCandidate ? '0 0 16px rgba(34,197,94,0.22)' : isTop ? '0 0 14px rgba(251,191,36,0.25)' : 'none',
+              boxShadow: isTooLate ? '0 0 10px rgba(220,38,38,0.18)' : isHotStable ? '0 0 18px rgba(6,182,212,0.35)' : isHotGainer ? '0 0 16px rgba(249,115,22,0.3)' : isCandidate ? '0 0 16px rgba(34,197,94,0.22)' : isTop ? '0 0 14px rgba(251,191,36,0.25)' : 'none',
             }}>
+              {/* Hot movers badges */}
+              {isHotStable && (
+                <div title="המניה הכי רווחית/יציבה מבין כל המניות ב-HOT MOVERS — שילוב מצב פיננסי + מומנטום" style={{ fontSize: 9, fontWeight: 700, color: '#06b6d4', marginBottom: 3, letterSpacing: 0.5 }}>
+                  🏆 הכי רווחית / יציבה
+                </div>
+              )}
+              {isHotGainer && (
+                <div title="המניה שעלתה הכי הרבה היום בין כל המניות ב-HOT MOVERS" style={{ fontSize: 9, fontWeight: 700, color: '#f97316', marginBottom: 3, letterSpacing: 0.5 }}>
+                  🚀 הכי עולה היום
+                </div>
+              )}
               {/* Priority badge */}
               {isTooLate ? (
                 <div title="המניה עלתה יותר מ-50% היום — כניסה מסוכנת בשלב זה" style={{ fontSize: 9, fontWeight: 700, color: '#ef4444', marginBottom: 3, letterSpacing: 0.5 }}>
@@ -1125,7 +1204,7 @@ export default function StrategyArena() {
 
   useEffect(() => {
     fetchStatus();
-    const iv = setInterval(fetchStatus, 15000);
+    const iv = setInterval(fetchStatus, 30000);
     return () => clearInterval(iv);
   }, []);
 
@@ -1176,10 +1255,81 @@ export default function StrategyArena() {
     { key: 'seasonal',   label: '📅 Seasonal / Crypto', names: ['SeasonalSwing','CryptoMomentumSync'] },
   ];
 
+  const btcNewsItems = Array.isArray(data?.btc_news) ? data.btc_news : (data?.btc_news ? [data.btc_news] : []);
+  const btcUp = (data?.btc_24h_pct ?? 0) >= 0;
+
   return (
     <div style={{ padding: '16px', maxWidth: 980, margin: '0 auto' }}>
       <style>{STYLES}</style>
       <HotMovers />
+
+      {/* BTC News Banner */}
+      {(data?.btc_price || btcNewsItems.length > 0) && (
+        <div style={{
+          marginBottom: 20,
+          background: btcUp
+            ? 'linear-gradient(135deg, rgba(245,158,11,0.12) 0%, rgba(74,222,128,0.06) 100%)'
+            : 'linear-gradient(135deg, rgba(245,158,11,0.10) 0%, rgba(248,113,113,0.06) 100%)',
+          border: `1px solid ${btcUp ? 'rgba(245,158,11,0.35)' : 'rgba(245,158,11,0.25)'}`,
+          borderRadius: 14,
+          overflow: 'hidden',
+        }}>
+          {/* Header row */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+            padding: '14px 18px',
+            borderBottom: btcNewsItems.length > 0 ? '1px solid rgba(245,158,11,0.12)' : 'none',
+          }}>
+            <span style={{ fontSize: 22 }}>₿</span>
+            <div>
+              <div style={{ fontSize: 10, color: '#78716c', fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' }}>Bitcoin</div>
+              {data?.btc_price && (
+                <div style={{ fontSize: 22, fontWeight: 900, color: '#f8fafc', fontFamily: 'monospace', lineHeight: 1.1 }}>
+                  ${data.btc_price.toLocaleString()}
+                </div>
+              )}
+            </div>
+            {data?.btc_24h_pct !== null && data?.btc_24h_pct !== undefined && (
+              <div style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                background: btcUp ? 'rgba(74,222,128,0.13)' : 'rgba(248,113,113,0.13)',
+                border: `1px solid ${btcUp ? '#166534' : '#7f1d1d'}`,
+                borderRadius: 10, padding: '6px 14px',
+              }}>
+                <span style={{ fontSize: 18, fontWeight: 900, fontFamily: 'monospace', color: btcUp ? W : L }}>
+                  {btcUp ? '▲' : '▼'} {btcUp ? '+' : ''}{data.btc_24h_pct.toFixed(2)}%
+                </span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: btcUp ? W : L, opacity: 0.8 }}>
+                  {btcUp ? 'עלייה' : 'ירידה'} ב-24 שעות
+                </span>
+              </div>
+            )}
+            {data?.btc_move_60m !== null && data?.btc_move_60m !== undefined && (
+              <div style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 10, padding: '6px 12px',
+              }}>
+                <span style={{ fontSize: 14, fontWeight: 800, fontFamily: 'monospace', color: data.btc_move_60m >= 0 ? W : L }}>
+                  {data.btc_move_60m >= 0 ? '+' : ''}{data.btc_move_60m.toFixed(2)}%
+                </span>
+                <span style={{ fontSize: 10, color: '#64748b' }}>שעה אחרונה</span>
+              </div>
+            )}
+          </div>
+          {/* News headlines */}
+          {btcNewsItems.length > 0 && (
+            <div style={{ padding: '10px 18px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {btcNewsItems.map((h, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <span style={{ color: '#f59e0b', fontSize: 11, flexShrink: 0, marginTop: 2 }}>📰</span>
+                  <span style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.5, fontWeight: i === 0 ? 600 : 400 }}>{h}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Strategy Leaderboard */}
       {data && (
@@ -1230,6 +1380,11 @@ export default function StrategyArena() {
                       isLeader={s.name === leaderName}
                       livePrices={livePrices}
                       flashState={flashState}
+                      btcMove={data?.btc_move_60m}
+                      btcPrice={data?.btc_price}
+                      btc24h={data?.btc_24h_pct}
+                      btcNews={data?.btc_news}
+                      cryptoStocks={data?.crypto_stocks}
                     />
                   ))}
                 </div>
