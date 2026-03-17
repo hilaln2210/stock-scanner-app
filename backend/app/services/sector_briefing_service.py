@@ -437,13 +437,31 @@ def _fetch_news_for_ticker(ticker: str, max_items: int = 3) -> List[dict]:
         return []
 
 
+def _translate_titles(news_items: List[dict]) -> List[dict]:
+    """Translate news titles from English to Hebrew using Google Translate."""
+    if not news_items:
+        return news_items
+    try:
+        from deep_translator import GoogleTranslator
+        translator = GoogleTranslator(source='en', target='iw')
+        titles = [n['title'] for n in news_items]
+        translated = translator.translate_batch(titles)
+        for i, t in enumerate(translated):
+            if t:
+                news_items[i]['title'] = t
+    except Exception as e:
+        print(f'[SectorBriefing] translation error: {e}')
+    return news_items
+
+
 def _fetch_sector_news(etf_tickers: List[str]) -> Dict[str, List[dict]]:
     """
     Fetch news for multiple sector ETFs + their top holdings.
-    Returns {etf: [news items]}.
+    Returns {etf: [news items]} with Hebrew-translated titles.
     Runs in a single thread (called via asyncio.to_thread).
     """
     result: Dict[str, List[dict]] = {}
+    all_news: List[dict] = []  # collect all for batch translation
 
     for etf in etf_tickers:
         tickers_to_check = [etf] + ETF_TOP_HOLDINGS.get(etf, [])[:2]
@@ -462,7 +480,12 @@ def _fetch_sector_news(etf_tickers: List[str]) -> Dict[str, List[dict]]:
             if n['title'] not in seen:
                 seen.add(n['title'])
                 deduped.append(n)
-        result[etf] = deduped[:3]
+        deduped = deduped[:3]
+        result[etf] = deduped
+        all_news.extend(deduped)
+
+    # Batch translate all titles at once
+    _translate_titles(all_news)
 
     return result
 
