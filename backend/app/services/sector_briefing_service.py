@@ -28,17 +28,17 @@ from bs4 import BeautifulSoup
 # ── Sector ETF definitions ──────────────────────────────────────────────────────
 
 SECTOR_ETFS: Dict[str, dict] = {
-    'XLK':  {'name': 'Technology',             'icon': '💻', 'finviz': 'sec_technology'},
-    'XLF':  {'name': 'Financial Services',     'icon': '🏦', 'finviz': 'sec_financial'},
-    'XLV':  {'name': 'Healthcare',             'icon': '💊', 'finviz': 'sec_healthcare'},
-    'XLE':  {'name': 'Energy',                 'icon': '⚡', 'finviz': 'sec_energy'},
-    'XLI':  {'name': 'Industrials',            'icon': '🏭', 'finviz': 'sec_industrials'},
-    'XLY':  {'name': 'Consumer Cyclical',      'icon': '🛍️', 'finviz': 'sec_consumercyclical'},
-    'XLP':  {'name': 'Consumer Defensive',     'icon': '🛒', 'finviz': 'sec_consumerdefensive'},
-    'XLC':  {'name': 'Communication Svcs',     'icon': '📡', 'finviz': 'sec_communicationservices'},
-    'XLB':  {'name': 'Basic Materials',        'icon': '⛏️', 'finviz': 'sec_basicmaterials'},
-    'XLRE': {'name': 'Real Estate',            'icon': '🏘️', 'finviz': 'sec_realestate'},
-    'XLU':  {'name': 'Utilities',              'icon': '💡', 'finviz': 'sec_utilities'},
+    'XLK':  {'name': 'טכנולוגיה',        'icon': '💻', 'finviz': 'sec_technology'},
+    'XLF':  {'name': 'פיננסים',          'icon': '🏦', 'finviz': 'sec_financial'},
+    'XLV':  {'name': 'בריאות',           'icon': '💊', 'finviz': 'sec_healthcare'},
+    'XLE':  {'name': 'אנרגיה',           'icon': '⚡', 'finviz': 'sec_energy'},
+    'XLI':  {'name': 'תעשייה',           'icon': '🏭', 'finviz': 'sec_industrials'},
+    'XLY':  {'name': 'צריכה מחזורית',    'icon': '🛍️', 'finviz': 'sec_consumercyclical'},
+    'XLP':  {'name': 'צריכה בסיסית',     'icon': '🛒', 'finviz': 'sec_consumerdefensive'},
+    'XLC':  {'name': 'תקשורת',           'icon': '📡', 'finviz': 'sec_communicationservices'},
+    'XLB':  {'name': 'חומרי גלם',        'icon': '⛏️', 'finviz': 'sec_basicmaterials'},
+    'XLRE': {'name': 'נדל״ן',            'icon': '🏘️', 'finviz': 'sec_realestate'},
+    'XLU':  {'name': 'שירותים',          'icon': '💡', 'finviz': 'sec_utilities'},
 }
 
 # Top 3 holdings per ETF — used to explain why the sector is moving

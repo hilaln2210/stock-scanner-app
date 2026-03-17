@@ -117,10 +117,10 @@ function StockCard({ s }) {
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-400 mt-1">
         <span>${s.price?.toFixed(2)}</span>
         {s.market_cap && <span className="text-slate-500">{s.market_cap}</span>}
-        {s.volume > 0 && <span>Vol: {fmtVol(s.volume)}</span>}
+        {s.volume > 0 && <span>נפח: {fmtVol(s.volume)}</span>}
         {s.rel_volume > 0.1 && (
           <span className={s.rel_volume >= 2 ? 'text-amber-400' : ''}>
-            RVol: {s.rel_volume?.toFixed(1)}x
+            נפח יחסי: {s.rel_volume?.toFixed(1)}x
           </span>
         )}
       </div>
@@ -341,13 +341,13 @@ export default function SectorBriefing() {
             {/* Insider trades */}
             <div className="bg-slate-900/60 border border-slate-700/50 rounded-2xl overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-700/40">
-                <h3 className="text-sm font-semibold text-amber-300">🏷️ Insider Buying — Form 4</h3>
+                <h3 className="text-sm font-semibold text-amber-300">🏷️ קניות מנהלים — Form 4</h3>
                 <p className="text-xs text-slate-500">קניות מנהלים ≥ $100K • 2 ימים אחרונים</p>
               </div>
 
               {insiderTrades.length === 0 ? (
                 <div className="p-6 text-center text-slate-500 text-sm">
-                  אין קניות insider בטווח הזמן
+                  אין קניות מנהלים בטווח הזמן
                 </div>
               ) : (
                 <div className="divide-y divide-slate-700/20">
