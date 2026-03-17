@@ -6,11 +6,12 @@ Each call returns:
 2. Top movers in the leading sector (Finviz screener with sector filter)
 3. Insider trades — Form 4 purchases ≥ $100K in last 2 days (openinsider.com)
 
-4 separate caches with different TTLs for real-time accuracy:
+5 separate caches with different TTLs for real-time accuracy:
   - ETF prices:     30s  (real-time sector ranking)
   - Drivers:       120s  (top holding % changes)
   - Sector stocks: 180s  (Finviz rate limit friendly)
   - Insider trades: 900s (slow-changing data)
+  - News headlines: 300s (sector ETF + holding news via yfinance)
 """
 
 import asyncio
@@ -82,6 +83,10 @@ _STOCKS_CACHE_TTL = 180  # 3 minutes (Finviz rate limit)
 _insider_cache: Optional[List[dict]] = None
 _insider_cache_at: float = 0.0
 _INSIDER_CACHE_TTL = 900  # 15 minutes
+
+_news_cache: Dict[str, List[dict]] = {}  # {etf: [{title, source, ticker}]}
+_news_cache_at: float = 0.0
+_NEWS_CACHE_TTL = 300  # 5 minutes
 
 
 # ── 1a. Sector ETF Performance (ETFs only) ───────────────────────────────────────
@@ -397,6 +402,70 @@ def _fetch_insider_changes(tickers: List[str]) -> Dict[str, float]:
     return result
 
 
+# ── 5. Sector News Headlines (yfinance ticker.news) ──────────────────────────
+
+def _fetch_news_for_ticker(ticker: str, max_items: int = 3) -> List[dict]:
+    """
+    Fetch recent news for a single ticker via yfinance.
+    Returns list of {title, source, ticker}.
+    ticker.news can hang — caller must wrap with timeout.
+    """
+    try:
+        t = yf.Ticker(ticker)
+        raw = t.news or []
+        results = []
+        for item in raw[:max_items]:
+            title = item.get('title', '') or item.get('headline', '')
+            source = item.get('publisher', '') or item.get('source', '')
+            if title:
+                results.append({
+                    'title': title,
+                    'source': source,
+                    'ticker': ticker,
+                })
+        return results
+    except Exception as e:
+        print(f'[SectorBriefing] news fetch error for {ticker}: {e}')
+        return []
+
+
+def _fetch_sector_news(etf_tickers: List[str]) -> Dict[str, List[dict]]:
+    """
+    Fetch news for multiple sector ETFs + their top holdings.
+    Returns {etf: [news items]}.
+    Each individual ticker fetch is capped at 4 seconds internally.
+    """
+    import concurrent.futures
+    result: Dict[str, List[dict]] = {}
+
+    for etf in etf_tickers:
+        # Collect tickers: ETF itself + top holdings
+        tickers_to_check = [etf] + ETF_TOP_HOLDINGS.get(etf, [])[:3]
+        etf_news: List[dict] = []
+
+        for ticker in tickers_to_check:
+            if len(etf_news) >= 3:
+                break
+            try:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    future = pool.submit(_fetch_news_for_ticker, ticker, 2)
+                    items = future.result(timeout=4)
+                    etf_news.extend(items)
+            except (concurrent.futures.TimeoutError, Exception):
+                pass
+
+        # Deduplicate by title
+        seen = set()
+        deduped = []
+        for n in etf_news:
+            if n['title'] not in seen:
+                seen.add(n['title'])
+                deduped.append(n)
+        result[etf] = deduped[:3]
+
+    return result
+
+
 # ── Main Entry Point ────────────────────────────────────────────────────────────
 
 async def get_sector_briefing() -> dict:
@@ -410,6 +479,7 @@ async def get_sector_briefing() -> dict:
     global _drivers_cache, _drivers_cache_at
     global _stocks_cache, _stocks_cache_at, _stocks_sector
     global _insider_cache, _insider_cache_at
+    global _news_cache, _news_cache_at
 
     now = _time.time()
 
@@ -441,11 +511,13 @@ async def get_sector_briefing() -> dict:
         or _stocks_sector != top_filter
     )
     insider_stale = _insider_cache is None or (now - _insider_cache_at) >= _INSIDER_CACHE_TTL
+    news_stale = not _news_cache or (now - _news_cache_at) >= _NEWS_CACHE_TTL
 
     # ── Launch independent fetches concurrently ───────────────────────────────
     drivers_task = None
     stocks_task = None
     insider_task = None
+    news_task = None
 
     if drivers_stale:
         print('[SectorBriefing] Refreshing drivers...')
@@ -471,6 +543,15 @@ async def get_sector_briefing() -> dict:
                 return await _fetch_insider_trades(session)
 
         insider_task = asyncio.ensure_future(asyncio.wait_for(_do_insider(), timeout=18))
+
+    if news_stale and sectors:
+        # Fetch news for top 5 sectors by absolute change
+        top_etfs = [s['etf'] for s in sorted(sectors, key=lambda x: abs(x['change_pct']), reverse=True)[:5]]
+        print(f'[SectorBriefing] Refreshing news for {top_etfs}...')
+        news_task = asyncio.ensure_future(asyncio.wait_for(
+            asyncio.to_thread(_fetch_sector_news, top_etfs),
+            timeout=25,
+        ))
 
     # ── Await drivers ─────────────────────────────────────────────────────────
     if drivers_task is not None:
@@ -521,6 +602,18 @@ async def get_sector_briefing() -> dict:
         except Exception as e:
             print(f'[SectorBriefing] insider trades error: {e}')
 
+    # ── Await news ───────────────────────────────────────────────────────────
+    if news_task is not None:
+        try:
+            new_news = await news_task
+            if new_news:
+                _news_cache = new_news
+                _news_cache_at = _time.time()
+        except (asyncio.TimeoutError, FuturesTimeout):
+            print('[SectorBriefing] news fetch timeout')
+        except Exception as e:
+            print(f'[SectorBriefing] news fetch error: {e}')
+
     # ── Merge drivers into sectors ────────────────────────────────────────────
     sectors_with_drivers = []
     for s in sectors:
@@ -534,6 +627,7 @@ async def get_sector_briefing() -> dict:
                 drivers.append({'ticker': h, 'change_pct': h_chg})
         drivers.sort(key=lambda x: x['change_pct'], reverse=True)
         entry['drivers'] = drivers
+        entry['news'] = _news_cache.get(etf, [])
         sectors_with_drivers.append(entry)
 
     sector_stocks = _stocks_cache or []
@@ -554,9 +648,10 @@ async def get_sector_briefing() -> dict:
 
 
 def invalidate_cache() -> None:
-    """Force-refresh next call — clears all 4 caches."""
-    global _etf_cache_at, _drivers_cache_at, _stocks_cache_at, _insider_cache_at
+    """Force-refresh next call — clears all 5 caches."""
+    global _etf_cache_at, _drivers_cache_at, _stocks_cache_at, _insider_cache_at, _news_cache_at
     _etf_cache_at = 0.0
     _drivers_cache_at = 0.0
     _stocks_cache_at = 0.0
     _insider_cache_at = 0.0
+    _news_cache_at = 0.0

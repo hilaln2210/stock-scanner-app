@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import { RefreshCw, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react';
+import { RefreshCw, TrendingUp, TrendingDown, AlertCircle, Newspaper } from 'lucide-react';
 
 const api = axios.create({ baseURL: '/api' });
 
@@ -80,6 +80,17 @@ function SectorBar({ s, isTop }) {
               <span className="text-slate-400">{d.ticker}</span>
               <span className={`ml-0.5 ${chgColor(d.change_pct)}`}>{fmtChg(d.change_pct)}</span>
             </span>
+          ))}
+        </div>
+      )}
+      {(s.news || []).length > 0 && (
+        <div className="mt-1.5 mr-10 space-y-0.5">
+          {s.news.slice(0, 2).map((n, i) => (
+            <div key={i} className="text-[10px] text-slate-500 truncate leading-tight" title={n.title}>
+              <span className="text-blue-400/60 mr-1">&#9679;</span>
+              {n.title}
+              {n.source && <span className="text-slate-600 ml-1">({n.source})</span>}
+            </div>
           ))}
         </div>
       )}
@@ -283,6 +294,34 @@ export default function SectorBriefing() {
                   <h3 className="text-sm font-semibold text-slate-300">מניות בסקטור המוביל</h3>
                 )}
               </div>
+
+              {/* News headlines for top sector */}
+              {topSector?.news?.length > 0 && (
+                <div className="px-4 py-3 border-b border-slate-700/40 bg-slate-800/30">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Newspaper size={13} className="text-blue-400" />
+                    <span className="text-xs font-medium text-blue-300">חדשות הסקטור</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {topSector.news.map((n, i) => (
+                      <div key={i} className="flex items-start gap-2">
+                        <span className="text-blue-400/50 mt-0.5 shrink-0">&#9679;</span>
+                        <div className="min-w-0">
+                          <p className="text-xs text-slate-300 leading-snug">{n.title}</p>
+                          <div className="flex gap-2 mt-0.5">
+                            {n.ticker && (
+                              <span className="text-[10px] text-slate-500 font-medium">{n.ticker}</span>
+                            )}
+                            {n.source && (
+                              <span className="text-[10px] text-slate-600">{n.source}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {sectorStocks.length === 0 ? (
                 <div className="p-6 text-center text-slate-500 text-sm">
