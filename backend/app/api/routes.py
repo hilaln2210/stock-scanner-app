@@ -27,6 +27,7 @@ from app.services.live_prices import LivePriceService
 from app.services.move_tracker import move_tracker
 from app.services.technical_analysis import compute_technicals as _compute_ta
 from app.services.briefing_service import BriefingService, fetch_single_ticker_briefing as _fetch_single_briefing
+from app.services.sector_briefing_service import get_sector_briefing as _get_sector_briefing, invalidate_cache as _invalidate_sector_cache
 from app.services.technical_signals import TechnicalSignalsService
 from app.services.daily_analysis import DailyAnalysisService
 from app.services import portfolio_service
@@ -1053,6 +1054,32 @@ async def get_daily_briefing(
             if disk_data:
                 return disk_data
             return {"stocks": [], "error": str(e), "market_status": {}, "today_events": []}
+
+
+# ── Sector Morning Briefing ─────────────────────────────────────────────────────
+
+@router.get("/briefing/sector")
+async def get_sector_briefing(force: bool = False):
+    """
+    Sector morning briefing:
+    - Sector ETF leaderboard (all 11 sectors ranked by % change)
+    - Top movers in the leading sector (Finviz)
+    - Insider trades — Form 4 purchases ≥ $100K in last 2 days
+
+    Cached 15 minutes.
+    """
+    if force:
+        _invalidate_sector_cache()
+    try:
+        result = await asyncio.wait_for(_get_sector_briefing(), timeout=60)
+        return result
+    except asyncio.TimeoutError:
+        return {"error": "timeout", "sectors": [], "top_sector": None,
+                "sector_stocks": [], "insider_trades": []}
+    except Exception as e:
+        print(f"[/briefing/sector] error: {e}")
+        return {"error": str(e), "sectors": [], "top_sector": None,
+                "sector_stocks": [], "insider_trades": []}
 
 
 # ── Technical Signals (MACD + RSI + Bollinger Bands) ──────────────────────────

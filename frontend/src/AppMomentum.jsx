@@ -14,6 +14,7 @@ const NewsPanel = lazy(() => import('./components/NewsPanel'));
 import IBPortfolio from './components/IBPortfolio';
 const PatternScanner = lazy(() => import('./components/PatternScanner'));
 const SeasonalityScanner = lazy(() => import('./components/SeasonalityScanner'));
+const SectorBriefing = lazy(() => import('./components/SectorBriefing'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -98,6 +99,7 @@ function ArenaIBWidget() {
 // { key: 'news',            label: '📰 חדשות',               accent: '#3b82f6' },
 const TABS = [
   { key: 'arena',           label: '🏆 ארנה',                accent: '#fbbf24' },
+  { key: 'sector-briefing', label: '🌅 סקטורים',              accent: '#f59e0b' },
   { key: 'tech-signals',    label: '📈 סיגנלים',             accent: '#6366f1' },
   { key: 'daily-analysis',  label: '🎯 ניתוח יומי',           accent: '#8b5cf6' },
   { key: 'ib',              label: '🏦 IB חשבון',             accent: '#3b82f6' },
@@ -726,6 +728,8 @@ function MomentumDashboard() {
                     <IBPortfolio />
                   ) : viewMode === 'pattern-bot' ? (
                     <PatternScanner />
+                  ) : viewMode === 'sector-briefing' ? (
+                    <SectorBriefing />
                   ) : viewMode === 'seasonality' ? (
                     <SeasonalityScanner />
                   ) : viewMode === 'finviz-table' ? (
