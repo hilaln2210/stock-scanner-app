@@ -305,9 +305,9 @@ async def _fetch_insider_trades(session: aiohttp.ClientSession) -> List[dict]:
         if len(rows) < 2:
             return []
 
-        # Parse column headers
+        # Parse column headers (normalize \xa0 non-breaking spaces)
         header_cells = rows[0].find_all(['th', 'td'])
-        headers = [h.get_text(strip=True) for h in header_cells]
+        headers = [h.get_text(strip=True).replace('\xa0', ' ') for h in header_cells]
 
         def gcell(row_cells, *names):
             for name in names:
@@ -419,10 +419,23 @@ def _fetch_news_for_ticker(ticker: str, max_items: int = 3) -> List[dict]:
             raw = pool.submit(_inner).result(timeout=4)
 
         results = []
-        for item in raw[:max_items]:
+        from datetime import timezone
+        now_utc = datetime.now(timezone.utc)
+        for item in raw[:max_items * 2]:  # check more items to filter by date
             # yfinance news can be nested: {content: {title, provider: {displayName}}}
             content = item.get('content', item)
             title = content.get('title', '') or content.get('headline', '')
+            pub_date = content.get('pubDate', '')
+            # Only include news from the last 24 hours
+            if pub_date:
+                try:
+                    from datetime import datetime as _dt
+                    pd = _dt.fromisoformat(pub_date.replace('Z', '+00:00'))
+                    age_hours = (now_utc - pd).total_seconds() / 3600
+                    if age_hours > 24:
+                        continue
+                except Exception:
+                    pass
             provider = content.get('provider', {})
             source = (provider.get('displayName', '') if isinstance(provider, dict)
                       else content.get('publisher', '') or content.get('source', ''))
@@ -431,7 +444,10 @@ def _fetch_news_for_ticker(ticker: str, max_items: int = 3) -> List[dict]:
                     'title': title,
                     'source': source,
                     'ticker': ticker,
+                    'pub_date': pub_date,
                 })
+            if len(results) >= max_items:
+                break
         return results
     except Exception:
         return []
