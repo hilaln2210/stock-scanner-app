@@ -36,6 +36,21 @@ SECTOR_ETFS: Dict[str, dict] = {
     'XLU':  {'name': 'Utilities',              'icon': '💡', 'finviz': 'sec_utilities'},
 }
 
+# Top 3 holdings per ETF — used to explain why the sector is moving
+ETF_TOP_HOLDINGS: Dict[str, List[str]] = {
+    'XLK':  ['AAPL', 'MSFT', 'NVDA'],
+    'XLF':  ['BRK-B', 'JPM', 'V'],
+    'XLV':  ['UNH', 'JNJ', 'LLY'],
+    'XLE':  ['XOM', 'CVX', 'EOG'],
+    'XLI':  ['GE', 'RTX', 'CAT'],
+    'XLY':  ['AMZN', 'TSLA', 'HD'],
+    'XLP':  ['PG', 'COST', 'KO'],
+    'XLC':  ['META', 'GOOGL', 'NFLX'],
+    'XLB':  ['LIN', 'APD', 'ECL'],
+    'XLRE': ['AMT', 'PLD', 'CCI'],
+    'XLU':  ['NEE', 'DUK', 'SO'],
+}
+
 _HEADERS = {
     'User-Agent': (
         'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
@@ -61,12 +76,19 @@ def _get_lock() -> asyncio.Lock:
 # ── 1. Sector ETF Performance ───────────────────────────────────────────────────
 
 def _fetch_etf_changes() -> List[dict]:
-    """Fetch today's % change for all sector ETFs. Runs in thread (yfinance blocks)."""
-    tickers = list(SECTOR_ETFS.keys())
+    """
+    Fetch today's % change for all sector ETFs + their top holdings.
+    Returns sectors list with 'drivers' field explaining the move.
+    """
+    etf_tickers = list(SECTOR_ETFS.keys())
+    holding_tickers = list({t for holdings in ETF_TOP_HOLDINGS.values() for t in holdings})
+    all_tickers = etf_tickers + holding_tickers
+
+    holding_chg: Dict[str, float] = {}
     results = []
     try:
         data = yf.download(
-            tickers,
+            all_tickers,
             period='2d',
             interval='1d',
             progress=False,
@@ -75,6 +97,23 @@ def _fetch_etf_changes() -> List[dict]:
         )
         close = data.get('Close', data) if hasattr(data, 'get') else data
 
+        def _pct(ticker: str) -> Optional[float]:
+            try:
+                prices = close[ticker].dropna()
+                if len(prices) >= 2:
+                    p, c = float(prices.iloc[-2]), float(prices.iloc[-1])
+                    return (c - p) / p * 100 if p else 0.0
+                return None
+            except Exception:
+                return None
+
+        # Holdings % changes
+        for t in holding_tickers:
+            chg = _pct(t)
+            if chg is not None:
+                holding_chg[t] = round(chg, 2)
+
+        # ETF % changes + drivers
         for etf, meta in SECTOR_ETFS.items():
             try:
                 prices = close[etf].dropna()
@@ -88,13 +127,23 @@ def _fetch_etf_changes() -> List[dict]:
                 else:
                     continue
 
+                # Build drivers: top holdings sorted by their % change (desc)
+                holdings = ETF_TOP_HOLDINGS.get(etf, [])
+                drivers = []
+                for h in holdings:
+                    h_chg = holding_chg.get(h)
+                    if h_chg is not None:
+                        drivers.append({'ticker': h, 'change_pct': h_chg})
+                drivers.sort(key=lambda x: x['change_pct'], reverse=True)
+
                 results.append({
-                    'etf': etf,
-                    'name': meta['name'],
-                    'icon': meta['icon'],
+                    'etf':           etf,
+                    'name':          meta['name'],
+                    'icon':          meta['icon'],
                     'finviz_filter': meta['finviz'],
-                    'change_pct': round(chg, 2),
-                    'price': round(curr, 2),
+                    'change_pct':    round(chg, 2),
+                    'price':         round(curr, 2),
+                    'drivers':       drivers,
                 })
             except Exception:
                 pass
@@ -185,12 +234,13 @@ async def _fetch_sector_stocks(
                 continue
 
             stocks.append({
-                'ticker': ticker,
-                'company': gcol(cells, 'Company'),
+                'ticker':     ticker,
+                'company':    gcol(cells, 'Company'),
                 'change_pct': chg,
                 'rel_volume': rvol,
-                'price': price,
-                'volume': volume,
+                'price':      price,
+                'volume':     volume,
+                'market_cap': gcol(cells, 'Market Cap'),
             })
 
             if len(stocks) >= 12:
@@ -301,6 +351,37 @@ async def _fetch_insider_trades(session: aiohttp.ClientSession) -> List[dict]:
         return []
 
 
+# ── 4. Insider ticker % change (yfinance batch) ────────────────────────────────
+
+def _fetch_insider_changes(tickers: List[str]) -> Dict[str, float]:
+    """Batch-fetch today's % change for a list of tickers. Returns {ticker: chg}."""
+    if not tickers:
+        return {}
+    unique = list(dict.fromkeys(tickers))[:30]  # cap at 30 to avoid rate-limit
+    result: Dict[str, float] = {}
+    try:
+        data = yf.download(
+            unique,
+            period='2d',
+            interval='1d',
+            progress=False,
+            timeout=12,
+            auto_adjust=True,
+        )
+        close = data.get('Close', data) if hasattr(data, 'get') else data
+        for t in unique:
+            try:
+                prices = close[t].dropna() if len(unique) > 1 else close.dropna()
+                if len(prices) >= 2:
+                    p, c = float(prices.iloc[-2]), float(prices.iloc[-1])
+                    result[t] = round((c - p) / p * 100, 2) if p else 0.0
+            except Exception:
+                pass
+    except Exception as e:
+        print(f'[SectorBriefing] insider changes fetch error: {e}')
+    return result
+
+
 # ── Main Entry Point ────────────────────────────────────────────────────────────
 
 async def get_sector_briefing() -> dict:
@@ -338,27 +419,40 @@ async def get_sector_briefing() -> dict:
         top_sector = sectors[0] if sectors else None
 
         async with aiohttp.ClientSession() as session:
-            # 2. Top movers in leading sector
-            sector_stocks: List[dict] = []
-            if top_sector:
-                try:
-                    sector_stocks = await asyncio.wait_for(
-                        _fetch_sector_stocks(session, top_sector['finviz_filter']),
-                        timeout=18,
-                    )
-                except asyncio.TimeoutError:
-                    print('[SectorBriefing] sector stocks timeout')
+            # 2+3 run concurrently
+            async def _empty():
+                return []
+            sector_stocks_task = asyncio.ensure_future(
+                _fetch_sector_stocks(session, top_sector['finviz_filter']) if top_sector
+                else _empty()
+            )
+            insider_task = asyncio.ensure_future(_fetch_insider_trades(session))
 
-            # 3. Insider trades (run concurrently with sector stocks would be ideal,
-            #    but we already have the session; run sequentially to avoid overlap)
             try:
-                insider_trades = await asyncio.wait_for(
-                    _fetch_insider_trades(session),
-                    timeout=18,
-                )
+                sector_stocks = await asyncio.wait_for(sector_stocks_task, timeout=18)
+            except asyncio.TimeoutError:
+                print('[SectorBriefing] sector stocks timeout')
+                sector_stocks = []
+
+            try:
+                insider_trades = await asyncio.wait_for(insider_task, timeout=18)
             except asyncio.TimeoutError:
                 print('[SectorBriefing] insider trades timeout')
                 insider_trades = []
+
+        # 4. Batch-fetch % change for insider tickers
+        insider_tickers = list(dict.fromkeys(t['ticker'] for t in insider_trades))
+        with ThreadPoolExecutor(max_workers=1) as ex:
+            try:
+                insider_chg = await asyncio.wait_for(
+                    loop.run_in_executor(ex, _fetch_insider_changes, insider_tickers),
+                    timeout=15,
+                )
+            except (asyncio.TimeoutError, FuturesTimeout):
+                insider_chg = {}
+
+        for trade in insider_trades:
+            trade['change_pct'] = insider_chg.get(trade['ticker'])
 
         result = {
             'generated_at':  datetime.now().isoformat(),

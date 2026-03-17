@@ -78,7 +78,7 @@ function StockCard({ s }) {
   return (
     <div className="bg-slate-800/50 border border-slate-700/40 rounded-xl p-3 hover:border-slate-600/60 transition-colors">
       <div className="flex justify-between items-start mb-1">
-        <div>
+        <div className="min-w-0 flex-1">
           <span className="text-sm font-bold text-white">{s.ticker}</span>
           {s.company && (
             <span className="text-xs text-slate-400 ml-2 truncate max-w-[120px] inline-block align-bottom">
@@ -86,12 +86,13 @@ function StockCard({ s }) {
             </span>
           )}
         </div>
-        <span className={`text-sm font-bold ${chgColor(s.change_pct)}`}>
+        <span className={`text-sm font-bold ml-2 shrink-0 ${chgColor(s.change_pct)}`}>
           {fmtChg(s.change_pct)}
         </span>
       </div>
-      <div className="flex gap-3 text-xs text-slate-400 mt-1">
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-400 mt-1">
         <span>${s.price?.toFixed(2)}</span>
+        {s.market_cap && <span className="text-slate-500">{s.market_cap}</span>}
         {s.volume > 0 && <span>Vol: {fmtVol(s.volume)}</span>}
         {s.rel_volume > 0.1 && (
           <span className={s.rel_volume >= 2 ? 'text-amber-400' : ''}>
@@ -106,8 +107,13 @@ function StockCard({ s }) {
 function InsiderRow({ t }) {
   return (
     <div className="flex items-center gap-3 px-3 py-2.5 border-b border-slate-700/30 last:border-0 hover:bg-slate-800/30 transition-colors">
-      <div className="w-14 shrink-0">
-        <span className="text-xs font-bold text-emerald-400">{t.ticker}</span>
+      <div className="w-16 shrink-0">
+        <div className="text-xs font-bold text-emerald-400">{t.ticker}</div>
+        {t.change_pct != null && (
+          <div className={`text-xs font-medium ${chgColor(t.change_pct)}`}>
+            {fmtChg(t.change_pct)}
+          </div>
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-xs text-slate-200 truncate">{t.insider || t.company || '—'}</div>
@@ -115,7 +121,7 @@ function InsiderRow({ t }) {
       </div>
       <div className="text-right shrink-0">
         {t.value && (
-          <div className="text-xs font-medium text-emerald-400">{t.value}</div>
+          <div className="text-xs font-medium text-amber-400">{t.value}</div>
         )}
         {t.date && (
           <div className="text-xs text-slate-500">{t.date}</div>
@@ -215,19 +221,34 @@ export default function SectorBriefing() {
 
             {/* Top sector stocks */}
             <div className="bg-slate-900/60 border border-slate-700/50 rounded-2xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-slate-700/40 flex items-center gap-2">
+              <div className="px-4 py-3 border-b border-slate-700/40">
                 {topSector ? (
-                  <>
-                    <span className="text-lg">{topSector.icon}</span>
-                    <div>
-                      <h3 className="text-sm font-semibold text-emerald-300">
-                        {topSector.name} — סקטור מוביל
-                      </h3>
-                      <p className="text-xs text-slate-400">
-                        {topSector.etf}: {fmtChg(topSector.change_pct)} • מניות עם מומנטום ועלייה ≥2%
-                      </p>
+                  <div className="flex items-start gap-2">
+                    <span className="text-lg mt-0.5">{topSector.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-semibold text-emerald-300">
+                          {topSector.name} — סקטור מוביל
+                        </h3>
+                        <span className={`text-sm font-bold ${chgColor(topSector.change_pct)}`}>
+                          {fmtChg(topSector.change_pct)}
+                        </span>
+                      </div>
+                      {topSector.drivers?.length > 0 && (
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <span className="text-xs text-slate-500">מובלת ע״י:</span>
+                          {topSector.drivers.map(d => (
+                            <span key={d.ticker} className="text-xs">
+                              <span className="text-slate-300 font-medium">{d.ticker}</span>
+                              <span className={`ml-1 ${chgColor(d.change_pct)}`}>
+                                {fmtChg(d.change_pct)}
+                              </span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  </>
+                  </div>
                 ) : (
                   <h3 className="text-sm font-semibold text-slate-300">מניות בסקטור המוביל</h3>
                 )}
