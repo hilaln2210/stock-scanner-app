@@ -93,7 +93,7 @@ function StockCard({ s }) {
       <div className="flex gap-3 text-xs text-slate-400 mt-1">
         <span>${s.price?.toFixed(2)}</span>
         {s.volume > 0 && <span>Vol: {fmtVol(s.volume)}</span>}
-        {s.rel_volume > 0 && (
+        {s.rel_volume > 0.1 && (
           <span className={s.rel_volume >= 2 ? 'text-amber-400' : ''}>
             RVol: {s.rel_volume?.toFixed(1)}x
           </span>

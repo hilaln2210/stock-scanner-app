@@ -131,22 +131,24 @@ async def _fetch_sector_stocks(
 
         soup = BeautifulSoup(html, 'html.parser')
 
-        # Find the screener results table by looking for the header row
-        table = None
-        for t in soup.find_all('table'):
-            header = t.find('tr')
-            if header:
-                header_texts = [td.get_text(strip=True) for td in header.find_all('td')]
-                if 'Ticker' in header_texts:
-                    table = t
-                    break
+        # Finviz uses class 'screener_table' — headers in <th> elements
+        table = soup.find('table', class_='screener_table')
+        if not table:
+            # Fallback: any table whose first row contains 'Ticker'
+            for t in soup.find_all('table'):
+                header = t.find('tr')
+                if header:
+                    texts = [c.get_text(strip=True) for c in header.find_all(['th', 'td'])]
+                    if 'Ticker' in texts:
+                        table = t
+                        break
 
         if not table:
             return []
 
         rows = table.find_all('tr')
-        # Build column index from header row
-        header_cells = rows[0].find_all('td')
+        # Build column index from header row (Finviz uses <th>)
+        header_cells = rows[0].find_all(['th', 'td'])
         col = {c.get_text(strip=True): i for i, c in enumerate(header_cells)}
 
         def gcol(row_cells, name, default=''):
