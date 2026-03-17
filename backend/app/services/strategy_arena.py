@@ -1174,6 +1174,7 @@ class StrategyArena:
             "weekly_winner_at": self.weekly_winner_at,
             "leaderboard":      leaderboard,
             "recent_events":    self.recent_events[-20:],  # last 20 buy/sell events
+            "btc_move_60m":     live_prices.get("BTC_MOVE_60M", None),
         }
 
     # ── Apply winner params ──────────────────────────────────────────────────

@@ -408,15 +408,24 @@ def _fetch_news_for_ticker(ticker: str, max_items: int = 3) -> List[dict]:
     """
     Fetch recent news for a single ticker via yfinance.
     Returns list of {title, source, ticker}.
-    ticker.news can hang — caller must wrap with timeout.
     """
+    import concurrent.futures
     try:
-        t = yf.Ticker(ticker)
-        raw = t.news or []
+        def _inner():
+            t = yf.Ticker(ticker)
+            return t.news or []
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            raw = pool.submit(_inner).result(timeout=4)
+
         results = []
         for item in raw[:max_items]:
-            title = item.get('title', '') or item.get('headline', '')
-            source = item.get('publisher', '') or item.get('source', '')
+            # yfinance news can be nested: {content: {title, provider: {displayName}}}
+            content = item.get('content', item)
+            title = content.get('title', '') or content.get('headline', '')
+            provider = content.get('provider', {})
+            source = (provider.get('displayName', '') if isinstance(provider, dict)
+                      else content.get('publisher', '') or content.get('source', ''))
             if title:
                 results.append({
                     'title': title,
@@ -424,8 +433,7 @@ def _fetch_news_for_ticker(ticker: str, max_items: int = 3) -> List[dict]:
                     'ticker': ticker,
                 })
         return results
-    except Exception as e:
-        print(f'[SectorBriefing] news fetch error for {ticker}: {e}')
+    except Exception:
         return []
 
 
@@ -433,26 +441,19 @@ def _fetch_sector_news(etf_tickers: List[str]) -> Dict[str, List[dict]]:
     """
     Fetch news for multiple sector ETFs + their top holdings.
     Returns {etf: [news items]}.
-    Each individual ticker fetch is capped at 4 seconds internally.
+    Runs in a single thread (called via asyncio.to_thread).
     """
-    import concurrent.futures
     result: Dict[str, List[dict]] = {}
 
     for etf in etf_tickers:
-        # Collect tickers: ETF itself + top holdings
-        tickers_to_check = [etf] + ETF_TOP_HOLDINGS.get(etf, [])[:3]
+        tickers_to_check = [etf] + ETF_TOP_HOLDINGS.get(etf, [])[:2]
         etf_news: List[dict] = []
 
         for ticker in tickers_to_check:
             if len(etf_news) >= 3:
                 break
-            try:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    future = pool.submit(_fetch_news_for_ticker, ticker, 2)
-                    items = future.result(timeout=4)
-                    etf_news.extend(items)
-            except (concurrent.futures.TimeoutError, Exception):
-                pass
+            items = _fetch_news_for_ticker(ticker, 2)
+            etf_news.extend(items)
 
         # Deduplicate by title
         seen = set()

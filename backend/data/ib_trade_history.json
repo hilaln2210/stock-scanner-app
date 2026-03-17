@@ -592,5 +592,49 @@
     "limit_price": null,
     "status": "Filled",
     "tif": "DAY"
+  },
+  {
+    "time": "2026-03-13T13:47:20.176794",
+    "order_id": 32,
+    "ticker": "HIMS",
+    "action": "SELL",
+    "qty": 30,
+    "order_type": "MKT",
+    "limit_price": null,
+    "status": "PreSubmitted",
+    "tif": "DAY"
+  },
+  {
+    "time": "2026-03-13T13:47:23.371152",
+    "order_id": 36,
+    "ticker": "NBIS",
+    "action": "SELL",
+    "qty": 7,
+    "order_type": "MKT",
+    "limit_price": null,
+    "status": "PreSubmitted",
+    "tif": "DAY"
+  },
+  {
+    "time": "2026-03-13T13:47:28.074230",
+    "order_id": 36,
+    "ticker": "SMCI",
+    "action": "BUY",
+    "qty": 24,
+    "order_type": "MKT",
+    "limit_price": null,
+    "status": "PreSubmitted",
+    "tif": "DAY"
+  },
+  {
+    "time": "2026-03-13T13:47:30.982873",
+    "order_id": 36,
+    "ticker": "NIO",
+    "action": "BUY",
+    "qty": 140,
+    "order_type": "MKT",
+    "limit_price": null,
+    "status": "PreSubmitted",
+    "tif": "DAY"
   }
 ]

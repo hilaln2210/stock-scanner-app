@@ -163,8 +163,218 @@
       "date": "2026-03-12T00:24:27.182607"
     }
   ],
-  "updated": "2026-03-13T01:57:27.894120",
+  "updated": "2026-03-14T00:04:14.618492",
   "missed_patterns": [
+    {
+      "ticker": "SMCI",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 75.6,
+      "avg_change": 0.418,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-14",
+      "lesson": "פספסנו SMCI חלון 15:30-16:00 (WR 75.6%, avg +0.42%) — לא נכנסנו"
+    },
+    {
+      "ticker": "RGTI",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 68.9,
+      "avg_change": 0.662,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-14",
+      "lesson": "פספסנו RGTI חלון 15:30-16:00 (WR 68.9%, avg +0.66%) — לא נכנסנו"
+    },
+    {
+      "ticker": "RKLB",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 75.6,
+      "avg_change": 0.652,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-14",
+      "lesson": "פספסנו RKLB חלון 15:30-16:00 (WR 75.6%, avg +0.65%) — לא נכנסנו"
+    },
+    {
+      "ticker": "SMCI",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 75.6,
+      "avg_change": 0.418,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו SMCI חלון 15:30-16:00 (WR 75.6%, avg +0.42%) — לא נכנסנו"
+    },
+    {
+      "ticker": "RGTI",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 68.9,
+      "avg_change": 0.662,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו RGTI חלון 15:30-16:00 (WR 68.9%, avg +0.66%) — לא נכנסנו"
+    },
+    {
+      "ticker": "RKLB",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 75.6,
+      "avg_change": 0.652,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו RKLB חלון 15:30-16:00 (WR 75.6%, avg +0.65%) — לא נכנסנו"
+    },
+    {
+      "ticker": "SMCI",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 75.6,
+      "avg_change": 0.418,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו SMCI חלון 15:30-16:00 (WR 75.6%, avg +0.42%) — לא נכנסנו"
+    },
+    {
+      "ticker": "RGTI",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 68.9,
+      "avg_change": 0.662,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו RGTI חלון 15:30-16:00 (WR 68.9%, avg +0.66%) — לא נכנסנו"
+    },
+    {
+      "ticker": "RKLB",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 75.6,
+      "avg_change": 0.652,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו RKLB חלון 15:30-16:00 (WR 75.6%, avg +0.65%) — לא נכנסנו"
+    },
+    {
+      "ticker": "SMCI",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 75.6,
+      "avg_change": 0.418,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו SMCI חלון 15:30-16:00 (WR 75.6%, avg +0.42%) — לא נכנסנו"
+    },
+    {
+      "ticker": "RGTI",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 68.9,
+      "avg_change": 0.662,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו RGTI חלון 15:30-16:00 (WR 68.9%, avg +0.66%) — לא נכנסנו"
+    },
+    {
+      "ticker": "RKLB",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 75.6,
+      "avg_change": 0.652,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו RKLB חלון 15:30-16:00 (WR 75.6%, avg +0.65%) — לא נכנסנו"
+    },
+    {
+      "ticker": "SMCI",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 75.6,
+      "avg_change": 0.418,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו SMCI חלון 15:30-16:00 (WR 75.6%, avg +0.42%) — לא נכנסנו"
+    },
+    {
+      "ticker": "RGTI",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 68.9,
+      "avg_change": 0.662,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו RGTI חלון 15:30-16:00 (WR 68.9%, avg +0.66%) — לא נכנסנו"
+    },
+    {
+      "ticker": "RKLB",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 75.6,
+      "avg_change": 0.652,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו RKLB חלון 15:30-16:00 (WR 75.6%, avg +0.65%) — לא נכנסנו"
+    },
+    {
+      "ticker": "SMCI",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 75.6,
+      "avg_change": 0.418,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו SMCI חלון 15:30-16:00 (WR 75.6%, avg +0.42%) — לא נכנסנו"
+    },
+    {
+      "ticker": "RGTI",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 68.9,
+      "avg_change": 0.662,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו RGTI חלון 15:30-16:00 (WR 68.9%, avg +0.66%) — לא נכנסנו"
+    },
+    {
+      "ticker": "RKLB",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 75.6,
+      "avg_change": 0.652,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו RKLB חלון 15:30-16:00 (WR 75.6%, avg +0.65%) — לא נכנסנו"
+    },
+    {
+      "ticker": "SMCI",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 75.6,
+      "avg_change": 0.418,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו SMCI חלון 15:30-16:00 (WR 75.6%, avg +0.42%) — לא נכנסנו"
+    },
+    {
+      "ticker": "RGTI",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 68.9,
+      "avg_change": 0.662,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו RGTI חלון 15:30-16:00 (WR 68.9%, avg +0.66%) — לא נכנסנו"
+    },
+    {
+      "ticker": "RKLB",
+      "window": "15:30-16:00",
+      "direction": "LONG",
+      "win_rate": 75.6,
+      "avg_change": 0.652,
+      "reason_missed": "לא נכנסנו",
+      "date": "2026-03-13",
+      "lesson": "פספסנו RKLB חלון 15:30-16:00 (WR 75.6%, avg +0.65%) — לא נכנסנו"
+    },
     {
       "ticker": "RGTI",
       "window": "15:30-16:00",

@@ -1,42 +1,42 @@
 {
   "enabled": true,
   "strategy_name": "__auto__",
-  "active_strategy": "Scalper",
+  "active_strategy": "Balanced",
   "trade_amount": 800.0,
   "seen_event_ids": [
-    "MomentumBreaker-FLY-2026-03-12T14:43:55",
-    "SqueezeHunter-HIMS-2026-03-12T17:00:36",
+    "SeasonalityTrader-FTNT-2026-03-12T17:02:52",
+    "SeasonalityTrader-SMCI-2026-03-12T17:00:36",
+    "Scalper-CF-2026-03-12T11:54:12",
+    "SqueezeHunter-HIMS-2026-03-12T12:11:39",
+    "PatternTrader-SMCI-2026-03-12T17:00:36",
+    "SqueezeHunter-NTR-2026-03-12T17:02:30",
     "SwingSetup-OXY-2026-03-12T17:02:52",
-    "SwingSetup-SEI-2026-03-12T17:00:36",
-    "MomentumBreaker-AAOI-2026-03-12T12:11:39",
-    "Balanced-CF-2026-03-12T16:29:59",
-    "SqueezeHunter-CF-2026-03-12T17:01:29",
-    "SwingSetup-CF-2026-03-12T17:01:29",
+    "SqueezeHunter-NBIS-2026-03-12T17:00:36",
+    "SqueezeHunter-ONDS-2026-03-12T18:54:23",
+    "Balanced-CF-2026-03-12T11:54:12",
+    "SqueezeHunter-ONDS-2026-03-12T18:54:32",
+    "MomentumBreaker-AAOI-2026-03-12T14:43:55",
+    "MomentumBreaker-FLY-2026-03-12T14:43:55",
+    "MomentumBreaker-CF-2026-03-12T15:40:31",
+    "MomentumBreaker-HIMS-2026-03-12T12:11:39",
+    "SwingSetup-SMCI-2026-03-12T17:00:36",
+    "SqueezeHunter-OXY-2026-03-12T17:02:52",
     "PatternTrader-RIOT-2026-03-12T17:00:36",
+    "SqueezeHunter-HIMS-2026-03-12T12:13:01",
+    "SqueezeHunter-ONDS-2026-03-12T18:50:23",
+    "SwingSetup-NTR-2026-03-12T17:02:30",
+    "SeasonalityTrader-DDOG-2026-03-12T17:02:30",
+    "MomentumBreaker-CF-2026-03-12T11:54:12",
+    "MomentumBreaker-AAOI-2026-03-12T12:11:39",
+    "SwingSetup-SEI-2026-03-12T17:00:36",
+    "SqueezeHunter-SMCI-2026-03-12T17:00:36",
+    "SqueezeHunter-CF-2026-03-12T17:01:29",
     "MomentumBreaker-HIMS-2026-03-12T11:25:43",
     "SeasonalityTrader-FANG-2026-03-12T17:00:36",
-    "SqueezeHunter-HIMS-2026-03-12T12:11:39",
-    "SqueezeHunter-HIMS-2026-03-12T12:13:01",
-    "SqueezeHunter-NBIS-2026-03-12T17:00:36",
-    "SqueezeHunter-OXY-2026-03-12T17:02:52",
-    "SeasonalityTrader-DDOG-2026-03-12T17:02:30",
-    "SwingSetup-SMCI-2026-03-12T17:00:36",
-    "MomentumBreaker-CF-2026-03-12T15:40:31",
-    "SeasonalityTrader-FTNT-2026-03-12T17:02:52",
+    "Balanced-CF-2026-03-12T16:29:59",
     "SqueezeHunter-HIMS-2026-03-12T11:11:12",
-    "SqueezeHunter-SMCI-2026-03-12T17:00:36",
-    "SqueezeHunter-ONDS-2026-03-12T18:54:32",
-    "SwingSetup-NTR-2026-03-12T17:02:30",
-    "SqueezeHunter-NTR-2026-03-12T17:02:30",
-    "SeasonalityTrader-SMCI-2026-03-12T17:00:36",
-    "SqueezeHunter-ONDS-2026-03-12T18:50:23",
-    "SqueezeHunter-ONDS-2026-03-12T18:54:23",
-    "MomentumBreaker-CF-2026-03-12T11:54:12",
-    "MomentumBreaker-AAOI-2026-03-12T14:43:55",
-    "MomentumBreaker-HIMS-2026-03-12T12:11:39",
-    "PatternTrader-SMCI-2026-03-12T17:00:36",
-    "Balanced-CF-2026-03-12T11:54:12",
-    "Scalper-CF-2026-03-12T11:54:12"
+    "SwingSetup-CF-2026-03-12T17:01:29",
+    "SqueezeHunter-HIMS-2026-03-12T17:00:36"
   ],
   "ib_positions": {
     "CF": {
@@ -46,19 +46,19 @@
       "order_id": 28,
       "strategy": "Balanced"
     },
-    "HIMS": {
-      "qty": 30,
-      "entry_price": 26.31,
-      "entry_time": "2026-03-12T16:52:08.205016",
-      "order_id": 28,
-      "strategy": "Scalper"
+    "SMCI": {
+      "qty": 24,
+      "entry_price": 32.08,
+      "entry_time": "2026-03-13T13:47:28.075160",
+      "order_id": 36,
+      "strategy": "Balanced"
     },
-    "NBIS": {
-      "qty": 7,
-      "entry_price": 108.5,
-      "entry_time": "2026-03-12T16:52:11.102229",
-      "order_id": 4,
-      "strategy": "Scalper"
+    "NIO": {
+      "qty": 140,
+      "entry_price": 5.68,
+      "entry_time": "2026-03-13T13:47:30.983565",
+      "order_id": 36,
+      "strategy": "Balanced"
     }
   },
   "trade_log": [
@@ -486,7 +486,51 @@
       "order_id": 4,
       "strategy": "Scalper",
       "reason": "sync"
+    },
+    {
+      "action": "SELL",
+      "ticker": "HIMS",
+      "qty": 30,
+      "price": 0,
+      "pnl": 0,
+      "pnl_pct": 0,
+      "time": "2026-03-13T13:47:20.178932",
+      "order_id": 32,
+      "strategy": "Balanced",
+      "reason": "leader_switch"
+    },
+    {
+      "action": "SELL",
+      "ticker": "NBIS",
+      "qty": 7,
+      "price": 108.5,
+      "pnl": 0.0,
+      "pnl_pct": 0.0,
+      "time": "2026-03-13T13:47:23.372364",
+      "order_id": 36,
+      "strategy": "Balanced",
+      "reason": "leader_switch"
+    },
+    {
+      "action": "BUY",
+      "ticker": "SMCI",
+      "qty": 24,
+      "price": 32.08,
+      "time": "2026-03-13T13:47:28.075183",
+      "order_id": 36,
+      "strategy": "Balanced",
+      "reason": "sync"
+    },
+    {
+      "action": "BUY",
+      "ticker": "NIO",
+      "qty": 140,
+      "price": 5.68,
+      "time": "2026-03-13T13:47:30.983582",
+      "order_id": 36,
+      "strategy": "Balanced",
+      "reason": "sync"
     }
   ],
-  "updated": "2026-03-12T18:55:07.820510"
+  "updated": "2026-03-13T14:10:44.892508"
 }
