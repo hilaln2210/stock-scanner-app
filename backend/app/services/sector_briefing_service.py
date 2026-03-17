@@ -15,7 +15,7 @@ Each call returns:
 
 import asyncio
 import time as _time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+from concurrent.futures import TimeoutError as FuturesTimeout
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -412,17 +412,15 @@ async def get_sector_briefing() -> dict:
     global _insider_cache, _insider_cache_at
 
     now = _time.time()
-    loop = asyncio.get_event_loop()
 
     # ── 1a. ETF prices (30s TTL) ──────────────────────────────────────────────
     if _etf_cache is None or (now - _etf_cache_at) >= _ETF_CACHE_TTL:
         print('[SectorBriefing] Refreshing ETF prices...')
         try:
-            with ThreadPoolExecutor(max_workers=1) as ex:
-                sectors = await asyncio.wait_for(
-                    loop.run_in_executor(ex, _fetch_etf_only),
-                    timeout=15,
-                )
+            sectors = await asyncio.wait_for(
+                asyncio.to_thread(_fetch_etf_only),
+                timeout=15,
+            )
             if sectors:
                 _etf_cache = sectors
                 _etf_cache_at = _time.time()
@@ -452,7 +450,7 @@ async def get_sector_briefing() -> dict:
     if drivers_stale:
         print('[SectorBriefing] Refreshing drivers...')
         drivers_task = asyncio.ensure_future(asyncio.wait_for(
-            loop.run_in_executor(ThreadPoolExecutor(max_workers=1), _fetch_drivers),
+            asyncio.to_thread(_fetch_drivers),
             timeout=20,
         ))
 
@@ -506,11 +504,10 @@ async def get_sector_briefing() -> dict:
                 # Batch-fetch % change for insider tickers
                 insider_tickers = list(dict.fromkeys(t['ticker'] for t in new_insider))
                 try:
-                    with ThreadPoolExecutor(max_workers=1) as ex:
-                        insider_chg = await asyncio.wait_for(
-                            loop.run_in_executor(ex, _fetch_insider_changes, insider_tickers),
-                            timeout=15,
-                        )
+                    insider_chg = await asyncio.wait_for(
+                        asyncio.to_thread(_fetch_insider_changes, insider_tickers),
+                        timeout=15,
+                    )
                 except (asyncio.TimeoutError, FuturesTimeout):
                     insider_chg = {}
 
