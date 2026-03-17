@@ -6,7 +6,11 @@ Each call returns:
 2. Top movers in the leading sector (Finviz screener with sector filter)
 3. Insider trades — Form 4 purchases ≥ $100K in last 2 days (openinsider.com)
 
-Cache TTL: 15 minutes
+4 separate caches with different TTLs for real-time accuracy:
+  - ETF prices:     30s  (real-time sector ranking)
+  - Drivers:       120s  (top holding % changes)
+  - Sector stocks: 180s  (Finviz rate limit friendly)
+  - Insider trades: 900s (slow-changing data)
 """
 
 import asyncio
@@ -60,60 +64,46 @@ _HEADERS = {
     'Accept-Language': 'en-US,en;q=0.5',
 }
 
-_cache: Optional[dict] = None
-_cache_at: float = 0.0
-_CACHE_TTL = 900  # 15 minutes
-_cache_lock: Optional[asyncio.Lock] = None
+# ── Separate caches with different TTLs ──────────────────────────────────────────
+
+_etf_cache: Optional[List[dict]] = None
+_etf_cache_at: float = 0.0
+_ETF_CACHE_TTL = 30  # 30 seconds — real-time sector ranking
+
+_drivers_cache: Dict[str, float] = {}
+_drivers_cache_at: float = 0.0
+_DRIVERS_CACHE_TTL = 120  # 2 minutes
+
+_stocks_cache: Optional[List[dict]] = None
+_stocks_cache_at: float = 0.0
+_stocks_sector: str = ''  # which sector the cached stocks are for
+_STOCKS_CACHE_TTL = 180  # 3 minutes (Finviz rate limit)
+
+_insider_cache: Optional[List[dict]] = None
+_insider_cache_at: float = 0.0
+_INSIDER_CACHE_TTL = 900  # 15 minutes
 
 
-def _get_lock() -> asyncio.Lock:
-    global _cache_lock
-    if _cache_lock is None:
-        _cache_lock = asyncio.Lock()
-    return _cache_lock
+# ── 1a. Sector ETF Performance (ETFs only) ───────────────────────────────────────
 
-
-# ── 1. Sector ETF Performance ───────────────────────────────────────────────────
-
-def _fetch_etf_changes() -> List[dict]:
+def _fetch_etf_only() -> List[dict]:
     """
-    Fetch today's % change for all sector ETFs + their top holdings.
-    Returns sectors list with 'drivers' field explaining the move.
+    Fetch today's % change for only the 11 sector ETFs (fast, ~2-3 seconds).
+    Returns sectors list sorted by change_pct desc. No drivers yet.
     """
     etf_tickers = list(SECTOR_ETFS.keys())
-    holding_tickers = list({t for holdings in ETF_TOP_HOLDINGS.values() for t in holdings})
-    all_tickers = etf_tickers + holding_tickers
-
-    holding_chg: Dict[str, float] = {}
     results = []
     try:
         data = yf.download(
-            all_tickers,
+            etf_tickers,
             period='2d',
             interval='1d',
             progress=False,
-            timeout=15,
+            timeout=10,
             auto_adjust=True,
         )
         close = data.get('Close', data) if hasattr(data, 'get') else data
 
-        def _pct(ticker: str) -> Optional[float]:
-            try:
-                prices = close[ticker].dropna()
-                if len(prices) >= 2:
-                    p, c = float(prices.iloc[-2]), float(prices.iloc[-1])
-                    return (c - p) / p * 100 if p else 0.0
-                return None
-            except Exception:
-                return None
-
-        # Holdings % changes
-        for t in holding_tickers:
-            chg = _pct(t)
-            if chg is not None:
-                holding_chg[t] = round(chg, 2)
-
-        # ETF % changes + drivers
         for etf, meta in SECTOR_ETFS.items():
             try:
                 prices = close[etf].dropna()
@@ -127,15 +117,6 @@ def _fetch_etf_changes() -> List[dict]:
                 else:
                     continue
 
-                # Build drivers: top holdings sorted by their % change (desc)
-                holdings = ETF_TOP_HOLDINGS.get(etf, [])
-                drivers = []
-                for h in holdings:
-                    h_chg = holding_chg.get(h)
-                    if h_chg is not None:
-                        drivers.append({'ticker': h, 'change_pct': h_chg})
-                drivers.sort(key=lambda x: x['change_pct'], reverse=True)
-
                 results.append({
                     'etf':           etf,
                     'name':          meta['name'],
@@ -143,15 +124,49 @@ def _fetch_etf_changes() -> List[dict]:
                     'finviz_filter': meta['finviz'],
                     'change_pct':    round(chg, 2),
                     'price':         round(curr, 2),
-                    'drivers':       drivers,
                 })
             except Exception:
                 pass
 
     except Exception as e:
-        print(f"[SectorBriefing] ETF fetch error: {e}")
+        print(f"[SectorBriefing] ETF-only fetch error: {e}")
 
     return sorted(results, key=lambda x: x['change_pct'], reverse=True)
+
+
+# ── 1b. Driver Holdings % Changes ────────────────────────────────────────────────
+
+def _fetch_drivers() -> Dict[str, float]:
+    """
+    Fetch today's % change for the 33 unique top-holding tickers.
+    Returns {ticker: change_pct}.
+    """
+    holding_tickers = list({t for holdings in ETF_TOP_HOLDINGS.values() for t in holdings})
+    result: Dict[str, float] = {}
+    try:
+        data = yf.download(
+            holding_tickers,
+            period='2d',
+            interval='1d',
+            progress=False,
+            timeout=15,
+            auto_adjust=True,
+        )
+        close = data.get('Close', data) if hasattr(data, 'get') else data
+
+        for t in holding_tickers:
+            try:
+                prices = close[t].dropna()
+                if len(prices) >= 2:
+                    p, c = float(prices.iloc[-2]), float(prices.iloc[-1])
+                    result[t] = round((c - p) / p * 100, 2) if p else 0.0
+            except Exception:
+                pass
+
+    except Exception as e:
+        print(f"[SectorBriefing] drivers fetch error: {e}")
+
+    return result
 
 
 # ── 2. Top Movers in Sector (Finviz) ───────────────────────────────────────────
@@ -388,88 +403,163 @@ async def get_sector_briefing() -> dict:
     """
     Returns the full sector morning briefing dict:
       {generated_at, sectors, top_sector, sector_stocks, insider_trades}
-    Cached 15 minutes.
+    Uses 4 separate caches with different TTLs.
+    No global lock — each cache section is independent, yfinance calls have timeouts.
     """
-    global _cache, _cache_at
+    global _etf_cache, _etf_cache_at
+    global _drivers_cache, _drivers_cache_at
+    global _stocks_cache, _stocks_cache_at, _stocks_sector
+    global _insider_cache, _insider_cache_at
 
     now = _time.time()
-    if _cache is not None and (now - _cache_at) < _CACHE_TTL:
-        return _cache
+    loop = asyncio.get_event_loop()
 
-    lock = _get_lock()
-    async with lock:
-        now = _time.time()
-        if _cache is not None and (now - _cache_at) < _CACHE_TTL:
-            return _cache
-
-        print('[SectorBriefing] Fetching sector data...')
-
-        # 1. ETF performance — blocking yfinance in thread
-        loop = asyncio.get_event_loop()
-        with ThreadPoolExecutor(max_workers=1) as ex:
-            try:
+    # ── 1a. ETF prices (30s TTL) ──────────────────────────────────────────────
+    if _etf_cache is None or (now - _etf_cache_at) >= _ETF_CACHE_TTL:
+        print('[SectorBriefing] Refreshing ETF prices...')
+        try:
+            with ThreadPoolExecutor(max_workers=1) as ex:
                 sectors = await asyncio.wait_for(
-                    loop.run_in_executor(ex, _fetch_etf_changes),
-                    timeout=25,
-                )
-            except (asyncio.TimeoutError, FuturesTimeout):
-                print('[SectorBriefing] ETF fetch timeout')
-                sectors = []
-
-        top_sector = sectors[0] if sectors else None
-
-        async with aiohttp.ClientSession() as session:
-            # 2+3 run concurrently
-            async def _empty():
-                return []
-            sector_stocks_task = asyncio.ensure_future(
-                _fetch_sector_stocks(session, top_sector['finviz_filter']) if top_sector
-                else _empty()
-            )
-            insider_task = asyncio.ensure_future(_fetch_insider_trades(session))
-
-            try:
-                sector_stocks = await asyncio.wait_for(sector_stocks_task, timeout=18)
-            except asyncio.TimeoutError:
-                print('[SectorBriefing] sector stocks timeout')
-                sector_stocks = []
-
-            try:
-                insider_trades = await asyncio.wait_for(insider_task, timeout=18)
-            except asyncio.TimeoutError:
-                print('[SectorBriefing] insider trades timeout')
-                insider_trades = []
-
-        # 4. Batch-fetch % change for insider tickers
-        insider_tickers = list(dict.fromkeys(t['ticker'] for t in insider_trades))
-        with ThreadPoolExecutor(max_workers=1) as ex:
-            try:
-                insider_chg = await asyncio.wait_for(
-                    loop.run_in_executor(ex, _fetch_insider_changes, insider_tickers),
+                    loop.run_in_executor(ex, _fetch_etf_only),
                     timeout=15,
                 )
-            except (asyncio.TimeoutError, FuturesTimeout):
-                insider_chg = {}
+            if sectors:
+                _etf_cache = sectors
+                _etf_cache_at = _time.time()
+        except (asyncio.TimeoutError, FuturesTimeout):
+            print('[SectorBriefing] ETF-only fetch timeout')
 
-        for trade in insider_trades:
-            trade['change_pct'] = insider_chg.get(trade['ticker'])
+    sectors = _etf_cache or []
 
-        result = {
-            'generated_at':  datetime.now().isoformat(),
-            'sectors':        sectors,
-            'top_sector':     top_sector,
-            'sector_stocks':  sector_stocks,
-            'insider_trades': insider_trades,
-        }
+    # ── 1b. Drivers (120s TTL) — can run concurrently with stocks/insider ─────
+    drivers_stale = (now - _drivers_cache_at) >= _DRIVERS_CACHE_TTL
 
-        _cache = result
-        _cache_at = _time.time()
-        print(f'[SectorBriefing] Done — top: {top_sector["name"] if top_sector else "none"}, '
-              f'stocks: {len(sector_stocks)}, insiders: {len(insider_trades)}')
-        return result
+    # Determine top sector for stocks cache check
+    top_sector = sectors[0] if sectors else None
+    top_filter = top_sector['finviz_filter'] if top_sector else ''
+    stocks_stale = (
+        _stocks_cache is None
+        or (now - _stocks_cache_at) >= _STOCKS_CACHE_TTL
+        or _stocks_sector != top_filter
+    )
+    insider_stale = _insider_cache is None or (now - _insider_cache_at) >= _INSIDER_CACHE_TTL
+
+    # ── Launch independent fetches concurrently ───────────────────────────────
+    drivers_task = None
+    stocks_task = None
+    insider_task = None
+
+    if drivers_stale:
+        print('[SectorBriefing] Refreshing drivers...')
+        drivers_task = asyncio.ensure_future(asyncio.wait_for(
+            loop.run_in_executor(ThreadPoolExecutor(max_workers=1), _fetch_drivers),
+            timeout=20,
+        ))
+
+    if stocks_stale and top_sector:
+        print(f'[SectorBriefing] Refreshing sector stocks ({top_sector["name"]})...')
+
+        async def _do_stocks():
+            async with aiohttp.ClientSession() as session:
+                return await _fetch_sector_stocks(session, top_filter)
+
+        stocks_task = asyncio.ensure_future(asyncio.wait_for(_do_stocks(), timeout=18))
+
+    if insider_stale:
+        print('[SectorBriefing] Refreshing insider trades...')
+
+        async def _do_insider():
+            async with aiohttp.ClientSession() as session:
+                return await _fetch_insider_trades(session)
+
+        insider_task = asyncio.ensure_future(asyncio.wait_for(_do_insider(), timeout=18))
+
+    # ── Await drivers ─────────────────────────────────────────────────────────
+    if drivers_task is not None:
+        try:
+            new_drivers = await drivers_task
+            if new_drivers:
+                _drivers_cache = new_drivers
+                _drivers_cache_at = _time.time()
+        except (asyncio.TimeoutError, FuturesTimeout):
+            print('[SectorBriefing] drivers fetch timeout')
+        except Exception as e:
+            print(f'[SectorBriefing] drivers fetch error: {e}')
+
+    # ── Await sector stocks ───────────────────────────────────────────────────
+    if stocks_task is not None:
+        try:
+            new_stocks = await stocks_task
+            _stocks_cache = new_stocks
+            _stocks_cache_at = _time.time()
+            _stocks_sector = top_filter
+        except asyncio.TimeoutError:
+            print('[SectorBriefing] sector stocks timeout')
+        except Exception as e:
+            print(f'[SectorBriefing] sector stocks error: {e}')
+
+    # ── Await insider trades ──────────────────────────────────────────────────
+    if insider_task is not None:
+        try:
+            new_insider = await insider_task
+            if new_insider is not None:
+                # Batch-fetch % change for insider tickers
+                insider_tickers = list(dict.fromkeys(t['ticker'] for t in new_insider))
+                try:
+                    with ThreadPoolExecutor(max_workers=1) as ex:
+                        insider_chg = await asyncio.wait_for(
+                            loop.run_in_executor(ex, _fetch_insider_changes, insider_tickers),
+                            timeout=15,
+                        )
+                except (asyncio.TimeoutError, FuturesTimeout):
+                    insider_chg = {}
+
+                for trade in new_insider:
+                    trade['change_pct'] = insider_chg.get(trade['ticker'])
+
+                _insider_cache = new_insider
+                _insider_cache_at = _time.time()
+        except asyncio.TimeoutError:
+            print('[SectorBriefing] insider trades timeout')
+        except Exception as e:
+            print(f'[SectorBriefing] insider trades error: {e}')
+
+    # ── Merge drivers into sectors ────────────────────────────────────────────
+    sectors_with_drivers = []
+    for s in sectors:
+        entry = dict(s)  # shallow copy
+        etf = entry['etf']
+        holdings = ETF_TOP_HOLDINGS.get(etf, [])
+        drivers = []
+        for h in holdings:
+            h_chg = _drivers_cache.get(h)
+            if h_chg is not None:
+                drivers.append({'ticker': h, 'change_pct': h_chg})
+        drivers.sort(key=lambda x: x['change_pct'], reverse=True)
+        entry['drivers'] = drivers
+        sectors_with_drivers.append(entry)
+
+    sector_stocks = _stocks_cache or []
+    insider_trades = _insider_cache or []
+
+    result = {
+        'generated_at':  datetime.now().isoformat(),
+        'sectors':        sectors_with_drivers,
+        'top_sector':     sectors_with_drivers[0] if sectors_with_drivers else None,
+        'sector_stocks':  sector_stocks,
+        'insider_trades': insider_trades,
+    }
+
+    top_name = result['top_sector']['name'] if result['top_sector'] else 'none'
+    print(f'[SectorBriefing] Done — top: {top_name}, '
+          f'stocks: {len(sector_stocks)}, insiders: {len(insider_trades)}')
+    return result
 
 
 def invalidate_cache() -> None:
-    """Force-refresh next call."""
-    global _cache_at
-    _cache_at = 0.0
+    """Force-refresh next call — clears all 4 caches."""
+    global _etf_cache_at, _drivers_cache_at, _stocks_cache_at, _insider_cache_at
+    _etf_cache_at = 0.0
+    _drivers_cache_at = 0.0
+    _stocks_cache_at = 0.0
+    _insider_cache_at = 0.0
