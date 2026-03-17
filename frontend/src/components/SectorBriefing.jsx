@@ -144,8 +144,8 @@ export default function SectorBriefing() {
       });
       return r.data;
     },
-    staleTime: 14 * 60 * 1000,  // 14 min
-    refetchInterval: 15 * 60 * 1000,
+    staleTime: 25 * 1000,  // 25 sec
+    refetchInterval: 30 * 1000,  // 30 sec
   });
 
   const sectors        = data?.sectors        || [];
