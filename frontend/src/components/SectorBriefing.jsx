@@ -46,30 +46,43 @@ function fmtTime(iso) {
 
 function SectorBar({ s, isTop }) {
   const bar = Math.min(100, Math.max(0, (s.change_pct + 5) / 10 * 100));
+  const drivers = s.drivers || [];
   return (
-    <div className={`flex items-center gap-3 px-3 py-2 rounded-lg border transition-all
+    <div className={`px-3 py-2.5 rounded-lg border transition-all
       ${isTop
         ? 'bg-emerald-950/70 border-emerald-600/50 shadow-emerald-900/30 shadow-md'
         : chgBg(s.change_pct)
       }`}>
-      <span className="text-lg w-7 text-center">{s.icon}</span>
-      <div className="flex-1 min-w-0">
-        <div className="flex justify-between items-center">
-          <span className={`text-xs font-medium truncate ${isTop ? 'text-emerald-200' : 'text-slate-300'}`}>
-            {s.name}
-          </span>
-          <span className={`text-sm font-bold ml-2 ${chgColor(s.change_pct)}`}>
-            {fmtChg(s.change_pct)}
-          </span>
+      <div className="flex items-center gap-3">
+        <span className="text-lg w-7 text-center">{s.icon}</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex justify-between items-center">
+            <span className={`text-xs font-medium truncate ${isTop ? 'text-emerald-200' : 'text-slate-300'}`}>
+              {s.name}
+            </span>
+            <span className={`text-sm font-bold ml-2 ${chgColor(s.change_pct)}`}>
+              {fmtChg(s.change_pct)}
+            </span>
+          </div>
+          <div className="mt-1 h-1 bg-slate-700/50 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${s.change_pct >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}
+              style={{ width: `${bar}%` }}
+            />
+          </div>
         </div>
-        <div className="mt-1 h-1 bg-slate-700/50 rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all ${s.change_pct >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}
-            style={{ width: `${bar}%` }}
-          />
-        </div>
+        <span className="text-xs text-slate-500 w-10 text-right">{s.etf}</span>
       </div>
-      <span className="text-xs text-slate-500 w-10 text-right">{s.etf}</span>
+      {drivers.length > 0 && (
+        <div className="flex gap-2 mt-1.5 mr-10 flex-wrap">
+          {drivers.map(d => (
+            <span key={d.ticker} className="text-[10px]">
+              <span className="text-slate-400">{d.ticker}</span>
+              <span className={`ml-0.5 ${chgColor(d.change_pct)}`}>{fmtChg(d.change_pct)}</span>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -104,15 +117,32 @@ function StockCard({ s }) {
   );
 }
 
+function insiderSignal(chg) {
+  if (chg == null) return null;
+  if (chg >= 5)  return { text: 'המניה ממריאה', color: 'text-emerald-400' };
+  if (chg >= 2)  return { text: 'עלייה חזקה', color: 'text-emerald-300' };
+  if (chg > 0)   return { text: 'עלייה', color: 'text-emerald-300/70' };
+  if (chg <= -5) return { text: 'ירידה חדה', color: 'text-red-400' };
+  if (chg < -2)  return { text: 'ירידה', color: 'text-red-300' };
+  if (chg < 0)   return { text: 'ירידה קלה', color: 'text-red-300/70' };
+  return { text: 'יציבה', color: 'text-slate-400' };
+}
+
 function InsiderRow({ t }) {
+  const sig = insiderSignal(t.change_pct);
   return (
     <div className="flex items-center gap-3 px-3 py-2.5 border-b border-slate-700/30 last:border-0 hover:bg-slate-800/30 transition-colors">
-      <div className="w-16 shrink-0">
-        <div className="text-xs font-bold text-emerald-400">{t.ticker}</div>
-        {t.change_pct != null && (
-          <div className={`text-xs font-medium ${chgColor(t.change_pct)}`}>
-            {fmtChg(t.change_pct)}
-          </div>
+      <div className="w-20 shrink-0">
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm font-bold text-emerald-400">{t.ticker}</span>
+          {t.change_pct != null && (
+            <span className={`text-sm font-bold ${chgColor(t.change_pct)}`}>
+              {fmtChg(t.change_pct)}
+            </span>
+          )}
+        </div>
+        {sig && (
+          <div className={`text-[10px] ${sig.color}`}>{sig.text}</div>
         )}
       </div>
       <div className="flex-1 min-w-0">
