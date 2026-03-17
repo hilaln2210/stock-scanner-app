@@ -117,8 +117,8 @@ async def _fetch_sector_stocks(
     """
     url = (
         'https://finviz.com/screener.ashx?v=111'
-        f'&f=sh_avgvol_o200,sh_relvol_o1,ta_change_u2,{finviz_filter}'
-        '&o=-change'
+        f'&f=sh_avgvol_o200,{finviz_filter}'
+        '&o=-change&r=1'  # page 1, sorted by change desc — works in/out of market hours
     )
     try:
         async with session.get(
@@ -131,17 +131,26 @@ async def _fetch_sector_stocks(
 
         soup = BeautifulSoup(html, 'html.parser')
 
-        # Finviz uses class 'screener_table' — headers in <th> elements
-        table = soup.find('table', class_='screener_table')
+        # Find by walking up from the first quote link (robust against class changes)
+        import re as _re
+        table = None
+        link = soup.find('a', href=_re.compile(r'quote\.ashx\?t='))
+        if link:
+            node = link
+            for _ in range(12):
+                node = node.parent
+                if node.name == 'table':
+                    table = node
+                    break
+                if node.name == 'body':
+                    break
         if not table:
-            # Fallback: any table whose first row contains 'Ticker'
+            # Fallback: any table whose header row contains 'Ticker'
             for t in soup.find_all('table'):
-                header = t.find('tr')
-                if header:
-                    texts = [c.get_text(strip=True) for c in header.find_all(['th', 'td'])]
-                    if 'Ticker' in texts:
-                        table = t
-                        break
+                hdr = t.find('tr')
+                if hdr and 'Ticker' in [c.get_text(strip=True) for c in hdr.find_all(['th', 'td'])]:
+                    table = t
+                    break
 
         if not table:
             return []
