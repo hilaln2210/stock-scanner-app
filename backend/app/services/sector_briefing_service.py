@@ -145,10 +145,10 @@ _all_movers_cache: Optional[Dict[str, dict]] = None
 _all_movers_cache_at: float = 0.0
 _ALL_MOVERS_TTL = 180  # 3 minutes
 
-# Per-mover catalyst news cache
-_mover_news_cache: Optional[Dict[str, List[dict]]] = None
-_mover_news_cache_at: float = 0.0
-_MOVER_NEWS_TTL = 300  # 5 minutes
+# Stock intelligence cache (analyst targets, earnings, catalysts)
+_intel_cache: Optional[Dict[str, dict]] = None
+_intel_cache_at: float = 0.0
+_INTEL_TTL = 300  # 5 minutes
 
 # ── Macro Indicator Definitions ──────────────────────────────────────────────────
 
@@ -1456,15 +1456,80 @@ def _compute_move_estimate(stock: dict) -> dict:
     }
 
 
-# ── 14. Per-Mover Catalyst News ──────────────────────────────────────────────
+# ── 14. Smart Stock Intelligence (analyst targets, earnings, catalysts) ──────
 
-def _fetch_mover_news(stocks: List[dict], max_stocks: int = 6) -> Dict[str, List[dict]]:
+def _generate_catalyst_analysis(stock: dict) -> List[str]:
     """
-    Fetch news for the most interesting top movers (not generic SPY news).
-    Prioritizes stocks with flags (institutional, short, insider).
-    Returns {ticker: [news items]} with Hebrew translation.
+    Generate actionable catalyst hypotheses from stock data patterns.
+    No API calls — pure data analysis.
     """
-    # Score stocks by interestingness
+    chg = stock.get('change_pct', 0) or 0
+    fs = stock.get('float_short') or 0
+    fl = stock.get('float_shares')
+    inst = stock.get('inst_own') or 0
+    inst_tr = stock.get('inst_trans') or 0
+    insider_tr = stock.get('insider_trans') or 0
+    vol = stock.get('volume') or 0
+    avg_vol = stock.get('avg_volume') or vol or 1
+    vol_ratio = vol / avg_vol if avg_vol > 0 else 1
+
+    catalysts = []
+
+    # Short squeeze signal
+    if fs >= 20 and vol_ratio >= 1.5 and chg > 5:
+        catalysts.append(f'סקוויז שורט — {fs:.0f}% שורט × נפח {vol_ratio:.1f}x, שורטיסטים נלכדים')
+    elif fs >= 15 and chg > 3:
+        catalysts.append(f'לחץ שורט — {fs:.0f}% שורט נדחס, סיכוי לסקוויז')
+    elif fs >= 10 and vol_ratio >= 2:
+        catalysts.append(f'שורט פגיע — {fs:.0f}% שורט עם נפח חריג, מצב מתפוצץ')
+
+    # Institutional activity
+    if inst_tr > 10:
+        catalysts.append(f'מוסדיים צוברים בעוצמה — +{inst_tr:.0f}% אחזקות ברבעון')
+    elif inst_tr > 5:
+        catalysts.append(f'צבירה מוסדית — +{inst_tr:.0f}% הגדלה ברבעון, כסף חכם נכנס')
+
+    # Insider buying
+    if insider_tr > 5:
+        catalysts.append(f'מנהלים קונים בכוח — +{insider_tr:.0f}% הגדלה, יודעים משהו?')
+    elif insider_tr > 2:
+        catalysts.append(f'Insider buying — מנהלים שמים כסף מהכיס +{insider_tr:.0f}%')
+
+    # Float analysis
+    if fl is not None and fl < 5_000_000:
+        catalysts.append(f'Float זעיר ({fl/1e6:.1f}M) — כל נפח מזיז חזק, עלייה מואצת')
+    elif fl is not None and fl < 15_000_000:
+        catalysts.append(f'Float קטן ({fl/1e6:.1f}M) — היצע מוגבל, תנועות חדות')
+
+    # Volume anomaly
+    if vol_ratio >= 5:
+        catalysts.append(f'נפח פי {vol_ratio:.0f} מהממוצע — אירוע חריג בתוך המניה')
+    elif vol_ratio >= 3:
+        catalysts.append(f'נפח חריג ×{vol_ratio:.1f} — משהו קורה מאחורי הקלעים')
+
+    # High institutional + big move = smart money
+    if inst >= 70 and abs(chg) > 3:
+        catalysts.append(f'{inst:.0f}% בעלות מוסדית — ענקים מזיזים את המניה')
+
+    # Combination signals
+    if fs >= 15 and inst_tr > 5:
+        catalysts.append('קומבו נדיר: שורט גבוה + מוסדיים קונים = מלכודת שורט')
+    if fs >= 10 and fl and fl < 20_000_000:
+        catalysts.append('Float קטן + שורט = חבית דינמיט — פוטנציאל ריצה חדה')
+
+    return catalysts
+
+
+def _fetch_stock_intelligence(stocks: List[dict], max_stocks: int = 6) -> Dict[str, dict]:
+    """
+    Fetch analyst targets + earnings date for top interesting movers.
+    Each call is wrapped in ThreadPoolExecutor with timeout.
+    Returns {ticker: {target_price, target_low, target_high, analyst_count,
+                      recommendation, earnings_date, catalysts}}.
+    """
+    import concurrent.futures
+
+    # Score and rank
     def interest_score(s):
         score = abs(s.get('change_pct', 0))
         flags = s.get('flags', [])
@@ -1476,25 +1541,84 @@ def _fetch_mover_news(stocks: List[dict], max_stocks: int = 6) -> Dict[str, List
                 score += 5
         return score
 
-    # Pick top N most interesting stocks
     ranked = sorted(stocks, key=interest_score, reverse=True)
-    top_tickers = [s['ticker'] for s in ranked[:max_stocks]]
+    top_stocks = ranked[:max_stocks]
 
-    result: Dict[str, List[dict]] = {}
-    all_news: List[dict] = []
+    def _get_intel(stock):
+        ticker = stock['ticker']
+        result = {
+            'catalysts': _generate_catalyst_analysis(stock),
+        }
+        try:
+            t = yf.Ticker(ticker)
+            info = t.get_info() if hasattr(t, 'get_info') else t.info
 
-    for ticker in top_tickers:
-        items = _fetch_news_for_ticker(ticker, max_items=2)
-        if items:
-            result[ticker] = items
-            all_news.extend(items)
+            # Analyst targets
+            target = info.get('targetMeanPrice')
+            if target:
+                result['target_price'] = round(target, 2)
+                result['target_low'] = round(info.get('targetLowPrice', 0), 2) if info.get('targetLowPrice') else None
+                result['target_high'] = round(info.get('targetHighPrice', 0), 2) if info.get('targetHighPrice') else None
+                result['analyst_count'] = info.get('numberOfAnalystOpinions')
 
-    # Batch translate
-    if all_news:
-        _translate_titles(all_news)
+                # Upside/downside from current price
+                current = stock.get('price', 0)
+                if current and target:
+                    result['upside_pct'] = round((target - current) / current * 100, 1)
 
-    print(f'[SectorBriefing] mover news: {len(all_news)} items for {len(result)} tickers')
-    return result
+            # Recommendation
+            rec = info.get('recommendationKey')
+            rec_map = {
+                'strong_buy': 'קנייה חזקה',
+                'buy': 'קנייה',
+                'hold': 'החזקה',
+                'sell': 'מכירה',
+                'strong_sell': 'מכירה חזקה',
+            }
+            if rec and rec != 'none':
+                result['recommendation'] = rec_map.get(rec, rec)
+
+            # Earnings date
+            try:
+                cal = t.calendar
+                if cal is not None:
+                    if hasattr(cal, 'get') and cal.get('Earnings Date'):
+                        ed = cal['Earnings Date']
+                        if isinstance(ed, list) and ed:
+                            result['earnings_date'] = str(ed[0].date()) if hasattr(ed[0], 'date') else str(ed[0])
+                    elif hasattr(cal, 'columns') and 'Earnings Date' in cal.columns:
+                        result['earnings_date'] = str(cal['Earnings Date'].iloc[0])
+            except Exception:
+                pass
+
+        except Exception as e:
+            # Catalysts still work even if yfinance fails
+            pass
+
+        return ticker, result
+
+    intel_map: Dict[str, dict] = {}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {pool.submit(_get_intel, s): s['ticker'] for s in top_stocks}
+        for future in concurrent.futures.as_completed(futures, timeout=12):
+            try:
+                ticker, intel = future.result(timeout=2)
+                if intel:
+                    intel_map[ticker] = intel
+            except Exception:
+                pass
+
+    # Also add catalyst analysis for stocks that didn't get full enrichment
+    for s in stocks:
+        if s['ticker'] not in intel_map:
+            cats = _generate_catalyst_analysis(s)
+            if cats:
+                intel_map[s['ticker']] = {'catalysts': cats}
+
+    print(f'[SectorBriefing] intelligence: {len(intel_map)} stocks enriched, '
+          f'{sum(1 for v in intel_map.values() if v.get("target_price"))} with analyst targets')
+    return intel_map
 
 
 # ── 15. Smart Money Flow Analysis ──────────────────────────────────────────────
@@ -1648,7 +1772,7 @@ async def get_sector_briefing() -> dict:
     global _macro_cache, _macro_cache_at
     global _market_news_cache, _market_news_cache_at
     global _all_movers_cache, _all_movers_cache_at
-    global _mover_news_cache, _mover_news_cache_at
+    global _intel_cache, _intel_cache_at
 
     now = _time.time()
 
@@ -1892,38 +2016,35 @@ async def get_sector_briefing() -> dict:
         except Exception as e:
             print(f'[SectorBriefing] all-movers error: {e}')
 
-    # ── Fetch mover-specific catalyst news (after all_movers is resolved) ─────
-    mover_news_stale = _mover_news_cache is None or (now - _mover_news_cache_at) >= _MOVER_NEWS_TTL
-    if mover_news_stale and _all_movers_cache:
-        # Collect all flagged stocks for news fetching
-        all_flagged = []
+    # ── Fetch stock intelligence (after all_movers is resolved) ──────────────
+    intel_stale = _intel_cache is None or (now - _intel_cache_at) >= _INTEL_TTL
+    if intel_stale and _all_movers_cache:
+        all_movers_list = []
         for data in _all_movers_cache.values():
-            for m in data.get('movers', []):
-                if m.get('flags'):
-                    all_flagged.append(m)
-        if all_flagged:
-            print(f'[SectorBriefing] Fetching catalyst news for {len(all_flagged)} flagged movers...')
+            all_movers_list.extend(data.get('movers', []))
+        if all_movers_list:
+            print(f'[SectorBriefing] Fetching stock intelligence for {len(all_movers_list)} movers...')
             try:
-                new_mnews = await asyncio.wait_for(
-                    asyncio.to_thread(_fetch_mover_news, all_flagged, 6),
-                    timeout=20,
+                new_intel = await asyncio.wait_for(
+                    asyncio.to_thread(_fetch_stock_intelligence, all_movers_list, 8),
+                    timeout=25,
                 )
-                if new_mnews is not None:
-                    _mover_news_cache = new_mnews
-                    _mover_news_cache_at = _time.time()
+                if new_intel is not None:
+                    _intel_cache = new_intel
+                    _intel_cache_at = _time.time()
             except (asyncio.TimeoutError, FuturesTimeout):
-                print('[SectorBriefing] mover news timeout')
+                print('[SectorBriefing] intelligence timeout')
             except Exception as e:
-                print(f'[SectorBriefing] mover news error: {e}')
+                print(f'[SectorBriefing] intelligence error: {e}')
 
-    # Attach mover news to stocks
-    mover_news = _mover_news_cache or {}
-    if mover_news and _all_movers_cache:
+    # Attach intelligence to stocks
+    intel = _intel_cache or {}
+    if intel and _all_movers_cache:
         for data in _all_movers_cache.values():
             for m in data.get('movers', []):
-                ticker_news = mover_news.get(m['ticker'])
-                if ticker_news:
-                    m['news'] = ticker_news
+                stock_intel = intel.get(m['ticker'])
+                if stock_intel:
+                    m['intel'] = stock_intel
 
     # ── Compute sector impacts from macro data ──────────────────────────────────
     macro_data = _macro_cache or {}
@@ -2068,7 +2189,7 @@ def invalidate_cache() -> None:
     global _insider_cache_at, _news_cache_at
     global _multi_tf_cache_at, _sparkline_cache_at
     global _macro_cache_at, _market_news_cache_at
-    global _all_movers_cache_at, _mover_news_cache_at
+    global _all_movers_cache_at, _intel_cache_at
     _etf_cache_at = 0.0
     _drivers_cache_at = 0.0
     _stocks_cache_at = 0.0
@@ -2079,4 +2200,4 @@ def invalidate_cache() -> None:
     _macro_cache_at = 0.0
     _market_news_cache_at = 0.0
     _all_movers_cache_at = 0.0
-    _mover_news_cache_at = 0.0
+    _intel_cache_at = 0.0

@@ -652,6 +652,12 @@ function SectorDetail({ sector, stocks, isLoadingStocks, onLoadStocks }) {
                     →+{m.move_estimate.target_pct}%
                   </span>
                 )}
+                {m.intel?.target_price && (
+                  <span className="text-[9px] text-blue-400/70 mr-0.5"
+                    title={`יעד אנליסטים: $${m.intel.target_price}`}>
+                    🎯${m.intel.target_price}
+                  </span>
+                )}
                 {m.industry && (
                   <span className="text-[9px] text-slate-600 mr-1">{m.industry}</span>
                 )}
@@ -893,15 +899,61 @@ function SectorDetail({ sector, stocks, isLoadingStocks, onLoadStocks }) {
                     </div>
                   )}
 
-                  {/* Per-stock catalyst news */}
-                  {s.news?.length > 0 && (
-                    <div className="mt-1.5 space-y-0.5">
-                      {s.news.slice(0, 2).map((n, i) => (
-                        <div key={i} className="text-[10px] text-slate-400 bg-slate-800/30 rounded px-1.5 py-1 leading-snug">
-                          <span className="text-blue-400/70">{n.source || n.ticker}</span>
-                          {' '}{n.title}
+                  {/* Stock Intelligence */}
+                  {s.intel && (
+                    <div className="mt-1.5 space-y-1">
+                      {/* Analyst target + earnings */}
+                      {(s.intel.target_price || s.intel.earnings_date) && (
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] bg-blue-950/30 border border-blue-800/20 rounded-lg px-2 py-1.5">
+                          {s.intel.target_price && (
+                            <div>
+                              <span className="text-slate-500">יעד אנליסטים: </span>
+                              <span className="text-blue-300 font-bold">${s.intel.target_price}</span>
+                              {s.intel.upside_pct != null && (
+                                <span className={`font-bold mr-1 ${s.intel.upside_pct > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                  ({s.intel.upside_pct > 0 ? '+' : ''}{s.intel.upside_pct}%)
+                                </span>
+                              )}
+                              {s.intel.analyst_count && (
+                                <span className="text-slate-600"> ({s.intel.analyst_count} אנליסטים)</span>
+                              )}
+                            </div>
+                          )}
+                          {s.intel.target_low && s.intel.target_high && (
+                            <div className="text-slate-500">
+                              טווח: ${s.intel.target_low} — ${s.intel.target_high}
+                            </div>
+                          )}
+                          {s.intel.recommendation && (
+                            <div>
+                              <span className="text-slate-500">המלצה: </span>
+                              <span className={`font-medium ${
+                                s.intel.recommendation.includes('קנייה') ? 'text-emerald-400' :
+                                s.intel.recommendation.includes('מכירה') ? 'text-red-400' :
+                                'text-amber-400'
+                              }`}>{s.intel.recommendation}</span>
+                            </div>
+                          )}
+                          {s.intel.earnings_date && (
+                            <div>
+                              <span className="text-slate-500">דוחות: </span>
+                              <span className="text-amber-300 font-medium">{s.intel.earnings_date}</span>
+                            </div>
+                          )}
                         </div>
-                      ))}
+                      )}
+
+                      {/* Catalyst hypotheses */}
+                      {s.intel.catalysts?.length > 0 && (
+                        <div className="bg-slate-800/30 rounded-lg px-2 py-1.5 space-y-0.5">
+                          {s.intel.catalysts.slice(0, 3).map((c, i) => (
+                            <div key={i} className="flex items-start gap-1.5 text-[10px]">
+                              <span className="text-amber-400 shrink-0 mt-0.5">⚡</span>
+                              <span className="text-slate-300">{c}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
