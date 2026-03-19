@@ -115,6 +115,62 @@ _news_cache: Dict[str, List[dict]] = {}  # {etf: [{title, source, ticker}]}
 _news_cache_at: float = 0.0
 _NEWS_CACHE_TTL = 300  # 5 minutes
 
+# Macro indicators cache
+_macro_cache: Optional[dict] = None
+_macro_cache_at: float = 0.0
+_MACRO_TTL = 60  # 1 minute — critical real-time data
+
+# Market-wide news cache
+_market_news_cache: Optional[List[dict]] = None
+_market_news_cache_at: float = 0.0
+_MARKET_NEWS_TTL = 300  # 5 minutes
+
+# ── Macro Indicator Definitions ──────────────────────────────────────────────────
+
+MACRO_TICKERS = {
+    '^VIX':      {'name': 'VIX',       'label': 'מדד פחד',        'icon': '😰', 'type': 'fear'},
+    'GC=F':      {'name': 'זהב',       'label': 'זהב',           'icon': '🥇', 'type': 'safe_haven'},
+    'CL=F':      {'name': 'נפט',       'label': 'נפט גולמי',     'icon': '🛢️', 'type': 'commodity'},
+    '^TNX':      {'name': '10Y',       'label': 'תשואה 10 שנים', 'icon': '📊', 'type': 'rates'},
+    'DX-Y.NYB':  {'name': 'דולר',      'label': 'מדד דולר',      'icon': '💵', 'type': 'currency'},
+    '^GSPC':     {'name': 'S&P 500',   'label': 'S&P 500',       'icon': '📈', 'type': 'index'},
+}
+
+# Sector impact rules: when indicator moves, which sectors are affected
+# (indicator, threshold_pct, affected_etfs, impact, hebrew_explanation)
+IMPACT_RULES = [
+    # VIX (fear)
+    ('^VIX', 5,    ['XLU', 'XLP', 'XLV'], 'positive',  'VIX קופץ → כסף זורם להגנתיים'),
+    ('^VIX', 5,    ['XLK', 'XLY', 'XLC'], 'negative',  'VIX קופץ → צמיחה תחת לחץ'),
+    ('^VIX', 10,   ['XLE', 'XLI', 'XLB'], 'negative',  'VIX זינוק → מחזוריים נפגעים'),
+    # Oil
+    ('CL=F', 2,    ['XLE'],               'positive',  'נפט עולה → אנרגיה מרוויחה'),
+    ('CL=F', 2,    ['XLI'],               'negative',  'נפט עולה → עלויות תעשייה עולות'),
+    ('CL=F', -3,   ['XLE'],               'negative',  'נפט צונח → אנרגיה תחת לחץ'),
+    ('CL=F', -3,   ['XLI', 'XLY'],        'positive',  'נפט יורד → הקלה בעלויות'),
+    # Gold
+    ('GC=F', 1.5,  ['XLB'],               'positive',  'זהב עולה → חומרי גלם מרוויחים'),
+    ('GC=F', 2,    ['XLK', 'XLY'],        'negative',  'זהב קופץ → סנטימנט risk-off'),
+    # Rates
+    ('^TNX', 2,    ['XLF'],               'positive',  'תשואות עולות → בנקים מרוויחים'),
+    ('^TNX', 2,    ['XLRE', 'XLU'],       'negative',  'תשואות עולות → נדל"ן ושירותים תחת לחץ'),
+    ('^TNX', 3,    ['XLK'],               'negative',  'תשואות זינוק → טכנולוגיה תחת לחץ (DCF)'),
+    ('^TNX', -2,   ['XLRE', 'XLU'],       'positive',  'תשואות יורדות → נדל"ן ושירותים מרוויחים'),
+    ('^TNX', -2,   ['XLK'],               'positive',  'תשואות יורדות → טכנולוגיה מרוויחה'),
+    # USD
+    ('DX-Y.NYB', 1, ['XLK', 'XLI'],      'negative',  'דולר חזק → פוגע ביצואנים'),
+    ('DX-Y.NYB', -1, ['XLK', 'XLB'],     'positive',  'דולר חלש → יצואנים מרוויחים'),
+]
+
+# VIX level interpretation
+VIX_LEVELS = [
+    (35, 'קיצוני',   'extreme', 'פאניקה בשוק — סיכון גבוה מאוד'),
+    (25, 'גבוה',     'high',    'פחד מוגבר — תנודתיות חריגה'),
+    (20, 'מוגבר',    'elevated','תנודתיות מעל הממוצע'),
+    (15, 'רגיל',     'normal',  'שוק רגוע יחסית'),
+    (0,  'נמוך',     'low',     'שאננות — זהירות מפיכה'),
+]
+
 
 # ── 1a. Sector ETF Performance (ETFs only) ───────────────────────────────────────
 
@@ -765,6 +821,193 @@ def _compute_market_pulse(sectors: List[dict], spy_data: Optional[dict]) -> dict
     return pulse
 
 
+# ── 9. Macro Indicators (VIX, Gold, Oil, Rates, USD) ────────────────────────────
+
+def _fetch_macro_indicators() -> dict:
+    """
+    Fetch key macro indicators with price + 1D change.
+    Returns dict with indicator data + VIX level interpretation + overall risk assessment.
+    """
+    tickers = list(MACRO_TICKERS.keys())
+    indicators = []
+    try:
+        data = yf.download(
+            tickers,
+            period='5d',
+            interval='1d',
+            progress=False,
+            timeout=20,
+            auto_adjust=True,
+            threads=False,  # sequential to avoid rate limits
+        )
+        close = data.get('Close', data) if hasattr(data, 'get') else data
+
+        for t, meta in MACRO_TICKERS.items():
+            try:
+                prices = close[t].dropna()
+                if len(prices) >= 2:
+                    prev = float(prices.iloc[-2])
+                    curr = float(prices.iloc[-1])
+                    chg = (curr - prev) / prev * 100 if prev else 0.0
+
+                    # 5-day change if available
+                    w_chg = None
+                    if len(prices) >= 5:
+                        w_ref = float(prices.iloc[-5])
+                        w_chg = round((curr - w_ref) / w_ref * 100, 2) if w_ref else None
+
+                    entry = {
+                        'ticker': t,
+                        'name': meta['name'],
+                        'label': meta['label'],
+                        'icon': meta['icon'],
+                        'type': meta['type'],
+                        'price': round(curr, 2),
+                        'change_pct': round(chg, 2),
+                        'w1_change': w_chg,
+                    }
+                    indicators.append(entry)
+            except Exception:
+                pass
+
+    except Exception as e:
+        print(f"[SectorBriefing] macro indicators fetch error: {e}")
+
+    # VIX level interpretation
+    vix_data = next((i for i in indicators if i['ticker'] == '^VIX'), None)
+    vix_level = None
+    if vix_data:
+        vix_price = vix_data['price']
+        for threshold, name, key, desc in VIX_LEVELS:
+            if vix_price >= threshold:
+                vix_level = {
+                    'level': key,
+                    'name': name,
+                    'description': desc,
+                    'value': vix_price,
+                }
+                break
+
+    # Overall risk assessment
+    risk_signals = []
+    if vix_data and vix_data['price'] >= 25:
+        risk_signals.append('VIX גבוה')
+    if vix_data and vix_data['change_pct'] > 10:
+        risk_signals.append('VIX זינוק')
+
+    gold = next((i for i in indicators if i['ticker'] == 'GC=F'), None)
+    if gold and gold['change_pct'] > 2:
+        risk_signals.append('זהב עולה (risk-off)')
+
+    oil = next((i for i in indicators if i['ticker'] == 'CL=F'), None)
+    if oil and abs(oil['change_pct']) > 3:
+        risk_signals.append(f'נפט {"קופץ" if oil["change_pct"] > 0 else "צונח"}')
+
+    rates = next((i for i in indicators if i['ticker'] == '^TNX'), None)
+    if rates and abs(rates['change_pct']) > 3:
+        risk_signals.append(f'תשואות {"זינוק" if rates["change_pct"] > 0 else "צניחה"}')
+
+    if len(risk_signals) >= 3:
+        risk_level = 'high'
+        risk_label = 'סיכון גבוה — תנאי שוק קשים'
+    elif len(risk_signals) >= 1:
+        risk_level = 'elevated'
+        risk_label = 'סיכון מוגבר — ' + ' + '.join(risk_signals[:2])
+    else:
+        risk_level = 'normal'
+        risk_label = 'סביבה נורמלית'
+
+    return {
+        'indicators': indicators,
+        'vix_level': vix_level,
+        'risk': {
+            'level': risk_level,
+            'label': risk_label,
+            'signals': risk_signals,
+        },
+    }
+
+
+# ── 10. Sector Impact Analysis ──────────────────────────────────────────────────
+
+def _compute_sector_impacts(macro_data: dict) -> Dict[str, List[dict]]:
+    """
+    Based on macro indicator moves, compute expected sector impacts.
+    Returns {etf: [{indicator, impact, explanation}]}.
+    """
+    if not macro_data or not macro_data.get('indicators'):
+        return {}
+
+    indicator_changes = {i['ticker']: i['change_pct'] for i in macro_data['indicators']}
+    impacts: Dict[str, List[dict]] = {}
+
+    for ticker, threshold, etfs, impact, explanation in IMPACT_RULES:
+        chg = indicator_changes.get(ticker)
+        if chg is None:
+            continue
+
+        # Positive threshold = indicator must be UP by that much
+        # Negative threshold = indicator must be DOWN by that much
+        triggered = False
+        if threshold > 0 and chg >= threshold:
+            triggered = True
+        elif threshold < 0 and chg <= threshold:
+            triggered = True
+
+        if triggered:
+            for etf in etfs:
+                if etf not in impacts:
+                    impacts[etf] = []
+                indicator_meta = MACRO_TICKERS.get(ticker, {})
+                impacts[etf].append({
+                    'indicator': indicator_meta.get('name', ticker),
+                    'indicator_icon': indicator_meta.get('icon', ''),
+                    'impact': impact,
+                    'explanation': explanation,
+                    'change_pct': round(chg, 2),
+                })
+
+    return impacts
+
+
+# ── 11. Market-Wide News ─────────────────────────────────────────────────────────
+
+def _fetch_market_news() -> List[dict]:
+    """
+    Fetch broad market-moving news from major ETFs (SPY, QQQ, DIA).
+    Returns list of {title, source, ticker, pub_date} with Hebrew translation.
+    """
+    import concurrent.futures
+    market_tickers = ['SPY', 'QQQ', 'DIA']
+    all_news = []
+    seen_titles = set()
+
+    for ticker in market_tickers:
+        items = _fetch_news_for_ticker(ticker, max_items=4)
+        for item in items:
+            # Deduplicate
+            if item['title'] not in seen_titles:
+                seen_titles.add(item['title'])
+                all_news.append(item)
+
+    # Sort by pub_date (newest first)
+    def parse_date(n):
+        try:
+            from datetime import datetime as _dt
+            return _dt.fromisoformat(n.get('pub_date', '').replace('Z', '+00:00'))
+        except Exception:
+            return datetime.min
+    all_news.sort(key=parse_date, reverse=True)
+
+    # Keep top 8
+    all_news = all_news[:8]
+
+    # Translate to Hebrew
+    _translate_titles(all_news)
+
+    return all_news
+
+
 # ── On-Demand Per-Sector Movers ─────────────────────────────────────────────────
 
 async def get_stocks_for_sector(finviz_filter: str) -> List[dict]:
@@ -800,6 +1043,8 @@ async def get_sector_briefing() -> dict:
     global _stocks_cache, _stocks_cache_at, _stocks_sector
     global _insider_cache, _insider_cache_at
     global _news_cache, _news_cache_at
+    global _macro_cache, _macro_cache_at
+    global _market_news_cache, _market_news_cache_at
 
     now = _time.time()
 
@@ -834,6 +1079,10 @@ async def get_sector_briefing() -> dict:
     insider_stale = _insider_cache is None or (now - _insider_cache_at) >= _INSIDER_CACHE_TTL
     news_stale = not _news_cache or (now - _news_cache_at) >= _NEWS_CACHE_TTL
 
+    # ── Macro & market news staleness ─────────────────────────────────────────
+    macro_stale = _macro_cache is None or (now - _macro_cache_at) >= _MACRO_TTL
+    market_news_stale = _market_news_cache is None or (now - _market_news_cache_at) >= _MARKET_NEWS_TTL
+
     # ── Launch independent fetches concurrently ───────────────────────────────
     drivers_task = None
     multi_tf_task = None
@@ -841,6 +1090,8 @@ async def get_sector_briefing() -> dict:
     stocks_task = None
     insider_task = None
     news_task = None
+    macro_task = None
+    market_news_task = None
 
     if drivers_stale:
         print('[SectorBriefing] Refreshing drivers...')
@@ -886,6 +1137,20 @@ async def get_sector_briefing() -> dict:
         print(f'[SectorBriefing] Refreshing news for {top_etfs}...')
         news_task = asyncio.ensure_future(asyncio.wait_for(
             asyncio.to_thread(_fetch_sector_news, top_etfs),
+            timeout=25,
+        ))
+
+    if macro_stale:
+        print('[SectorBriefing] Refreshing macro indicators...')
+        macro_task = asyncio.ensure_future(asyncio.wait_for(
+            asyncio.to_thread(_fetch_macro_indicators),
+            timeout=25,
+        ))
+
+    if market_news_stale:
+        print('[SectorBriefing] Refreshing market news...')
+        market_news_task = asyncio.ensure_future(asyncio.wait_for(
+            asyncio.to_thread(_fetch_market_news),
             timeout=25,
         ))
 
@@ -968,6 +1233,32 @@ async def get_sector_briefing() -> dict:
         except Exception as e:
             print(f'[SectorBriefing] news fetch error: {e}')
 
+    if macro_task is not None:
+        try:
+            new_macro = await macro_task
+            if new_macro:
+                _macro_cache = new_macro
+                _macro_cache_at = _time.time()
+        except (asyncio.TimeoutError, FuturesTimeout):
+            print('[SectorBriefing] macro indicators timeout')
+        except Exception as e:
+            print(f'[SectorBriefing] macro indicators error: {e}')
+
+    if market_news_task is not None:
+        try:
+            new_mnews = await market_news_task
+            if new_mnews is not None:
+                _market_news_cache = new_mnews
+                _market_news_cache_at = _time.time()
+        except (asyncio.TimeoutError, FuturesTimeout):
+            print('[SectorBriefing] market news timeout')
+        except Exception as e:
+            print(f'[SectorBriefing] market news error: {e}')
+
+    # ── Compute sector impacts from macro data ──────────────────────────────────
+    macro_data = _macro_cache or {}
+    sector_impacts = _compute_sector_impacts(macro_data) if macro_data else {}
+
     # ── Merge all data into sectors ─────────────────────────────────────────────
     multi_tf = _multi_tf_cache or {}
     sparklines = _sparkline_cache or {}
@@ -1013,6 +1304,9 @@ async def get_sector_briefing() -> dict:
         else:
             entry['group'] = 'other'
 
+        # Macro-driven sector impacts
+        entry['impacts'] = sector_impacts.get(etf, [])
+
         sectors_full.append(entry)
 
     sector_stocks = _stocks_cache or []
@@ -1049,12 +1343,17 @@ async def get_sector_briefing() -> dict:
         'insider_trades':  insider_trades,
         'rotation':        rotation,
         'market_pulse':    pulse,
+        'macro':           macro_data,
+        'market_news':     _market_news_cache or [],
     }
 
     top_name = result['top_sector']['name'] if result['top_sector'] else 'none'
+    vix_info = ''
+    if macro_data and macro_data.get('vix_level'):
+        vix_info = f', VIX={macro_data["vix_level"]["value"]:.1f}({macro_data["vix_level"]["name"]})'
     print(f'[SectorBriefing] Done — top: {top_name}, '
           f'stocks: {len(sector_stocks)}, insiders: {len(insider_trades)}, '
-          f'rotation: {rotation["signal"]}')
+          f'rotation: {rotation["signal"]}{vix_info}')
     return result
 
 
@@ -1063,6 +1362,7 @@ def invalidate_cache() -> None:
     global _etf_cache_at, _drivers_cache_at, _stocks_cache_at
     global _insider_cache_at, _news_cache_at
     global _multi_tf_cache_at, _sparkline_cache_at
+    global _macro_cache_at, _market_news_cache_at
     _etf_cache_at = 0.0
     _drivers_cache_at = 0.0
     _stocks_cache_at = 0.0
@@ -1070,3 +1370,5 @@ def invalidate_cache() -> None:
     _news_cache_at = 0.0
     _multi_tf_cache_at = 0.0
     _sparkline_cache_at = 0.0
+    _macro_cache_at = 0.0
+    _market_news_cache_at = 0.0

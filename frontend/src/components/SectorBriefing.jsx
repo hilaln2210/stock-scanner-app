@@ -147,6 +147,141 @@ function VolumeBadge({ ratio }) {
   );
 }
 
+// ── Macro Indicators Strip ───────────────────────────────────────────────────────
+
+function MacroStrip({ macro }) {
+  if (!macro?.indicators?.length) return null;
+
+  const riskColors = {
+    high: 'bg-red-950/60 border-red-600/50 text-red-300',
+    elevated: 'bg-amber-950/50 border-amber-700/40 text-amber-300',
+    normal: 'bg-slate-800/50 border-slate-700/40 text-slate-400',
+  };
+
+  const vixLevelColors = {
+    extreme: 'text-red-300 bg-red-900/60',
+    high: 'text-red-400 bg-red-950/50',
+    elevated: 'text-amber-400 bg-amber-950/50',
+    normal: 'text-emerald-400 bg-emerald-950/50',
+    low: 'text-blue-400 bg-blue-950/50',
+  };
+
+  const risk = macro.risk || {};
+  const vix = macro.vix_level;
+
+  return (
+    <div className="space-y-2">
+      {/* Risk Alert Banner */}
+      {risk.level !== 'normal' && (
+        <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${riskColors[risk.level] || riskColors.normal}`}>
+          <AlertCircle size={14} className="shrink-0" />
+          <span className="text-xs font-medium">{risk.label}</span>
+          {risk.signals?.length > 0 && (
+            <div className="flex gap-1.5 mr-auto">
+              {risk.signals.map((s, i) => (
+                <span key={i} className="text-[9px] bg-black/20 rounded px-1.5 py-0.5">{s}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Indicator Cards */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {macro.indicators.map(ind => (
+          <div key={ind.ticker}
+            className={`shrink-0 rounded-xl border px-3 py-2 min-w-[110px]
+              ${ind.type === 'fear' && vix
+                ? `border-slate-700/40 ${vixLevelColors[vix.level] || 'bg-slate-800/40'}`
+                : chgBg(ind.type === 'fear' ? -ind.change_pct : ind.change_pct)
+              }`}
+          >
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <span className="text-sm">{ind.icon}</span>
+              <span className="text-[10px] text-slate-400 font-medium">{ind.label}</span>
+            </div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-sm font-bold text-white">
+                {ind.ticker === '^TNX' ? `${ind.price.toFixed(2)}%` : `$${ind.price.toLocaleString()}`}
+              </span>
+              <span className={`text-xs font-bold ${chgColor(ind.type === 'fear' ? -ind.change_pct : ind.change_pct)}`}>
+                {fmtChg(ind.change_pct)}
+              </span>
+            </div>
+            {ind.w1_change != null && (
+              <div className="text-[9px] text-slate-500 mt-0.5">
+                שבועי: <span className={chgColor(ind.type === 'fear' ? -ind.w1_change : ind.w1_change)}>{fmtChg(ind.w1_change)}</span>
+              </div>
+            )}
+            {/* VIX level badge */}
+            {ind.type === 'fear' && vix && (
+              <div className="text-[9px] font-medium mt-1">{vix.description}</div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Market News Feed ────────────────────────────────────────────────────────────
+
+function MarketNewsFeed({ news }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!news?.length) return null;
+
+  const shown = expanded ? news : news.slice(0, 3);
+
+  return (
+    <div className="bg-slate-900/60 border border-slate-700/50 rounded-2xl overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-slate-700/40 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Newspaper size={14} className="text-blue-400" />
+          <h3 className="text-sm font-semibold text-blue-300">חדשות שוק קריטיות</h3>
+        </div>
+        {news.length > 3 && (
+          <button onClick={() => setExpanded(!expanded)} className="text-[10px] text-slate-500 hover:text-slate-300">
+            {expanded ? 'הצג פחות' : `עוד ${news.length - 3}`}
+          </button>
+        )}
+      </div>
+      <div className="divide-y divide-slate-700/20">
+        {shown.map((n, i) => (
+          <div key={i} className="px-4 py-2 hover:bg-slate-800/20 transition-colors">
+            <p className="text-[12px] text-slate-200 leading-snug">{n.title}</p>
+            <div className="flex gap-2 mt-0.5">
+              {n.ticker && <span className="text-[9px] text-blue-400/70 font-medium">{n.ticker}</span>}
+              {n.source && <span className="text-[9px] text-slate-600">{n.source}</span>}
+              {n.pub_date && <span className="text-[9px] text-slate-600">{fmtTime(n.pub_date)}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Sector Impact Badges ────────────────────────────────────────────────────────
+
+function ImpactBadges({ impacts }) {
+  if (!impacts?.length) return null;
+  return (
+    <div className="flex flex-wrap gap-1 mt-1">
+      {impacts.map((imp, i) => (
+        <span key={i} className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-0.5
+          ${imp.impact === 'positive'
+            ? 'text-emerald-300 bg-emerald-950/50'
+            : 'text-red-300 bg-red-950/50'
+          }`}
+          title={imp.explanation}
+        >
+          {imp.indicator_icon} {imp.indicator} {imp.impact === 'positive' ? '+' : '-'}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // ── Rotation Signal ─────────────────────────────────────────────────────────────
 
 function RotationSignal({ rotation }) {
@@ -289,6 +424,9 @@ function HeatmapTile({ s, tf, isExpanded, onToggle }) {
         )}
       </div>
 
+      {/* Macro impact badges */}
+      <ImpactBadges impacts={s.impacts} />
+
       {/* Bottom: ETF + Volume + drivers hint */}
       <div className="flex items-center justify-between mt-1.5">
         <span className="text-[10px] text-slate-500">{s.etf} ${s.price}</span>
@@ -346,6 +484,23 @@ function SectorDetail({ sector, stocks, isLoadingStocks, onLoadStocks }) {
                 <span className={`ml-1 font-bold ${chgColor(d.change_pct)}`}>{fmtChg(d.change_pct)}</span>
               </span>
             ))}
+          </div>
+        )}
+
+        {/* Macro-driven impacts */}
+        {sector.impacts?.length > 0 && (
+          <div className="mt-2">
+            <span className="text-[10px] text-slate-500 block mb-1">השפעות מאקרו:</span>
+            <div className="space-y-1">
+              {sector.impacts.map((imp, i) => (
+                <div key={i} className={`flex items-center gap-2 text-[11px] px-2 py-1 rounded-lg
+                  ${imp.impact === 'positive' ? 'bg-emerald-950/40 text-emerald-300' : 'bg-red-950/40 text-red-300'}`}>
+                  <span>{imp.indicator_icon}</span>
+                  <span>{imp.explanation}</span>
+                  <span className="text-[9px] opacity-60 mr-auto">{fmtChg(imp.change_pct)}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -517,6 +672,8 @@ export default function SectorBriefing() {
   const insiderTrades  = data?.insider_trades || [];
   const rotation       = data?.rotation;
   const pulse          = data?.market_pulse;
+  const macro          = data?.macro;
+  const marketNews     = data?.market_news    || [];
   const generatedAt    = data?.generated_at;
 
   // Sort sectors by selected timeframe
@@ -657,6 +814,9 @@ export default function SectorBriefing() {
 
       {data && (
         <>
+          {/* ── Macro Indicators ──────────────────────────────────────────────── */}
+          <MacroStrip macro={macro} />
+
           {/* ── Market Pulse + Rotation ─────────────────────────────────────────── */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
             <div className="lg:col-span-2">
@@ -664,6 +824,9 @@ export default function SectorBriefing() {
             </div>
             <RotationSignal rotation={rotation} />
           </div>
+
+          {/* ── Market News ────────────────────────────────────────────────────── */}
+          <MarketNewsFeed news={marketNews} />
 
           {/* ── Sector Heatmap / List ──────────────────────────────────────────── */}
           {viewMode === 'heatmap' ? (
