@@ -58,7 +58,7 @@ def _get_live_price(ticker: str) -> Tuple[Optional[float], Optional[str]]:
         hist = stock.history(period='1d', interval='1m', prepost=True, timeout=6)
         if hist is None or hist.empty:
             # fallback: 5m bars
-            hist = stock.history(period='2d', interval='5m', prepost=True, timeout=6)
+            hist = stock.history(period='5d', interval='5m', prepost=True, timeout=6)
         if hist is not None and not hist.empty:
             price = round(float(hist['Close'].iloc[-1]), 2)
             ts = hist.index[-1]

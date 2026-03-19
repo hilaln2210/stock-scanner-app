@@ -259,7 +259,7 @@ def _get_news_ticker_changes(tickers: set) -> dict:
         try:
             import yfinance as _yf
             tickers_str = ' '.join(remaining)
-            df = _yf.download(tickers_str, period='2d', interval='1d', progress=False, timeout=6)
+            df = _yf.download(tickers_str, period='5d', interval='1d', progress=False, timeout=6)
             if df is not None and not df.empty:
                 close = df.get('Close')
                 if close is not None:

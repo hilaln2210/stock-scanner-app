@@ -232,11 +232,12 @@ def _fetch_live_prices_batch(tickers: List[str]) -> Dict[str, dict]:
         t = yf.Ticker(ticker)
         return ticker, _get_live_price(t)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-        futures = {pool.submit(_get, t): t for t in tickers[:15]}
-        for future in concurrent.futures.as_completed(futures, timeout=12):
+    unique = list(dict.fromkeys(tickers))[:15]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {pool.submit(_get, t): t for t in unique}
+        for future in concurrent.futures.as_completed(futures, timeout=15):
             try:
-                t, data = future.result(timeout=3)
+                t, data = future.result(timeout=4)
                 if data and 'price' in data:
                     result[t] = data
             except Exception:
@@ -259,9 +260,9 @@ def _fetch_etf_only() -> List[dict]:
         return etf, _get_live_price(t)
 
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
             futures = {pool.submit(_get_etf_data, etf): etf for etf in etf_tickers}
-            for future in concurrent.futures.as_completed(futures, timeout=12):
+            for future in concurrent.futures.as_completed(futures, timeout=15):
                 etf = futures[future]
                 try:
                     _, data = future.result(timeout=3)
@@ -312,21 +313,16 @@ def _fetch_etf_only() -> List[dict]:
 def _fetch_drivers() -> Dict[str, float]:
     """
     Fetch today's % change for the 33 unique top-holding tickers.
+    Uses live prices for top 15, batch download for the rest.
     Returns {ticker: change_pct}.
     """
     holding_tickers = list({t for holdings in ETF_TOP_HOLDINGS.values() for t in holdings})
     result: Dict[str, float] = {}
-    try:
-        data = yf.download(
-            holding_tickers,
-            period='5d',
-            interval='1d',
-            progress=False,
-            timeout=15,
-            auto_adjust=True,
-        )
-        close = data.get('Close', data) if hasattr(data, 'get') else data
 
+    # Batch download all — fast and memory-friendly
+    try:
+        data = yf.download(holding_tickers, period='5d', interval='1d', progress=False, timeout=12, auto_adjust=True)
+        close = data.get('Close', data) if hasattr(data, 'get') else data
         for t in holding_tickers:
             try:
                 prices = close[t].dropna()
@@ -335,7 +331,6 @@ def _fetch_drivers() -> Dict[str, float]:
                     result[t] = round((c - p) / p * 100, 2) if p else 0.0
             except Exception:
                 pass
-
     except Exception as e:
         print(f"[SectorBriefing] drivers fetch error: {e}")
 
@@ -847,35 +842,27 @@ def _fetch_insider_enrichment(tickers: List[str]) -> Dict[str, dict]:
     unique = list(dict.fromkeys(tickers))[:30]
     result: Dict[str, dict] = {}
 
-    # Phase 1: Price + change from download (fast, batch)
-    try:
-        data = yf.download(
-            unique,
-            period='5d',
-            interval='1d',
-            progress=False,
-            timeout=12,
-            auto_adjust=True,
-        )
-        close = data.get('Close', data) if hasattr(data, 'get') else data
-        for t in unique:
-            try:
-                prices = close[t].dropna() if len(unique) > 1 else close.dropna()
-                if len(prices) >= 2:
-                    p, c = float(prices.iloc[-2]), float(prices.iloc[-1])
-                    result[t] = {
-                        'change_pct': round((c - p) / p * 100, 2) if p else 0.0,
-                        'price': round(c, 2),
-                    }
-                elif len(prices) == 1:
-                    result[t] = {
-                        'change_pct': 0.0,
-                        'price': round(float(prices.iloc[-1]), 2),
-                    }
-            except Exception:
-                pass
-    except Exception as e:
-        print(f'[SectorBriefing] insider price fetch error: {e}')
+    # Phase 1: Live prices (pre/post/regular market)
+    live = _fetch_live_prices_batch(unique[:15])
+    for t, d in live.items():
+        result[t] = {'change_pct': d['change_pct'], 'price': d['price']}
+
+    # Fallback for tickers missing from live fetch
+    missing = [t for t in unique if t not in result]
+    if missing:
+        try:
+            data = yf.download(missing, period='5d', interval='1d', progress=False, timeout=12, auto_adjust=True)
+            close = data.get('Close', data) if hasattr(data, 'get') else data
+            for t in missing:
+                try:
+                    prices = close[t].dropna() if len(missing) > 1 else close.dropna()
+                    if len(prices) >= 2:
+                        p, c = float(prices.iloc[-2]), float(prices.iloc[-1])
+                        result[t] = {'change_pct': round((c - p) / p * 100, 2) if p else 0.0, 'price': round(c, 2)}
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f'[SectorBriefing] insider price fallback error: {e}')
 
     # Phase 2: Full company intel from Ticker.info (threaded)
     import concurrent.futures
