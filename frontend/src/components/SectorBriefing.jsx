@@ -1054,8 +1054,11 @@ function InsiderRow({ t }) {
       <div className="flex-1 min-w-0">
         <div className="text-xs text-slate-200 truncate">{t.insider || t.company || '—'}</div>
         <div className="text-[10px] text-slate-500 truncate">{t.title || ''}</div>
-        {t.why && (
+        {t.why && t.why !== 'No clear catalyst' && (
           <div className="text-[10px] text-amber-400/70 mt-0.5 leading-snug">{t.why}</div>
+        )}
+        {t.why === 'No clear catalyst' && (
+          <div className="text-[10px] text-slate-500/50 mt-0.5">אין קטליסט ברור</div>
         )}
       </div>
       {/* Value + date */}

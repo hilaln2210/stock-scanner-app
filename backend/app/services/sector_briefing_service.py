@@ -577,22 +577,143 @@ async def _fetch_insider_trades(session: aiohttp.ClientSession) -> List[dict]:
 
 # ── 4. Insider Why Analysis ──────────────────────────────────────────────────────
 
+# Catalyst keyword patterns — ordered by specificity
+_CATALYST_PATTERNS = [
+    # FDA / biotech approvals
+    (['fda approv', 'fda clear', 'nda approv', 'pdufa', 'breakthrough therap',
+      'fast track', 'priority review', 'eua', 'emergency use'],
+     'fda'),
+    # Earnings / guidance
+    (['beat estimat', 'beats estimat', 'earnings beat', 'revenue beat',
+      'raised guidance', 'raises guidance', 'upside guidance', 'record revenue',
+      'record earnings', 'record profit', 'strong quarter', 'blowout quarter',
+      'eps beat', 'quarterly results'],
+     'earnings_beat'),
+    (['earnings miss', 'revenue miss', 'misses estimat', 'lowered guidance',
+      'cuts guidance', 'weak quarter', 'disappointing'],
+     'earnings_miss'),
+    # Partnerships / contracts / deals
+    (['partnership', 'strategic alliance', 'collaborat', 'licensing deal',
+      'license agreement', 'joint venture', 'distribution deal',
+      'government contract', 'defense contract', 'awarded contract',
+      'supply agreement', 'multi-year deal', 'billion dollar deal',
+      'major contract'],
+     'deal'),
+    # M&A / buyout
+    (['acquisition', 'acquire', 'merger', 'buyout', 'takeover', 'tender offer',
+      'goes private', 'take private'],
+     'ma'),
+    # Analyst upgrades
+    (['upgrade', 'price target raised', 'raises price target', 'initiates coverage',
+      'outperform', 'overweight'],
+     'upgrade'),
+    (['downgrade', 'price target cut', 'lowers price target', 'underperform',
+      'underweight'],
+     'downgrade'),
+    # Clinical trials (biotech)
+    (['phase 3', 'phase iii', 'pivotal trial', 'positive data', 'trial success',
+      'primary endpoint', 'topline results', 'clinical data'],
+     'trial_data'),
+    # Buyback / dividend
+    (['buyback', 'share repurchase', 'repurchase program', 'dividend increase',
+      'special dividend', 'dividend hike'],
+     'buyback'),
+    # Sector / macro
+    (['tariff', 'trade war', 'sanctions', 'stimulus', 'rate cut', 'rate hike',
+      'inflation data', 'jobs report', 'fed meeting'],
+     'macro'),
+]
+
+
+def _classify_news_catalyst(news_items: List[dict]) -> Optional[str]:
+    """
+    Analyze recent news headlines and return a short, specific catalyst reason.
+    Returns None if no clear catalyst found.
+    """
+    if not news_items:
+        return None
+
+    for item in news_items:
+        title_lower = (item.get('title') or '').lower()
+        if not title_lower:
+            continue
+
+        for keywords, cat in _CATALYST_PATTERNS:
+            if any(kw in title_lower for kw in keywords):
+                title = item['title']
+                source = item.get('source', '')
+                src_tag = f' ({source})' if source else ''
+
+                if cat == 'fda':
+                    return f'אישור/התקדמות FDA — {title}{src_tag}'
+                elif cat == 'earnings_beat':
+                    return f'דוחות חזקים — {title}{src_tag}'
+                elif cat == 'earnings_miss':
+                    return f'קונה אחרי דוחות חלשים (contrarian) — {title}{src_tag}'
+                elif cat == 'deal':
+                    return f'עסקה/שותפות חדשה — {title}{src_tag}'
+                elif cat == 'ma':
+                    return f'מיזוג/רכישה — {title}{src_tag}'
+                elif cat == 'upgrade':
+                    return f'שדרוג אנליסט — {title}{src_tag}'
+                elif cat == 'downgrade':
+                    return f'קונה אחרי דאונגרייד (contrarian) — {title}{src_tag}'
+                elif cat == 'trial_data':
+                    return f'תוצאות ניסוי קליני — {title}{src_tag}'
+                elif cat == 'buyback':
+                    return f'תוכנית רכישה עצמית/דיבידנד — {title}{src_tag}'
+                elif cat == 'macro':
+                    return f'אירוע מאקרו משפיע — {title}{src_tag}'
+
+    return None
+
+
+def _fetch_insider_news_batch(tickers: List[str]) -> Dict[str, List[dict]]:
+    """
+    Batch-fetch recent news for insider tickers (threaded, max 3 concurrent).
+    Returns {ticker: [news_items]}.
+    """
+    import concurrent.futures
+    if not tickers:
+        return {}
+
+    unique = list(dict.fromkeys(tickers))[:15]
+    result: Dict[str, List[dict]] = {}
+
+    def _get_news(ticker):
+        return ticker, _fetch_news_for_ticker(ticker, max_items=5)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {pool.submit(_get_news, t): t for t in unique}
+        for future in concurrent.futures.as_completed(futures, timeout=15):
+            try:
+                t, news = future.result(timeout=3)
+                if news:
+                    result[t] = news
+            except Exception:
+                pass
+
+    return result
+
+
 def _insider_why(trade: dict) -> str:
     """
-    Generate a clear Hebrew explanation of WHY this insider is buying.
-    Uses company intel (industry, business, analyst targets, earnings)
-    to build a real reason, not just "SEC filing".
+    Generate a specific Hebrew explanation of WHY this insider is buying.
+    Priority: real catalyst from news > earnings/guidance > analyst targets > price action.
+    Rules: max 1-2 lines, must be tied to a real catalyst or data.
     """
+    # Priority 1: News-based catalyst (most specific)
+    news_catalyst = trade.get('_news_catalyst')
+    if news_catalyst:
+        return news_catalyst
+
     title = (trade.get('title') or '').upper()
     chg = trade.get('change_pct')
     mcap_str = trade.get('market_cap_live', '')
     val_str = trade.get('value', '')
-    industry = trade.get('industry', '')
-    business = trade.get('business', '')
     target = trade.get('target_price')
     upside = trade.get('upside_pct')
     earnings = trade.get('earnings_date')
-    recommendation = trade.get('recommendation')
 
     # Parse purchase value
     try:
@@ -600,15 +721,7 @@ def _insider_why(trade: dict) -> str:
     except (ValueError, TypeError):
         purchase_val = 0
 
-    parts = []
-
-    # 1. What the company does
-    if business:
-        parts.append(business)
-    elif industry:
-        parts.append(f'חברת {industry}')
-
-    # 2. Why NOW — earnings / target / recommendation
+    # Priority 2: Earnings timing — strongest non-news signal
     if earnings:
         from datetime import date
         try:
@@ -616,37 +729,17 @@ def _insider_why(trade: dict) -> str:
             ed = date.fromisoformat(earnings)
             days = (ed - today).days
             if days == 0:
-                parts.append('דוחות היום — קנה לפני שהתוצאות יוצאות')
+                return 'דוחות היום — קנה לפני פרסום התוצאות'
             elif 0 < days <= 7:
-                parts.append(f'דוחות עוד {days} ימים — כנראה יודע שהם יהיו טובים')
-            elif 0 < days <= 30:
-                parts.append(f'דוחות ב-{earnings} — צובר לפני')
+                who = 'CEO' if 'CEO' in title else 'CFO' if 'CFO' in title else 'insider'
+                return f'דוחות עוד {days} ימים — {who} צובר לפני הדוחות'
+            elif 0 < days <= 14:
+                return f'דוחות ב-{earnings} — רוכש 2 שבועות לפני'
         except (ValueError, TypeError):
             pass
 
-    if target and upside:
-        if upside > 100:
-            parts.append(f'אנליסטים נותנים יעד ${target} — פוטנציאל של {upside:.0f}% מכאן')
-        elif upside > 30:
-            parts.append(f'יעד אנליסטים ${target} ({upside:+.0f}%) — קונה מתחת ליעד')
-
-    if recommendation:
-        parts.append(f'המלצת וול סטריט: {recommendation}')
-
-    # 3. Who is buying and what it means
-    if 'CEO' in title:
-        parts.append('ה-CEO שם כסף מהכיס — הוא יודע הכי טוב מה קורה בחברה')
-    elif 'CFO' in title:
-        parts.append('ה-CFO קונה — הוא רואה את המספרים לפני כולם')
-    elif 'COO' in title or 'PRESIDENT' in title:
-        parts.append('הנשיא/מנכ"ל קונה — רואה צמיחה מבפנים')
-    elif 'DIRECTOR' in title:
-        parts.append('דירקטור קונה — חבר הנהלה רואה הזדמנות')
-    elif '10%' in (trade.get('title') or ''):
-        parts.append('בעל שליטה מגדיל אחזקה — משקיע גדול שמאמין בחברה')
-
-    # 4. Purchase size context
-    if mcap_str:
+    # Priority 3: Massive purchase relative to market cap
+    if mcap_str and purchase_val:
         try:
             if mcap_str.endswith('B'):
                 mcap_val = float(mcap_str[:-1]) * 1e9
@@ -654,26 +747,33 @@ def _insider_why(trade: dict) -> str:
                 mcap_val = float(mcap_str[:-1]) * 1e6
             else:
                 mcap_val = None
-            if mcap_val and purchase_val:
+            if mcap_val:
                 pct = (purchase_val / mcap_val) * 100
-                if pct >= 1:
-                    parts.append(f'הקנייה שווה {pct:.1f}% מכל החברה — זה חריג מאוד')
-                elif pct >= 0.1:
-                    parts.append(f'הקנייה שווה {pct:.2f}% מהחברה — משמעותי')
+                if pct >= 0.5:
+                    return f'קנייה חריגה — {pct:.1f}% משווי החברה. סימן חזק לאירוע צפוי'
         except (ValueError, TypeError):
             pass
 
-    # 5. Price action context
-    if chg is not None:
-        if chg < -5:
-            parts.append(f'המניה ירדה {chg:.1f}% — הוא קונה בדיוק כשאחרים בורחים')
-        elif chg > 5:
-            parts.append(f'המניה כבר עלתה {chg:+.1f}% מאז הקנייה')
+    # Priority 4: Analyst target with big upside + dip buying
+    if target and upside and chg is not None:
+        if upside > 50 and chg < -3:
+            return f'קונה בירידה של {chg:.1f}% — יעד אנליסטים ${target} ({upside:+.0f}% פוטנציאל)'
+        elif upside > 80:
+            return f'יעד אנליסטים ${target} — פוטנציאל של {upside:.0f}% מהמחיר הנוכחי'
 
-    if not parts:
-        parts.append('דיווח חובה ל-SEC — מידע מאומת')
+    # Priority 5: Dip buying (significant drop)
+    if chg is not None and chg < -8:
+        who = 'CEO' if 'CEO' in title else 'CFO' if 'CFO' in title else 'Insider'
+        return f'{who} קונה אחרי ירידה של {chg:.1f}% — contrarian buy בתחתית'
 
-    return '. '.join(parts[:4])
+    # Priority 6: Volume breakout (large purchase by C-suite on uptick)
+    if chg is not None and chg > 5 and purchase_val >= 500_000:
+        if 'CEO' in title or 'CFO' in title:
+            who = 'CEO' if 'CEO' in title else 'CFO'
+            return f'{who} שם ${purchase_val:,} אחרי עלייה של {chg:+.1f}% — מצפה להמשך'
+
+    # No clear catalyst
+    return 'No clear catalyst'
 
 
 # ── 4b. Insider Enrichment (yfinance batch) ─────────────────────────────────────
@@ -2465,6 +2565,15 @@ async def get_sector_briefing() -> dict:
                 except (asyncio.TimeoutError, FuturesTimeout):
                     insider_enrichment = {}
 
+                # Fetch recent news for insider tickers (catalyst detection)
+                try:
+                    insider_news = await asyncio.wait_for(
+                        asyncio.to_thread(_fetch_insider_news_batch, insider_tickers),
+                        timeout=18,
+                    )
+                except (asyncio.TimeoutError, FuturesTimeout):
+                    insider_news = {}
+
                 for trade in new_insider:
                     enrich = insider_enrichment.get(trade['ticker'], {})
                     trade['change_pct'] = enrich.get('change_pct')
@@ -2478,7 +2587,11 @@ async def get_sector_briefing() -> dict:
                     trade['earnings_date'] = enrich.get('earnings_date')
                     trade['recommendation'] = enrich.get('recommendation')
 
-                    # Generate 'why' reason using full company intel
+                    # Classify news catalyst for this ticker
+                    ticker_news = insider_news.get(trade['ticker'], [])
+                    trade['_news_catalyst'] = _classify_news_catalyst(ticker_news)
+
+                    # Generate 'why' reason using real catalysts + company intel
                     trade['why'] = _insider_why(trade)
 
                 _insider_cache = new_insider
