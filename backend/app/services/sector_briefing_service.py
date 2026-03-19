@@ -896,12 +896,12 @@ def _fetch_insider_enrichment(tickers: List[str]) -> Dict[str, dict]:
             pass
         return intel
 
-    # Fetch for top tickers (max 15 to be safe)
-    intel_tickers = [t for t in unique if t in result][:15]
+    # Fetch for top tickers (max 8 — Render free plan friendly)
+    intel_tickers = [t for t in unique if t in result][:8]
     if intel_tickers:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
             futures = {pool.submit(_get_company_intel, t): t for t in intel_tickers}
-            for future in concurrent.futures.as_completed(futures, timeout=12):
+            for future in concurrent.futures.as_completed(futures, timeout=10):
                 t = futures[future]
                 try:
                     intel = future.result(timeout=2)
@@ -2594,7 +2594,7 @@ async def get_sector_briefing() -> dict:
                 try:
                     insider_enrichment = await asyncio.wait_for(
                         asyncio.to_thread(_fetch_insider_enrichment, insider_tickers),
-                        timeout=30,
+                        timeout=25,
                     )
                     print(f'[SectorBriefing] Insider enrichment: {len(insider_enrichment)} tickers enriched')
                 except (asyncio.TimeoutError, FuturesTimeout):
