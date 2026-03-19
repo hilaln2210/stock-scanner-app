@@ -214,6 +214,7 @@ def _fetch_etf_only() -> List[dict]:
             progress=False,
             timeout=10,
             auto_adjust=True,
+            prepost=True,
         )
         close = data.get('Close', data) if hasattr(data, 'get') else data
 
@@ -264,6 +265,7 @@ def _fetch_drivers() -> Dict[str, float]:
             progress=False,
             timeout=15,
             auto_adjust=True,
+            prepost=True,
         )
         close = data.get('Close', data) if hasattr(data, 'get') else data
 
@@ -575,12 +577,18 @@ async def _fetch_insider_trades(session: aiohttp.ClientSession) -> List[dict]:
 
 # ── 4. Insider ticker % change (yfinance batch) ────────────────────────────────
 
-def _fetch_insider_changes(tickers: List[str]) -> Dict[str, float]:
-    """Batch-fetch today's % change for a list of tickers. Returns {ticker: chg}."""
+def _fetch_insider_enrichment(tickers: List[str]) -> Dict[str, dict]:
+    """
+    Batch-fetch today's % change + current price + market cap for insider tickers.
+    Uses prepost=True for pre/after-hours data.
+    Returns {ticker: {change_pct, price, market_cap}}.
+    """
     if not tickers:
         return {}
     unique = list(dict.fromkeys(tickers))[:30]
-    result: Dict[str, float] = {}
+    result: Dict[str, dict] = {}
+
+    # Phase 1: Price + change from download (fast, batch)
     try:
         data = yf.download(
             unique,
@@ -589,6 +597,7 @@ def _fetch_insider_changes(tickers: List[str]) -> Dict[str, float]:
             progress=False,
             timeout=12,
             auto_adjust=True,
+            prepost=True,
         )
         close = data.get('Close', data) if hasattr(data, 'get') else data
         for t in unique:
@@ -596,11 +605,52 @@ def _fetch_insider_changes(tickers: List[str]) -> Dict[str, float]:
                 prices = close[t].dropna() if len(unique) > 1 else close.dropna()
                 if len(prices) >= 2:
                     p, c = float(prices.iloc[-2]), float(prices.iloc[-1])
-                    result[t] = round((c - p) / p * 100, 2) if p else 0.0
+                    result[t] = {
+                        'change_pct': round((c - p) / p * 100, 2) if p else 0.0,
+                        'price': round(c, 2),
+                    }
+                elif len(prices) == 1:
+                    result[t] = {
+                        'change_pct': 0.0,
+                        'price': round(float(prices.iloc[-1]), 2),
+                    }
             except Exception:
                 pass
     except Exception as e:
-        print(f'[SectorBriefing] insider changes fetch error: {e}')
+        print(f'[SectorBriefing] insider price fetch error: {e}')
+
+    # Phase 2: Market cap from Ticker.info (threaded, with timeout per ticker)
+    import concurrent.futures
+
+    def _get_mcap(ticker):
+        try:
+            t = yf.Ticker(ticker)
+            info = t.get_info() if hasattr(t, 'get_info') else t.info
+            mcap = info.get('marketCap') or info.get('market_cap')
+            if mcap:
+                if mcap >= 1_000_000_000:
+                    return f'{mcap / 1_000_000_000:.1f}B'
+                elif mcap >= 1_000_000:
+                    return f'{mcap / 1_000_000:.0f}M'
+                return str(mcap)
+        except Exception:
+            pass
+        return None
+
+    # Only fetch market cap for tickers we have price data for (max 20 to be safe)
+    mcap_tickers = [t for t in unique if t in result][:20]
+    if mcap_tickers:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+            futures = {pool.submit(_get_mcap, t): t for t in mcap_tickers}
+            for future in concurrent.futures.as_completed(futures, timeout=8):
+                t = futures[future]
+                try:
+                    mcap = future.result(timeout=1)
+                    if mcap and t in result:
+                        result[t]['market_cap'] = mcap
+                except Exception:
+                    pass
+
     return result
 
 
@@ -1778,15 +1828,18 @@ async def get_sector_briefing() -> dict:
             if new_insider is not None:
                 insider_tickers = list(dict.fromkeys(t['ticker'] for t in new_insider))
                 try:
-                    insider_chg = await asyncio.wait_for(
-                        asyncio.to_thread(_fetch_insider_changes, insider_tickers),
-                        timeout=15,
+                    insider_enrichment = await asyncio.wait_for(
+                        asyncio.to_thread(_fetch_insider_enrichment, insider_tickers),
+                        timeout=20,
                     )
                 except (asyncio.TimeoutError, FuturesTimeout):
-                    insider_chg = {}
+                    insider_enrichment = {}
 
                 for trade in new_insider:
-                    trade['change_pct'] = insider_chg.get(trade['ticker'])
+                    enrich = insider_enrichment.get(trade['ticker'], {})
+                    trade['change_pct'] = enrich.get('change_pct')
+                    trade['current_price'] = enrich.get('price')
+                    trade['market_cap_live'] = enrich.get('market_cap')
 
                 _insider_cache = new_insider
                 _insider_cache_at = _time.time()

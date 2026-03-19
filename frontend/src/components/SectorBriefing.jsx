@@ -941,7 +941,8 @@ function InsiderRow({ t }) {
   return (
     <div className="flex items-center gap-3 px-3 py-2.5 border-b border-slate-700/30 last:border-0
       hover:bg-slate-800/30 transition-colors">
-      <div className="w-20 shrink-0">
+      {/* Ticker + change + price + mcap */}
+      <div className="w-28 shrink-0">
         <div className="flex items-center gap-1.5">
           <span className="text-sm font-bold text-emerald-400">{t.ticker}</span>
           {t.change_pct != null && (
@@ -950,14 +951,24 @@ function InsiderRow({ t }) {
             </span>
           )}
         </div>
+        <div className="flex items-center gap-1.5">
+          {t.current_price && (
+            <span className="text-[10px] text-white font-medium">${t.current_price.toFixed(2)}</span>
+          )}
+          {t.market_cap_live && (
+            <span className="text-[10px] text-slate-500">{t.market_cap_live}</span>
+          )}
+        </div>
         {sig && (
           <div className={`text-[10px] ${sig.color}`}>{sig.text}</div>
         )}
       </div>
+      {/* Insider name + title */}
       <div className="flex-1 min-w-0">
         <div className="text-xs text-slate-200 truncate">{t.insider || t.company || '—'}</div>
         <div className="text-[10px] text-slate-500 truncate">{t.title || ''}</div>
       </div>
+      {/* Value + date */}
       <div className="text-left shrink-0">
         {t.value && <div className="text-xs font-medium text-amber-400">{t.value}</div>}
         {t.date && <div className="text-[10px] text-slate-500">{t.date}</div>}
