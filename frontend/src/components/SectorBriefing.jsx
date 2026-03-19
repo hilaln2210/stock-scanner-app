@@ -282,9 +282,6 @@ function GoldSignals({ signals }) {
     bronze: 'text-slate-400',
   };
 
-  const needsResearch = (s) =>
-    s.detail?.includes('סימן חזק לאירוע צפוי') || s.detail?.includes('קנייה חריגה');
-
   return (
     <div className="bg-slate-900/60 border border-amber-700/30 rounded-2xl overflow-hidden">
       <div className="px-3 sm:px-4 py-2.5 border-b border-amber-700/20 bg-amber-950/20 flex items-center justify-between">
@@ -321,12 +318,12 @@ function GoldSignals({ signals }) {
                   {s.ticker && (
                     <span className="text-[10px] text-slate-600 bg-slate-800/60 rounded px-1">{s.ticker}</span>
                   )}
-                  {needsResearch(s) && s.ticker && (
+                  {s.ticker && (
                     <button
                       onClick={() => setResearchTicker(researchTicker === s.ticker ? null : s.ticker)}
                       className="text-[10px] sm:text-[11px] bg-amber-700/40 hover:bg-amber-600/50 text-amber-200 rounded-lg px-2 py-1 font-bold transition-colors active:scale-95"
                     >
-                      {researchTicker === s.ticker ? '🔬 סגור' : '🔍 חקור אירוע'}
+                      {researchTicker === s.ticker ? '🔬 סגור' : '🔍 חקור'}
                     </button>
                   )}
                 </div>
