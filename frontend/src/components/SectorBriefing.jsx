@@ -407,35 +407,32 @@ function FeatureLegend() {
   const [open, setOpen] = useState(false);
 
   const items = [
-    { icon: '🏛️', label: 'מוסדיים', desc: 'אחוז בעלות מוסדית (קרנות, בנקים). מעל 60% = מניה עם גיבוי מוסדי חזק' },
-    { icon: '📈', label: 'מוסדיים קונים', desc: 'המוסדיים הגדילו אחזקות ברבעון האחרון — סימן לביקוש מוסדי' },
-    { icon: '👔', label: 'מנהלים קונים', desc: 'Insider buying — מנהלי החברה קונים מניות מכספם. סיגנל חזק של ביטחון' },
-    { icon: '🩳', label: 'שורט גבוה', desc: 'מעל 10% Short Float. מעל 20% = פוטנציאל סקוויז אם נפח עולה' },
-    { icon: '💎', label: 'Float קטן', desc: 'פחות מ-20M מניות זמינות למסחר. תנועת מחיר יכולה להיות חדה' },
-    { icon: '▲▲', label: 'הצטברות חזקה', desc: 'נפח ETF גבוה + עלייה + כיוון עקבי לאורך זמן = משקיעים גדולים צוברים' },
-    { icon: '▼▼', label: 'חלוקה חזקה', desc: 'נפח ETF גבוה + ירידה + כיוון שלילי עקבי = משקיעים גדולים מפזרים' },
-    { icon: '😰', label: 'VIX', desc: 'מדד הפחד — מעל 25 = תנודתיות חריגה, מעל 35 = פאניקה בשוק' },
-    { icon: '🛢️', label: 'נפט', desc: 'נפט גולמי — משפיע ישירות על אנרגיה, תעשייה, ותחבורה' },
-    { icon: '🥇', label: 'זהב', desc: 'נכס בטוח — עלייה בזהב = סנטימנט risk-off, משקיעים מחפשים מקלט' },
-    { icon: '📊', label: 'תשואה 10Y', desc: 'תשואת אג"ח 10 שנים — עלייה פוגעת בטכנולוגיה ונדל"ן, מיטיבה עם בנקים' },
+    { label: 'בעלות מוסדית', desc: 'אחוז המניות שמוחזקות על ידי קרנות ובנקי השקעות. מעל 60 אחוז אומר שהמניה מגובה על ידי שחקנים גדולים — הם לא נכנסים בלי לעשות שיעורי בית' },
+    { label: 'מוסדיים מגדילים', desc: 'הקרנות הגדילו את האחזקה שלהן ברבעון האחרון. כשכסף חכם זורם פנימה, שווה לעקוב' },
+    { label: 'מנהלים קונים', desc: 'מנהלי החברה שמים כסף מהכיס שלהם — הם חייבים לדווח על זה ל-SEC. אם CEO קונה, הוא בטוח שהחברה הולכת למקום טוב' },
+    { label: 'שורט גבוה', desc: 'הרבה משקיעים הימרו נגד המניה. כשהמניה עולה, הם נאלצים לקנות בחזרה ולדחוף אותה עוד יותר למעלה — זה נקרא סקוויז' },
+    { label: 'כמות מניות קטנה', desc: 'יש מעט מניות זמינות למסחר. כל קנייה גדולה מזיזה את המחיר בצורה חדה — גם למעלה וגם למטה' },
+    { label: 'כסף נכנס לסקטור', desc: 'נפח מסחר גבוה ב-ETF של הסקטור בזמן שהוא עולה, ובאופן עקבי לאורך שבועות. סימן שמשקיעים גדולים צוברים' },
+    { label: 'כסף יוצא מסקטור', desc: 'נפח מסחר גבוה ב-ETF בזמן ירידה עקבית. המוסדיים מפזרים אחזקות — הם רואים בעיות לפני כולם' },
+    { label: 'מדד הפחד', desc: 'VIX מודד כמה השוק מפחד. מעל 25 זו תנודתיות חריגה, מעל 35 זו פאניקה אמיתית — שווה להקטין סיכון' },
+    { label: 'נפט', desc: 'מחיר הנפט משפיע ישירות על חברות אנרגיה, חברות תעשייה ועלויות הובלה. עלייה חדה בנפט פוגעת ברוב הכלכלה' },
+    { label: 'זהב', desc: 'כשזהב עולה, המשקיעים מחפשים מקלט — הם חוששים ממשהו. ירידה בזהב אומרת שהם מרגישים בטוחים ומוכנים לסכן' },
+    { label: 'תשואת אגרות חוב', desc: 'כשהתשואה ל-10 שנים עולה, בנקים מרוויחים יותר אבל חברות טכנולוגיה ונדל"ן נפגעות כי הלוואות יקרות יותר' },
   ];
 
   return (
     <div className="bg-slate-900/40 border border-slate-700/30 rounded-xl overflow-hidden">
       <button onClick={() => setOpen(!open)}
         className="w-full flex items-center justify-between px-3 py-2 hover:bg-slate-800/30 transition-colors">
-        <span className="text-[11px] text-slate-400 font-medium">מדריך סימנים ואינדיקטורים</span>
+        <span className="text-[11px] text-slate-400 font-medium">מה כל מושג אומר — בעברית פשוטה</span>
         {open ? <ChevronUp size={12} className="text-slate-500" /> : <ChevronDown size={12} className="text-slate-500" />}
       </button>
       {open && (
-        <div className="px-3 pb-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="px-3 pb-3 space-y-2">
           {items.map((item, i) => (
-            <div key={i} className="flex items-start gap-2 text-[11px]">
-              <span className="shrink-0 mt-0.5">{item.icon}</span>
-              <div>
-                <span className="text-slate-200 font-medium">{item.label}</span>
-                <span className="text-slate-500 mr-1">— {item.desc}</span>
-              </div>
+            <div key={i} className="text-[11px]">
+              <span className="text-slate-200 font-semibold">{item.label}: </span>
+              <span className="text-slate-400">{item.desc}</span>
             </div>
           ))}
         </div>
