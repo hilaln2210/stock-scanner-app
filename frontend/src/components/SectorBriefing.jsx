@@ -273,7 +273,7 @@ function GoldSignals({ signals }) {
                   {s.message}
                 </p>
                 {s.detail && (
-                  <p className="text-[10px] text-slate-500 mt-0.5">{s.detail}</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">{s.detail}</p>
                 )}
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-[10px] text-emerald-400/80 font-medium">→ {s.action}</span>
@@ -281,6 +281,12 @@ function GoldSignals({ signals }) {
                     <span className="text-[9px] text-slate-600 bg-slate-800/60 rounded px-1">{s.ticker}</span>
                   )}
                 </div>
+                {s.data_source && (
+                  <div className="text-[9px] text-slate-600 mt-0.5 flex items-center gap-1">
+                    <span className="text-emerald-600">✓</span>
+                    <span>{s.data_source}</span>
+                  </div>
+                )}
               </div>
               {s.level === 'gold' && (
                 <span className="text-[9px] text-amber-500 font-bold shrink-0">GOLD</span>

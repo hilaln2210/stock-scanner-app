@@ -1636,7 +1636,120 @@ def _generate_gold_signals(
     """
     signals = []
 
-    # ── 1. Insider Cluster Buys ────────────────────────────────────────────
+    # Build mover lookup for cross-referencing insider data
+    mover_map: Dict[str, dict] = {}
+    for etf_data in all_movers.values():
+        for m in etf_data.get('movers', []):
+            mover_map[m['ticker']] = m
+
+    # Title significance ranking
+    TITLE_WEIGHT = {
+        'CEO': 5, 'CFO': 4, 'COO': 4, 'CTO': 3, 'President': 4,
+        'Chairman': 4, 'Director': 2, 'VP': 2, 'EVP': 3, 'SVP': 3,
+        'Gen Counsel': 2, 'CMO': 3, 'CIO': 3, 'CAO': 2,
+    }
+
+    def _title_weight(title_str: str) -> tuple:
+        """Returns (weight, hebrew_title) for insider title."""
+        if not title_str:
+            return 1, 'מנהל'
+        title_up = title_str.upper()
+        for key, w in TITLE_WEIGHT.items():
+            if key.upper() in title_up:
+                return w, key
+        if '10%' in title_str or 'Owner' in title_str:
+            return 1, 'בעל שליטה'
+        return 1, title_str[:15]
+
+    def _insider_reason(tk: str, buys: list) -> str:
+        """
+        Cross-reference insider buy with market data to hypothesize WHY.
+        Data sources: SEC Form 4 (verified) × Finviz (institutional) × yfinance (targets).
+        """
+        reasons = []
+        stock_intel = intel.get(tk, {})
+        mover_data = mover_map.get(tk, {})
+
+        # Check if buying before earnings
+        ed = stock_intel.get('earnings_date')
+        if ed:
+            from datetime import date, timedelta
+            try:
+                today = date.today()
+                ed_date = date.fromisoformat(ed)
+                days_to_earn = (ed_date - today).days
+                if 0 <= days_to_earn <= 14:
+                    reasons.append(f'קונה {days_to_earn} ימים לפני דוחות ({ed}) — יודע משהו?')
+                elif days_to_earn < 0 and days_to_earn >= -3:
+                    reasons.append('קנה ממש אחרי דוחות — כנראה תוצאות טובות צפויות')
+            except (ValueError, TypeError):
+                pass
+
+        # Check analyst target vs purchase price
+        target = stock_intel.get('target_price')
+        upside = stock_intel.get('upside_pct')
+        if target and upside and upside > 30:
+            reasons.append(f'קונה מתחת ליעד אנליסטים ${target} ({upside:+.0f}% upside)')
+
+        # Check short float — buying against shorts
+        fs = mover_data.get('float_short') or 0
+        if fs >= 15:
+            reasons.append(f'קונה נגד {fs:.0f}% שורטיסטים — ביטחון שהשורטים טועים')
+        elif fs >= 8:
+            reasons.append(f'שורט {fs:.0f}% — הקנייה מאותתת שהמנהל לא מודאג')
+
+        # Check institutional buying alongside
+        inst_tr = mover_data.get('inst_trans') or 0
+        if inst_tr > 5:
+            reasons.append(f'גם מוסדיים צוברים +{inst_tr:.0f}% — קונסנזוס חכם')
+
+        # Purchase significance vs market cap
+        mcap_str = buys[0].get('market_cap_live', '')
+        if mcap_str:
+            try:
+                if mcap_str.endswith('B'):
+                    mcap_val = float(mcap_str[:-1]) * 1e9
+                elif mcap_str.endswith('M'):
+                    mcap_val = float(mcap_str[:-1]) * 1e6
+                else:
+                    mcap_val = None
+
+                if mcap_val:
+                    total_val = 0
+                    for b in buys:
+                        try:
+                            v = b.get('value', '').replace('$', '').replace(',', '').replace('+', '')
+                            total_val += int(v)
+                        except (ValueError, TypeError):
+                            pass
+                    if total_val > 0:
+                        pct_of_mcap = (total_val / mcap_val) * 100
+                        if pct_of_mcap >= 1:
+                            reasons.append(f'קנייה = {pct_of_mcap:.1f}% משווי החברה — חריג!')
+                        elif pct_of_mcap >= 0.1:
+                            reasons.append(f'קנייה = {pct_of_mcap:.2f}% משווי החברה')
+            except (ValueError, TypeError):
+                pass
+
+        # Change since purchase
+        chg = buys[0].get('change_pct')
+        if chg is not None:
+            if chg < -3:
+                reasons.append(f'המניה ירדה {chg:.1f}% מאז — עדיין מחזיק, לא מודאג')
+            elif chg > 5:
+                reasons.append(f'כבר עלתה {chg:+.1f}% — הקנייה כבר מוכיחה את עצמה')
+
+        if not reasons:
+            # Fallback based on title
+            weight, _ = _title_weight(buys[0].get('title', ''))
+            if weight >= 4:
+                reasons.append('מנהל בכיר שם כסף אישי — אמון גבוה בחברה')
+            else:
+                reasons.append('קנייה מכספי המנהל — חייב לדווח ל-SEC, אמין 100%')
+
+        return ' | '.join(reasons[:3])
+
+    # ── 1. Insider Trades Analysis ─────────────────────────────────────────
     ticker_buys: Dict[str, list] = {}
     for t in insider_trades:
         tk = t.get('ticker', '')
@@ -1646,47 +1759,61 @@ def _generate_gold_signals(
             ticker_buys[tk].append(t)
 
     for tk, buys in ticker_buys.items():
+        total_val = 0
+        for b in buys:
+            try:
+                v = b.get('value', '').replace('$', '').replace(',', '').replace('+', '')
+                total_val += int(v)
+            except (ValueError, TypeError):
+                pass
+
+        mcap = buys[0].get('market_cap_live', '')
+        price = buys[0].get('current_price')
+        price_str = f'${price:.2f}' if price else ''
+        val_str = f'${total_val:,.0f}' if total_val else ''
+        reason = _insider_reason(tk, buys)
+        best_title_w, best_title = max((_title_weight(b.get('title', '')) for b in buys), key=lambda x: x[0])
+
+        # Build detail line (skip None parts)
+        detail_parts = [p for p in [mcap, reason] if p]
+        detail_line = ' | '.join(detail_parts) if detail_parts else reason
+
         if len(buys) >= 2:
-            total_val = 0
-            for b in buys:
-                try:
-                    v = b.get('value', '').replace('$', '').replace(',', '').replace('+', '')
-                    total_val += int(v)
-                except (ValueError, TypeError):
-                    pass
-            val_str = f'${total_val:,.0f}' if total_val else ''
-            mcap = buys[0].get('market_cap_live', '')
-            price = buys[0].get('current_price')
-            price_str = f' (${price:.2f})' if price else ''
+            titles = ', '.join(dict.fromkeys(_title_weight(b.get('title', ''))[1] for b in buys))
             signals.append({
                 'level': 'gold',
                 'icon': '🔥',
-                'message': f'{len(buys)} מנהלים קנו {val_str} ב-{tk}{price_str} תוך 48 שעות',
-                'detail': f'Cluster Buy | {mcap}' if mcap else 'Cluster Buy',
+                'message': f'{len(buys)} מנהלים ({titles}) קנו {val_str} ב-{tk} {price_str}',
+                'detail': detail_line,
                 'ticker': tk,
-                'action': 'עוקבים אחרי מנהלים — סיגנל חזק',
+                'action': 'Cluster Buy — כמה מנהלים קונים יחד = סיגנל חזק',
                 'source': 'insider_cluster',
+                'data_source': 'SEC Form 4 (דיווח חובה)',
             })
-        elif len(buys) == 1:
-            b = buys[0]
-            val = b.get('value', '')
-            try:
-                v = int(val.replace('$', '').replace(',', '').replace('+', ''))
-                if v >= 500_000:
-                    mcap = b.get('market_cap_live', '')
-                    price = b.get('current_price')
-                    price_str = f' (${price:.2f})' if price else ''
-                    signals.append({
-                        'level': 'gold',
-                        'icon': '👔',
-                        'message': f'{b.get("insider", "מנהל")[:20]} קנה {val} ב-{tk}{price_str}',
-                        'detail': f'{b.get("title", "")} | {mcap}' if mcap else b.get('title'),
-                        'ticker': tk,
-                        'action': 'מנהל שם כסף רציני מהכיס',
-                        'source': 'insider_big',
-                    })
-            except (ValueError, TypeError):
-                pass
+        elif total_val >= 500_000:
+            insider_name = buys[0].get('insider', 'מנהל')[:25]
+            signals.append({
+                'level': 'gold',
+                'icon': '👔',
+                'message': f'{insider_name} ({best_title}) קנה {val_str} ב-{tk} {price_str}',
+                'detail': detail_line,
+                'ticker': tk,
+                'action': f'{best_title} שם כסף רציני מהכיס — חובה לעקוב',
+                'source': 'insider_big',
+                'data_source': 'SEC Form 4 (דיווח חובה)',
+            })
+        elif total_val >= 100_000 and best_title_w >= 3:
+            insider_name = buys[0].get('insider', 'מנהל')[:25]
+            signals.append({
+                'level': 'silver',
+                'icon': '👔',
+                'message': f'{insider_name} ({best_title}) קנה {val_str} ב-{tk} {price_str}',
+                'detail': detail_line,
+                'ticker': tk,
+                'action': f'קנייה של {best_title} — שווה מעקב',
+                'source': 'insider_mid',
+                'data_source': 'SEC Form 4 (דיווח חובה)',
+            })
 
     # ── 2. Squeeze Setups ──────────────────────────────────────────────────
     for etf_data in all_movers.values():
@@ -1711,6 +1838,7 @@ def _generate_gold_signals(
                     'ticker': m['ticker'],
                     'action': 'שורטיסטים נלכדים — מומנטום ממשיך',
                     'source': 'squeeze',
+                    'data_source': 'FINRA Short Data + Finviz',
                 })
             elif fs >= 15 and chg > 3 and vr >= 1.5:
                 signals.append({
@@ -1720,6 +1848,7 @@ def _generate_gold_signals(
                     'ticker': m['ticker'],
                     'action': 'פוטנציאל סקוויז אם הנפח ממשיך',
                     'source': 'short_pressure',
+                    'data_source': 'FINRA Short Data',
                 })
 
             if inst_tr > 8 and chg > 3:
@@ -1732,6 +1861,7 @@ def _generate_gold_signals(
                     'ticker': m['ticker'],
                     'action': 'כסף חכם נכנס — מגמה מתמשכת',
                     'source': 'inst_acc',
+                    'data_source': 'SEC 13F Filing',
                 })
 
             if fl and fl < 10e6 and chg > 10 and vr >= 2:
@@ -1742,6 +1872,7 @@ def _generate_gold_signals(
                     'ticker': m['ticker'],
                     'action': 'Float קטן + נפח = תנועה חדה',
                     'source': 'float_run',
+                    'data_source': 'Finviz Float Data',
                 })
 
             insider_tr = m.get('insider_trans') or 0
@@ -1753,6 +1884,7 @@ def _generate_gold_signals(
                     'ticker': m['ticker'],
                     'action': 'מנהלים נגד השורטיסטים — מלכודת',
                     'source': 'insider_vs_short',
+                    'data_source': 'SEC Form 4 + FINRA',
                 })
 
     # ── 3. Earnings plays ──────────────────────────────────────────────────
