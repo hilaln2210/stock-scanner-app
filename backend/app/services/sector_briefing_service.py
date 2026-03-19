@@ -1043,15 +1043,17 @@ def _fetch_market_news() -> List[dict]:
 
 async def _fetch_all_movers(session: aiohttp.ClientSession) -> Dict[str, dict]:
     """
-    Fetch top movers across ALL sectors from Finviz in 3 pages (60 stocks).
-    Single unified call replaces 11 separate sector calls.
+    Fetch top movers across ALL sectors from Finviz:
+    - v=111 (3 pages, 60 stocks) for sector, industry, company
+    - v=141 (1 page, top 20) for ownership data (inst own, insider own, float short)
     Groups by sector + identifies hottest industry per sector.
-    Returns {etf_key: {movers: [...], hot_industry: {name, count, avg_change, top_ticker}}}.
+    Flags institutional activity, insider buying, short squeeze potential.
     """
     import re as _re
     all_stocks = []
 
-    for page_start in [1, 21, 41]:  # 3 pages = ~60 stocks
+    # ── Phase 1: Overview data (v=111) — sector, industry, company ──────────
+    for page_start in [1, 21, 41]:
         url = (
             f'https://finviz.com/screener.ashx?v=111'
             f'&f=sh_avgvol_o200'
@@ -1062,13 +1064,12 @@ async def _fetch_all_movers(session: aiohttp.ClientSession) -> Dict[str, dict]:
                 url, headers=_HEADERS, timeout=aiohttp.ClientTimeout(total=12)
             ) as resp:
                 if resp.status != 200:
-                    print(f"[SectorBriefing] all-movers page {page_start} HTTP {resp.status}")
+                    print(f"[SectorBriefing] all-movers v111 page {page_start} HTTP {resp.status}")
                     break
                 html = await resp.text()
 
             soup = BeautifulSoup(html, 'html.parser')
 
-            # Find results table
             table = None
             link = soup.find('a', href=_re.compile(r'quote\.ashx\?t='))
             if link:
@@ -1130,8 +1131,131 @@ async def _fetch_all_movers(session: aiohttp.ClientSession) -> Dict[str, dict]:
                 })
 
         except Exception as e:
-            print(f"[SectorBriefing] all-movers page {page_start} error: {e}")
+            print(f"[SectorBriefing] all-movers v111 page {page_start} error: {e}")
             break
+
+    # ── Phase 2: Ownership data (v=141) — inst own, insider, float short ────
+    # Fetch top 2 pages (40 stocks) to match most of our v=111 results
+    ownership_map: Dict[str, dict] = {}
+    for page_start in [1, 21]:
+        url = (
+            f'https://finviz.com/screener.ashx?v=131'
+            f'&f=sh_avgvol_o200'
+            f'&o=-change&r={page_start}'
+        )
+        try:
+            async with session.get(
+                url, headers=_HEADERS, timeout=aiohttp.ClientTimeout(total=12)
+            ) as resp:
+                if resp.status != 200:
+                    break
+                html = await resp.text()
+
+            soup = BeautifulSoup(html, 'html.parser')
+
+            table = None
+            link = soup.find('a', href=_re.compile(r'quote\.ashx\?t='))
+            if link:
+                node = link
+                for _ in range(12):
+                    node = node.parent
+                    if node.name == 'table':
+                        table = node
+                        break
+                    if node.name == 'body':
+                        break
+            if not table:
+                break
+
+            rows = table.find_all('tr')
+            header_cells = rows[0].find_all(['th', 'td'])
+            col141 = {c.get_text(strip=True): i for i, c in enumerate(header_cells)}
+
+            def gcol141(row_cells, name, default=''):
+                i = col141.get(name)
+                return row_cells[i].get_text(strip=True) if i is not None and i < len(row_cells) else default
+
+            for row in rows[1:]:
+                cells = row.find_all('td')
+                if not cells:
+                    continue
+                ticker = gcol141(cells, 'Ticker')
+                if not ticker or ticker.isdigit():
+                    continue
+
+                def parse_pct(val):
+                    try:
+                        return float(val.replace('%', '').replace(',', ''))
+                    except (ValueError, AttributeError):
+                        return None
+
+                def parse_num(val):
+                    try:
+                        val = val.replace(',', '')
+                        if val.endswith('B'):
+                            return float(val[:-1]) * 1_000_000_000
+                        if val.endswith('M'):
+                            return float(val[:-1]) * 1_000_000
+                        if val.endswith('K'):
+                            return float(val[:-1]) * 1_000
+                        return float(val) if val and val != '-' else None
+                    except (ValueError, AttributeError):
+                        return None
+
+                ownership_map[ticker] = {
+                    'inst_own':      parse_pct(gcol141(cells, 'Inst Own')),
+                    'inst_trans':    parse_pct(gcol141(cells, 'Inst Trans')),
+                    'insider_own':   parse_pct(gcol141(cells, 'Insider Own')),
+                    'insider_trans': parse_pct(gcol141(cells, 'Insider Trans')),
+                    'float_short':   parse_pct(gcol141(cells, 'Short Float')),
+                    'short_ratio':   parse_pct(gcol141(cells, 'Short Ratio')),
+                    'float_shares':  parse_num(gcol141(cells, 'Float')),
+                    'avg_volume':    parse_num(gcol141(cells, 'Avg Volume')),
+                }
+                # Debug: print first match to verify parsing
+                if len(ownership_map) == 1:
+                    print(f'[SectorBriefing] ownership sample: {ticker} inst={ownership_map[ticker]["inst_own"]}% short={ownership_map[ticker]["float_short"]}%')
+
+        except Exception as e:
+            print(f"[SectorBriefing] ownership v141 page {page_start} error: {e}")
+            break
+
+    print(f'[SectorBriefing] ownership data for {len(ownership_map)} tickers')
+
+    # ── Phase 3: Merge ownership into stocks + compute smart flags ──────────
+    for stock in all_stocks:
+        own = ownership_map.get(stock['ticker'], {})
+        stock.update(own)
+
+        # Smart flags
+        flags = []
+
+        # Institutional activity
+        inst = own.get('inst_own')
+        inst_tr = own.get('inst_trans')
+        if inst is not None and inst >= 60:
+            flags.append({'type': 'institutional', 'label': f'מוסדיים {inst:.0f}%', 'icon': '🏛️'})
+        if inst_tr is not None and inst_tr > 5:
+            flags.append({'type': 'inst_buying', 'label': f'מוסדיים קונים +{inst_tr:.0f}%', 'icon': '📈'})
+
+        # Insider activity
+        insider_tr = own.get('insider_trans')
+        if insider_tr is not None and insider_tr > 1:
+            flags.append({'type': 'insider_buying', 'label': f'מנהלים קונים +{insider_tr:.0f}%', 'icon': '👔'})
+
+        # Short squeeze potential
+        fs = own.get('float_short')
+        if fs is not None and fs >= 20:
+            flags.append({'type': 'high_short', 'label': f'שורט {fs:.0f}%', 'icon': '🩳'})
+        elif fs is not None and fs >= 10:
+            flags.append({'type': 'short', 'label': f'שורט {fs:.0f}%', 'icon': '🩳'})
+
+        # Small float (potential for big moves)
+        fl = own.get('float_shares')
+        if fl is not None and fl < 20_000_000:
+            flags.append({'type': 'small_float', 'label': 'Float קטן', 'icon': '💎'})
+
+        stock['flags'] = flags
 
     # Group by sector → ETF key
     result: Dict[str, dict] = {}

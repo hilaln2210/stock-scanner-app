@@ -363,6 +363,49 @@ function MoneyFlowBadge({ flow }) {
   );
 }
 
+// ── Feature Legend ───────────────────────────────────────────────────────────────
+
+function FeatureLegend() {
+  const [open, setOpen] = useState(false);
+
+  const items = [
+    { icon: '🏛️', label: 'מוסדיים', desc: 'אחוז בעלות מוסדית (קרנות, בנקים). מעל 60% = מניה עם גיבוי מוסדי חזק' },
+    { icon: '📈', label: 'מוסדיים קונים', desc: 'המוסדיים הגדילו אחזקות ברבעון האחרון — סימן לביקוש מוסדי' },
+    { icon: '👔', label: 'מנהלים קונים', desc: 'Insider buying — מנהלי החברה קונים מניות מכספם. סיגנל חזק של ביטחון' },
+    { icon: '🩳', label: 'שורט גבוה', desc: 'מעל 10% Short Float. מעל 20% = פוטנציאל סקוויז אם נפח עולה' },
+    { icon: '💎', label: 'Float קטן', desc: 'פחות מ-20M מניות זמינות למסחר. תנועת מחיר יכולה להיות חדה' },
+    { icon: '▲▲', label: 'הצטברות חזקה', desc: 'נפח ETF גבוה + עלייה + כיוון עקבי לאורך זמן = משקיעים גדולים צוברים' },
+    { icon: '▼▼', label: 'חלוקה חזקה', desc: 'נפח ETF גבוה + ירידה + כיוון שלילי עקבי = משקיעים גדולים מפזרים' },
+    { icon: '😰', label: 'VIX', desc: 'מדד הפחד — מעל 25 = תנודתיות חריגה, מעל 35 = פאניקה בשוק' },
+    { icon: '🛢️', label: 'נפט', desc: 'נפט גולמי — משפיע ישירות על אנרגיה, תעשייה, ותחבורה' },
+    { icon: '🥇', label: 'זהב', desc: 'נכס בטוח — עלייה בזהב = סנטימנט risk-off, משקיעים מחפשים מקלט' },
+    { icon: '📊', label: 'תשואה 10Y', desc: 'תשואת אג"ח 10 שנים — עלייה פוגעת בטכנולוגיה ונדל"ן, מיטיבה עם בנקים' },
+  ];
+
+  return (
+    <div className="bg-slate-900/40 border border-slate-700/30 rounded-xl overflow-hidden">
+      <button onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-3 py-2 hover:bg-slate-800/30 transition-colors">
+        <span className="text-[11px] text-slate-400 font-medium">מדריך סימנים ואינדיקטורים</span>
+        {open ? <ChevronUp size={12} className="text-slate-500" /> : <ChevronDown size={12} className="text-slate-500" />}
+      </button>
+      {open && (
+        <div className="px-3 pb-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {items.map((item, i) => (
+            <div key={i} className="flex items-start gap-2 text-[11px]">
+              <span className="shrink-0 mt-0.5">{item.icon}</span>
+              <div>
+                <span className="text-slate-200 font-medium">{item.label}</span>
+                <span className="text-slate-500 mr-1">— {item.desc}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Sector Impact Badges ────────────────────────────────────────────────────────
 
 function ImpactBadges({ impacts }) {
@@ -596,9 +639,13 @@ function SectorDetail({ sector, stocks, isLoadingStocks, onLoadStocks }) {
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             <span className="text-[10px] text-amber-400 font-medium">מניות שזזות:</span>
             {sector.top_movers.slice(0, 5).map(m => (
-              <span key={m.ticker} className="text-xs bg-slate-800/60 rounded-lg px-2 py-0.5">
+              <span key={m.ticker} className={`text-xs rounded-lg px-2 py-0.5
+                ${m.flags?.length ? 'bg-amber-950/30 border border-amber-800/20' : 'bg-slate-800/60'}`}>
                 <span className="text-white font-bold">{m.ticker}</span>
                 <span className={`ml-1 font-bold ${chgColor(m.change_pct)}`}>{fmtChg(m.change_pct)}</span>
+                {m.flags?.map((f, i) => (
+                  <span key={i} className="text-[9px] mr-0.5" title={f.label}>{f.icon}</span>
+                ))}
                 {m.industry && (
                   <span className="text-[9px] text-slate-600 mr-1">{m.industry}</span>
                 )}
@@ -734,34 +781,84 @@ function SectorDetail({ sector, stocks, isLoadingStocks, onLoadStocks }) {
           </div>
         ) : stocks && stocks.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {stocks.map(s => (
-              <div key={s.ticker} className="bg-slate-800/50 border border-slate-700/30 rounded-lg p-2.5
-                hover:border-slate-600/50 transition-colors">
-                <div className="flex justify-between items-start mb-0.5">
-                  <div className="min-w-0 flex-1">
-                    <span className="text-sm font-bold text-white">{s.ticker}</span>
-                    {s.company && (
-                      <span className="text-[10px] text-slate-500 mr-1.5 truncate max-w-[100px] inline-block align-bottom">
-                        {s.company}
+            {stocks.map(s => {
+              const hasFlags = s.flags?.length > 0;
+              const hasInst = s.inst_own != null;
+              return (
+                <div key={s.ticker} className={`bg-slate-800/50 border rounded-lg p-2.5
+                  hover:border-slate-600/50 transition-colors
+                  ${hasFlags ? 'border-amber-700/30' : 'border-slate-700/30'}`}>
+                  <div className="flex justify-between items-start mb-0.5">
+                    <div className="min-w-0 flex-1">
+                      <span className="text-sm font-bold text-white">{s.ticker}</span>
+                      {s.company && (
+                        <span className="text-[10px] text-slate-500 mr-1.5 truncate max-w-[100px] inline-block align-bottom">
+                          {s.company}
+                        </span>
+                      )}
+                    </div>
+                    <span className={`text-sm font-bold mr-1 shrink-0 ${chgColor(s.change_pct)}`}>
+                      {fmtChg(s.change_pct)}
+                    </span>
+                  </div>
+
+                  {/* Ownership data row */}
+                  {hasInst && (
+                    <div className="flex flex-wrap gap-x-2 gap-y-0 text-[10px] mb-0.5">
+                      {s.inst_own != null && (
+                        <span className={s.inst_own >= 60 ? 'text-blue-400' : 'text-slate-500'}>
+                          🏛️ {s.inst_own.toFixed(0)}%
+                        </span>
+                      )}
+                      {s.inst_trans != null && s.inst_trans !== 0 && (
+                        <span className={s.inst_trans > 0 ? 'text-emerald-400' : 'text-red-400'}>
+                          {s.inst_trans > 0 ? '↑' : '↓'}{Math.abs(s.inst_trans).toFixed(1)}%
+                        </span>
+                      )}
+                      {s.insider_own != null && s.insider_own > 5 && (
+                        <span className="text-amber-400">👔 {s.insider_own.toFixed(0)}%</span>
+                      )}
+                      {s.float_short != null && s.float_short >= 10 && (
+                        <span className={s.float_short >= 20 ? 'text-red-400 font-bold' : 'text-orange-400'}>
+                          🩳 {s.float_short.toFixed(0)}%
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-x-2 gap-y-0 text-[10px] text-slate-500">
+                    <span>${s.price?.toFixed(2)}</span>
+                    {s.market_cap && <span>{s.market_cap}</span>}
+                    {s.volume > 0 && <span>Vol {fmtVol(s.volume)}</span>}
+                    {s.rel_volume > 0.1 && (
+                      <span className={s.rel_volume >= 2 ? 'text-amber-400' : ''}>
+                        RV {s.rel_volume?.toFixed(1)}x
                       </span>
                     )}
                   </div>
-                  <span className={`text-sm font-bold mr-1 shrink-0 ${chgColor(s.change_pct)}`}>
-                    {fmtChg(s.change_pct)}
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-x-2 gap-y-0 text-[10px] text-slate-500">
-                  <span>${s.price?.toFixed(2)}</span>
-                  {s.market_cap && <span>{s.market_cap}</span>}
-                  {s.volume > 0 && <span>Vol {fmtVol(s.volume)}</span>}
-                  {s.rel_volume > 0.1 && (
-                    <span className={s.rel_volume >= 2 ? 'text-amber-400' : ''}>
-                      RV {s.rel_volume?.toFixed(1)}x
-                    </span>
+
+                  {/* Smart flags */}
+                  {hasFlags && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {s.flags.map((f, i) => (
+                        <span key={i} className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium
+                          ${f.type === 'inst_buying' ? 'bg-blue-950/50 text-blue-300' :
+                            f.type === 'institutional' ? 'bg-blue-950/30 text-blue-400/80' :
+                            f.type === 'insider_buying' ? 'bg-amber-950/50 text-amber-300' :
+                            f.type === 'high_short' ? 'bg-red-950/50 text-red-300' :
+                            f.type === 'short' ? 'bg-orange-950/40 text-orange-300' :
+                            f.type === 'small_float' ? 'bg-purple-950/40 text-purple-300' :
+                            'bg-slate-800/40 text-slate-400'
+                          }`}
+                        >
+                          {f.icon} {f.label}
+                        </span>
+                      ))}
+                    </div>
                   )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="text-center py-4">
@@ -1026,6 +1123,9 @@ export default function SectorBriefing() {
 
           {/* ── Smart Money ─────────────────────────────────────────────────────── */}
           <SmartMoneySummary smartMoney={data?.smart_money} sectors={sectors} />
+
+          {/* ── Feature Legend ──────────────────────────────────────────────────── */}
+          <FeatureLegend />
 
           {/* ── Sector Heatmap / List ──────────────────────────────────────────── */}
           {viewMode === 'heatmap' ? (
