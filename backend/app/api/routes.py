@@ -27,7 +27,7 @@ from app.services.live_prices import LivePriceService
 from app.services.move_tracker import move_tracker
 from app.services.technical_analysis import compute_technicals as _compute_ta
 from app.services.briefing_service import BriefingService, fetch_single_ticker_briefing as _fetch_single_briefing
-from app.services.sector_briefing_service import get_sector_briefing as _get_sector_briefing, invalidate_cache as _invalidate_sector_cache
+from app.services.sector_briefing_service import get_sector_briefing as _get_sector_briefing, invalidate_cache as _invalidate_sector_cache, get_stocks_for_sector as _get_sector_movers
 from app.services.technical_signals import TechnicalSignalsService
 from app.services.daily_analysis import DailyAnalysisService
 from app.services import portfolio_service
@@ -1080,6 +1080,23 @@ async def get_sector_briefing(force: bool = False):
         print(f"[/briefing/sector] error: {e}")
         return {"error": str(e), "sectors": [], "top_sector": None,
                 "sector_stocks": [], "insider_trades": []}
+
+
+@router.get("/briefing/sector/movers")
+async def get_sector_movers(filter: str):
+    """
+    On-demand top movers for a specific sector.
+    filter = Finviz sector filter, e.g. sec_technology
+    """
+    if not filter or not filter.startswith('sec_'):
+        return {"error": "invalid filter", "stocks": []}
+    try:
+        stocks = await asyncio.wait_for(_get_sector_movers(filter), timeout=20)
+        return {"stocks": stocks, "filter": filter}
+    except asyncio.TimeoutError:
+        return {"error": "timeout", "stocks": []}
+    except Exception as e:
+        return {"error": str(e), "stocks": []}
 
 
 # ── Technical Signals (MACD + RSI + Bollinger Bands) ──────────────────────────
