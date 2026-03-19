@@ -575,7 +575,78 @@ async def _fetch_insider_trades(session: aiohttp.ClientSession) -> List[dict]:
         return []
 
 
-# ── 4. Insider ticker % change (yfinance batch) ────────────────────────────────
+# ── 4. Insider Why Analysis ──────────────────────────────────────────────────────
+
+def _insider_why(trade: dict) -> str:
+    """
+    Generate a short Hebrew reason WHY this insider is buying.
+    Uses only the trade's own data (no cross-reference needed).
+    """
+    title = (trade.get('title') or '').upper()
+    chg = trade.get('change_pct')
+    mcap_str = trade.get('market_cap_live', '')
+    price = trade.get('current_price')
+    val_str = trade.get('value', '')
+
+    # Parse purchase value
+    try:
+        purchase_val = int(val_str.replace('$', '').replace(',', '').replace('+', ''))
+    except (ValueError, TypeError):
+        purchase_val = 0
+
+    # Parse market cap
+    mcap_val = None
+    if mcap_str:
+        try:
+            if mcap_str.endswith('B'):
+                mcap_val = float(mcap_str[:-1]) * 1e9
+            elif mcap_str.endswith('M'):
+                mcap_val = float(mcap_str[:-1]) * 1e6
+        except (ValueError, TypeError):
+            pass
+
+    reasons = []
+
+    # Purchase significance vs market cap
+    if mcap_val and purchase_val:
+        pct = (purchase_val / mcap_val) * 100
+        if pct >= 1:
+            reasons.append(f'קנייה של {pct:.1f}% מהחברה — חריג מאוד')
+        elif pct >= 0.1:
+            reasons.append(f'קנייה של {pct:.2f}% מהחברה — משמעותי')
+
+    # Title-based reason
+    if 'CEO' in title:
+        reasons.append('CEO קונה = ביטחון מקסימלי בעתיד החברה')
+    elif 'CFO' in title:
+        reasons.append('CFO קונה = מי שמכיר את המספרים מבפנים')
+    elif 'COO' in title or 'PRESIDENT' in title:
+        reasons.append('מנכ"ל/נשיא קונה = רואה צמיחה מבפנים')
+    elif 'DIRECTOR' in title:
+        reasons.append('דירקטור קונה = חבר דירקטוריון רואה הזדמנות')
+    elif '10%' in (trade.get('title') or ''):
+        reasons.append('בעל שליטה מגדיל = מאמין בחברה')
+
+    # Price action since buy
+    if chg is not None:
+        if chg < -5:
+            reasons.append(f'המניה ירדה {chg:.1f}% — קונה בזול, לא מודאג')
+        elif chg > 5:
+            reasons.append(f'כבר עלתה {chg:+.1f}% מאז — הקנייה מוכיחה')
+
+    # Large purchase signal
+    if purchase_val >= 5_000_000:
+        reasons.append('קנייה מעל $5M — אמון יוצא דופן')
+    elif purchase_val >= 1_000_000:
+        reasons.append('קנייה מעל $1M — כסף רציני מהכיס')
+
+    if not reasons:
+        reasons.append('קנייה חייבת דיווח ל-SEC — מידע אמין 100%')
+
+    return ' | '.join(reasons[:2])
+
+
+# ── 4b. Insider Enrichment (yfinance batch) ─────────────────────────────────────
 
 def _fetch_insider_enrichment(tickers: List[str]) -> Dict[str, dict]:
     """
@@ -2329,6 +2400,9 @@ async def get_sector_briefing() -> dict:
                     trade['change_pct'] = enrich.get('change_pct')
                     trade['current_price'] = enrich.get('price')
                     trade['market_cap_live'] = enrich.get('market_cap')
+
+                    # Generate 'why' reason for each trade
+                    trade['why'] = _insider_why(trade)
 
                 _insider_cache = new_insider
                 _insider_cache_at = _time.time()
