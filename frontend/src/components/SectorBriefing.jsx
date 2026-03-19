@@ -646,6 +646,12 @@ function SectorDetail({ sector, stocks, isLoadingStocks, onLoadStocks }) {
                 {m.flags?.map((f, i) => (
                   <span key={i} className="text-[9px] mr-0.5" title={f.label}>{f.icon}</span>
                 ))}
+                {m.move_estimate && (
+                  <span className="text-[9px] text-emerald-400/80 mr-0.5"
+                    title={`${m.move_estimate.catalyst} • ${m.move_estimate.timeframe}`}>
+                    →+{m.move_estimate.target_pct}%
+                  </span>
+                )}
                 {m.industry && (
                   <span className="text-[9px] text-slate-600 mr-1">{m.industry}</span>
                 )}
@@ -853,6 +859,48 @@ function SectorDetail({ sector, stocks, isLoadingStocks, onLoadStocks }) {
                         >
                           {f.icon} {f.label}
                         </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Move estimate */}
+                  {s.move_estimate && (
+                    <div className={`mt-1.5 px-2 py-1.5 rounded-lg text-[10px] border
+                      ${s.move_estimate.confidence === 'high'
+                        ? 'bg-emerald-950/40 border-emerald-700/30'
+                        : s.move_estimate.confidence === 'medium'
+                        ? 'bg-blue-950/30 border-blue-800/30'
+                        : 'bg-slate-800/40 border-slate-700/30'
+                      }`}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-emerald-300 font-bold">
+                          יעד: +{s.move_estimate.target_pct}%
+                        </span>
+                        <span className="text-slate-400">{s.move_estimate.timeframe}</span>
+                      </div>
+                      <div className="flex items-center justify-between mt-0.5">
+                        <span className="text-slate-500">{s.move_estimate.catalyst}</span>
+                        <span className={`text-[9px] px-1 rounded
+                          ${s.move_estimate.confidence === 'high' ? 'text-emerald-400 bg-emerald-950/50' :
+                            s.move_estimate.confidence === 'medium' ? 'text-blue-400 bg-blue-950/50' :
+                            'text-slate-500 bg-slate-800/50'
+                          }`}
+                        >
+                          {s.move_estimate.confidence === 'high' ? 'ביטחון גבוה' :
+                           s.move_estimate.confidence === 'medium' ? 'ביטחון בינוני' : 'ביטחון נמוך'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Per-stock catalyst news */}
+                  {s.news?.length > 0 && (
+                    <div className="mt-1.5 space-y-0.5">
+                      {s.news.slice(0, 2).map((n, i) => (
+                        <div key={i} className="text-[10px] text-slate-400 bg-slate-800/30 rounded px-1.5 py-1 leading-snug">
+                          <span className="text-blue-400/70">{n.source || n.ticker}</span>
+                          {' '}{n.title}
+                        </div>
                       ))}
                     </div>
                   )}

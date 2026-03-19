@@ -145,6 +145,11 @@ _all_movers_cache: Optional[Dict[str, dict]] = None
 _all_movers_cache_at: float = 0.0
 _ALL_MOVERS_TTL = 180  # 3 minutes
 
+# Per-mover catalyst news cache
+_mover_news_cache: Optional[Dict[str, List[dict]]] = None
+_mover_news_cache_at: float = 0.0
+_MOVER_NEWS_TTL = 300  # 5 minutes
+
 # ── Macro Indicator Definitions ──────────────────────────────────────────────────
 
 MACRO_TICKERS = {
@@ -1257,6 +1262,11 @@ async def _fetch_all_movers(session: aiohttp.ClientSession) -> Dict[str, dict]:
 
         stock['flags'] = flags
 
+        # Move estimate
+        estimate = _compute_move_estimate(stock)
+        if estimate:
+            stock['move_estimate'] = estimate
+
     # Group by sector → ETF key
     result: Dict[str, dict] = {}
     for etf_key in SECTOR_ETFS:
@@ -1308,7 +1318,136 @@ async def _fetch_all_movers(session: aiohttp.ClientSession) -> Dict[str, dict]:
     return result
 
 
-# ── 13. Smart Money Flow Analysis ──────────────────────────────────────────────
+# ── 13. Move Estimate per Stock ────────────────────────────────────────────────
+
+def _compute_move_estimate(stock: dict) -> dict:
+    """
+    Estimate potential move based on stock characteristics:
+    - Short float → squeeze potential
+    - Float size → move amplification
+    - Volume vs average → momentum sustainability
+    - Institutional activity → smart money conviction
+    Returns {target_pct, timeframe, catalyst, confidence}.
+    """
+    chg = abs(stock.get('change_pct', 0) or 0)
+    fs = stock.get('float_short') or 0
+    fl = stock.get('float_shares')
+    inst_tr = stock.get('inst_trans') or 0
+    insider_tr = stock.get('insider_trans') or 0
+    vol = stock.get('volume') or 0
+    avg_vol = stock.get('avg_volume') or vol or 1
+    vol_ratio = vol / avg_vol if avg_vol > 0 else 1
+
+    # Base: continuation of current move
+    base = chg * 0.4
+    catalyst = 'מומנטום'
+    timeframe = '1-2 ימים'
+    conf = 'low'
+
+    # Short squeeze scenario
+    if fs >= 20 and vol_ratio >= 1.5:
+        base += fs * 0.6
+        catalyst = 'סקוויז פוטנציאלי'
+        timeframe = '1-3 ימים'
+        conf = 'high' if vol_ratio >= 2.5 else 'medium'
+    elif fs >= 10 and vol_ratio >= 1.3:
+        base += fs * 0.3
+        catalyst = 'לחץ שורט'
+        timeframe = '2-5 ימים'
+        conf = 'medium'
+
+    # Institutional accumulation
+    if inst_tr is not None and inst_tr > 5:
+        base += inst_tr * 0.4
+        if catalyst == 'מומנטום':
+            catalyst = 'צבירה מוסדית'
+            timeframe = '1-2 שבועות'
+            conf = 'medium'
+        else:
+            catalyst += ' + מוסדיים'
+            conf = 'high'
+
+    # Insider buying
+    if insider_tr is not None and insider_tr > 3:
+        base += 5
+        if catalyst == 'מומנטום':
+            catalyst = 'קניות מנהלים'
+            timeframe = '1-3 שבועות'
+            conf = 'medium'
+
+    # Small float amplifier
+    if fl is not None and fl < 10_000_000:
+        base *= 1.6
+        if 'Float קטן' not in catalyst:
+            catalyst += ' + Float קטן'
+    elif fl is not None and fl < 20_000_000:
+        base *= 1.3
+
+    # Volume confirmation
+    if vol_ratio >= 3:
+        base *= 1.3
+        if conf == 'low':
+            conf = 'medium'
+    elif vol_ratio < 1.2 and conf != 'high':
+        conf = 'low'
+
+    # Cap at reasonable levels
+    target = round(min(base, 80), 1)
+
+    # Don't show tiny targets
+    if target < 3:
+        return None
+
+    return {
+        'target_pct': target,
+        'timeframe': timeframe,
+        'catalyst': catalyst,
+        'confidence': conf,
+    }
+
+
+# ── 14. Per-Mover Catalyst News ──────────────────────────────────────────────
+
+def _fetch_mover_news(stocks: List[dict], max_stocks: int = 6) -> Dict[str, List[dict]]:
+    """
+    Fetch news for the most interesting top movers (not generic SPY news).
+    Prioritizes stocks with flags (institutional, short, insider).
+    Returns {ticker: [news items]} with Hebrew translation.
+    """
+    # Score stocks by interestingness
+    def interest_score(s):
+        score = abs(s.get('change_pct', 0))
+        flags = s.get('flags', [])
+        score += len(flags) * 5
+        for f in flags:
+            if f['type'] in ('inst_buying', 'high_short'):
+                score += 10
+            elif f['type'] in ('insider_buying', 'small_float'):
+                score += 5
+        return score
+
+    # Pick top N most interesting stocks
+    ranked = sorted(stocks, key=interest_score, reverse=True)
+    top_tickers = [s['ticker'] for s in ranked[:max_stocks]]
+
+    result: Dict[str, List[dict]] = {}
+    all_news: List[dict] = []
+
+    for ticker in top_tickers:
+        items = _fetch_news_for_ticker(ticker, max_items=2)
+        if items:
+            result[ticker] = items
+            all_news.extend(items)
+
+    # Batch translate
+    if all_news:
+        _translate_titles(all_news)
+
+    print(f'[SectorBriefing] mover news: {len(all_news)} items for {len(result)} tickers')
+    return result
+
+
+# ── 15. Smart Money Flow Analysis ──────────────────────────────────────────────
 
 def _compute_money_flow(sectors: List[dict]) -> dict:
     """
@@ -1459,6 +1598,7 @@ async def get_sector_briefing() -> dict:
     global _macro_cache, _macro_cache_at
     global _market_news_cache, _market_news_cache_at
     global _all_movers_cache, _all_movers_cache_at
+    global _mover_news_cache, _mover_news_cache_at
 
     now = _time.time()
 
@@ -1699,6 +1839,39 @@ async def get_sector_briefing() -> dict:
         except Exception as e:
             print(f'[SectorBriefing] all-movers error: {e}')
 
+    # ── Fetch mover-specific catalyst news (after all_movers is resolved) ─────
+    mover_news_stale = _mover_news_cache is None or (now - _mover_news_cache_at) >= _MOVER_NEWS_TTL
+    if mover_news_stale and _all_movers_cache:
+        # Collect all flagged stocks for news fetching
+        all_flagged = []
+        for data in _all_movers_cache.values():
+            for m in data.get('movers', []):
+                if m.get('flags'):
+                    all_flagged.append(m)
+        if all_flagged:
+            print(f'[SectorBriefing] Fetching catalyst news for {len(all_flagged)} flagged movers...')
+            try:
+                new_mnews = await asyncio.wait_for(
+                    asyncio.to_thread(_fetch_mover_news, all_flagged, 6),
+                    timeout=20,
+                )
+                if new_mnews is not None:
+                    _mover_news_cache = new_mnews
+                    _mover_news_cache_at = _time.time()
+            except (asyncio.TimeoutError, FuturesTimeout):
+                print('[SectorBriefing] mover news timeout')
+            except Exception as e:
+                print(f'[SectorBriefing] mover news error: {e}')
+
+    # Attach mover news to stocks
+    mover_news = _mover_news_cache or {}
+    if mover_news and _all_movers_cache:
+        for data in _all_movers_cache.values():
+            for m in data.get('movers', []):
+                ticker_news = mover_news.get(m['ticker'])
+                if ticker_news:
+                    m['news'] = ticker_news
+
     # ── Compute sector impacts from macro data ──────────────────────────────────
     macro_data = _macro_cache or {}
     sector_impacts = _compute_sector_impacts(macro_data) if macro_data else {}
@@ -1842,7 +2015,7 @@ def invalidate_cache() -> None:
     global _insider_cache_at, _news_cache_at
     global _multi_tf_cache_at, _sparkline_cache_at
     global _macro_cache_at, _market_news_cache_at
-    global _all_movers_cache_at
+    global _all_movers_cache_at, _mover_news_cache_at
     _etf_cache_at = 0.0
     _drivers_cache_at = 0.0
     _stocks_cache_at = 0.0
@@ -1853,3 +2026,4 @@ def invalidate_cache() -> None:
     _macro_cache_at = 0.0
     _market_news_cache_at = 0.0
     _all_movers_cache_at = 0.0
+    _mover_news_cache_at = 0.0
