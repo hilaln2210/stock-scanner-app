@@ -199,50 +199,110 @@ VIX_LEVELS = [
 
 # ── 1a. Sector ETF Performance (ETFs only) ───────────────────────────────────────
 
-def _fetch_etf_only() -> List[dict]:
-    """
-    Fetch today's % change for only the 11 sector ETFs (fast, ~2-3 seconds).
-    Returns sectors list sorted by change_pct desc. No drivers yet.
-    """
-    etf_tickers = list(SECTOR_ETFS.keys())
-    results = []
+def _get_live_price(ticker_obj) -> dict:
+    """Get the most current price: pre-market > post-market > regular.
+    yfinance returns changePercent as actual percentage (e.g. 0.58 = 0.58%)."""
     try:
-        data = yf.download(
-            etf_tickers,
-            period='5d',
-            interval='1d',
-            progress=False,
-            timeout=10,
-            auto_adjust=True,
-        )
-        close = data.get('Close', data) if hasattr(data, 'get') else data
+        info = ticker_obj.get_info() if hasattr(ticker_obj, 'get_info') else ticker_obj.info
+        pre_price = info.get('preMarketPrice')
+        pre_chg = info.get('preMarketChangePercent')
+        post_price = info.get('postMarketPrice')
+        post_chg = info.get('postMarketChangePercent')
+        reg_price = info.get('regularMarketPrice') or info.get('currentPrice')
+        reg_chg = info.get('regularMarketChangePercent')
 
-        for etf, meta in SECTOR_ETFS.items():
+        # Priority: pre-market > post-market > regular
+        if pre_price and pre_chg is not None:
+            return {'price': round(pre_price, 2), 'change_pct': round(pre_chg, 2), 'session': 'pre'}
+        if post_price and post_chg is not None:
+            return {'price': round(post_price, 2), 'change_pct': round(post_chg, 2), 'session': 'post'}
+        if reg_price and reg_chg is not None:
+            return {'price': round(reg_price, 2), 'change_pct': round(reg_chg, 2), 'session': 'regular'}
+    except Exception:
+        pass
+    return {}
+
+
+def _fetch_live_prices_batch(tickers: List[str]) -> Dict[str, dict]:
+    """Batch fetch live prices (pre/post/regular) for a list of tickers."""
+    import concurrent.futures
+    result: Dict[str, dict] = {}
+
+    def _get(ticker):
+        t = yf.Ticker(ticker)
+        return ticker, _get_live_price(t)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        futures = {pool.submit(_get, t): t for t in tickers[:15]}
+        for future in concurrent.futures.as_completed(futures, timeout=12):
             try:
-                prices = close[etf].dropna()
-                if len(prices) >= 2:
-                    prev = float(prices.iloc[-2])
-                    curr = float(prices.iloc[-1])
-                    chg = (curr - prev) / prev * 100 if prev else 0.0
-                elif len(prices) == 1:
-                    curr = float(prices.iloc[-1])
-                    chg = 0.0
-                else:
-                    continue
-
-                results.append({
-                    'etf':           etf,
-                    'name':          meta['name'],
-                    'icon':          meta['icon'],
-                    'finviz_filter': meta['finviz'],
-                    'change_pct':    round(chg, 2),
-                    'price':         round(curr, 2),
-                })
+                t, data = future.result(timeout=3)
+                if data and 'price' in data:
+                    result[t] = data
             except Exception:
                 pass
+    return result
 
+
+def _fetch_etf_only() -> List[dict]:
+    """
+    Fetch today's % change for only the 11 sector ETFs.
+    Uses Ticker.info for live pre/post/regular market prices.
+    """
+    import concurrent.futures
+
+    etf_tickers = list(SECTOR_ETFS.keys())
+    results = []
+
+    def _get_etf_data(etf):
+        t = yf.Ticker(etf)
+        return etf, _get_live_price(t)
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            futures = {pool.submit(_get_etf_data, etf): etf for etf in etf_tickers}
+            for future in concurrent.futures.as_completed(futures, timeout=12):
+                etf = futures[future]
+                try:
+                    _, data = future.result(timeout=3)
+                    if data and 'price' in data:
+                        meta = SECTOR_ETFS[etf]
+                        results.append({
+                            'etf':           etf,
+                            'name':          meta['name'],
+                            'icon':          meta['icon'],
+                            'finviz_filter': meta['finviz'],
+                            'change_pct':    data['change_pct'],
+                            'price':         data['price'],
+                            'session':       data.get('session', ''),
+                        })
+                except Exception:
+                    pass
     except Exception as e:
         print(f"[SectorBriefing] ETF-only fetch error: {e}")
+
+    # Fallback: if live fetch failed for most ETFs, use batch download
+    # (this also serves as the batch live price function for sector stocks)
+    if len(results) < 5:
+        print(f'[SectorBriefing] Live ETF fetch got only {len(results)}, falling back to batch...')
+        results = []
+        try:
+            data = yf.download(etf_tickers, period='5d', interval='1d', progress=False, timeout=10, auto_adjust=True)
+            close = data.get('Close', data) if hasattr(data, 'get') else data
+            for etf, meta in SECTOR_ETFS.items():
+                try:
+                    prices = close[etf].dropna()
+                    if len(prices) >= 2:
+                        prev, curr = float(prices.iloc[-2]), float(prices.iloc[-1])
+                        chg = (curr - prev) / prev * 100 if prev else 0.0
+                        results.append({
+                            'etf': etf, 'name': meta['name'], 'icon': meta['icon'],
+                            'finviz_filter': meta['finviz'], 'change_pct': round(chg, 2), 'price': round(curr, 2),
+                        })
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"[SectorBriefing] ETF batch fallback error: {e}")
 
     return sorted(results, key=lambda x: x['change_pct'], reverse=True)
 
@@ -2541,6 +2601,22 @@ async def get_sector_briefing() -> dict:
     if stocks_task is not None:
         try:
             new_stocks = await stocks_task
+            # Overlay live prices (pre/post/regular) on Finviz data
+            if new_stocks:
+                try:
+                    stock_tickers = [s['ticker'] for s in new_stocks[:15]]
+                    live = await asyncio.wait_for(
+                        asyncio.to_thread(_fetch_live_prices_batch, stock_tickers),
+                        timeout=15,
+                    )
+                    for s in new_stocks:
+                        lp = live.get(s['ticker'])
+                        if lp:
+                            s['change_pct'] = lp['change_pct']
+                            s['price'] = lp['price']
+                            s['session'] = lp.get('session', '')
+                except (asyncio.TimeoutError, FuturesTimeout):
+                    pass
             _stocks_cache = new_stocks
             _stocks_cache_at = _time.time()
             _stocks_sector = top_filter
