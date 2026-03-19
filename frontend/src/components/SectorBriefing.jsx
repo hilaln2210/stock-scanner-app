@@ -1061,10 +1061,15 @@ function InsiderRow({ t }) {
           <div className="text-[10px] text-slate-500/50 mt-0.5">אין קטליסט ברור</div>
         )}
       </div>
-      {/* Value + date */}
+      {/* Value + date + freshness */}
       <div className="text-left shrink-0">
         {t.value && <div className="text-xs font-medium text-amber-400">{t.value}</div>}
         {t.date && <div className="text-[10px] text-slate-500">{t.date}</div>}
+        {t.filing_age_hours != null && (
+          <div className={`text-[9px] ${t.filing_age_hours < 6 ? 'text-green-400' : t.filing_age_hours < 24 ? 'text-yellow-500' : 'text-slate-600'}`}>
+            {t.filing_age_hours < 1 ? 'עכשיו' : t.filing_age_hours < 24 ? `לפני ${Math.round(t.filing_age_hours)} שע׳` : `לפני ${Math.round(t.filing_age_hours / 24)} ימים`}
+          </div>
+        )}
       </div>
     </div>
   );

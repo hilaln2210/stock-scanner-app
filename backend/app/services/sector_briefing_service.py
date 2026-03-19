@@ -124,7 +124,7 @@ _PER_SECTOR_TTL = 180  # 3 minutes
 
 _insider_cache: Optional[List[dict]] = None
 _insider_cache_at: float = 0.0
-_INSIDER_CACHE_TTL = 900  # 15 minutes
+_INSIDER_CACHE_TTL = 300  # 5 minutes — insider filings trickle in throughout the day
 
 _news_cache: Dict[str, List[dict]] = {}  # {etf: [{title, source, ticker}]}
 _news_cache_at: float = 0.0
@@ -485,14 +485,14 @@ async def _fetch_sector_stocks(
 async def _fetch_insider_trades(session: aiohttp.ClientSession) -> List[dict]:
     """
     Scrape openinsider.com for recent Form 4 cluster buys.
-    Filters: purchases only, value ≥ $100K, last 2 days, top 20.
+    Filters: purchases only, value ≥ $100K, last 5 days (covers weekends), top 30.
     """
     url = (
         'http://openinsider.com/screener?'
-        's=&o=&pl=&ph=&ll=&lh=&fd=2&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=&'
+        's=&o=&pl=&ph=&ll=&lh=&fd=5&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=&'
         'xp=1&vl=100&vh=&ocl=&och=&sic1=-1&sicl=100&sich=9999&grp=0&'
         'nfl=&nfh=&nil=&nih=&nol=&noh=&v2l=&v2h=&oc2l=&oc2h=&'
-        'sortcol=0&cnt=50&action=1'
+        'sortcol=0&cnt=100&action=1'
     )
     try:
         async with session.get(
@@ -565,7 +565,7 @@ async def _fetch_insider_trades(session: aiohttp.ClientSession) -> List[dict]:
                 'date':    date,
             })
 
-            if len(trades) >= 20:
+            if len(trades) >= 30:
                 break
 
         return trades
@@ -2746,6 +2746,18 @@ async def get_sector_briefing() -> dict:
 
     sector_stocks = _stocks_cache or []
     insider_trades = _insider_cache or []
+
+    # Add filing age (hours since filing) for freshness display
+    from datetime import timezone
+    now_utc = datetime.now(timezone.utc)
+    for trade in insider_trades:
+        try:
+            filed = datetime.strptime(trade.get('date', ''), '%Y-%m-%d %H:%M:%S')
+            filed = filed.replace(tzinfo=timezone.utc)
+            age_hours = (now_utc - filed).total_seconds() / 3600
+            trade['filing_age_hours'] = round(age_hours, 1)
+        except (ValueError, TypeError):
+            trade['filing_age_hours'] = None
 
     # SPY data
     spy_tf = multi_tf.get('SPY', {})
