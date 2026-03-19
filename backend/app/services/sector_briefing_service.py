@@ -579,14 +579,20 @@ async def _fetch_insider_trades(session: aiohttp.ClientSession) -> List[dict]:
 
 def _insider_why(trade: dict) -> str:
     """
-    Generate a short Hebrew reason WHY this insider is buying.
-    Uses only the trade's own data (no cross-reference needed).
+    Generate a clear Hebrew explanation of WHY this insider is buying.
+    Uses company intel (industry, business, analyst targets, earnings)
+    to build a real reason, not just "SEC filing".
     """
     title = (trade.get('title') or '').upper()
     chg = trade.get('change_pct')
     mcap_str = trade.get('market_cap_live', '')
-    price = trade.get('current_price')
     val_str = trade.get('value', '')
+    industry = trade.get('industry', '')
+    business = trade.get('business', '')
+    target = trade.get('target_price')
+    upside = trade.get('upside_pct')
+    earnings = trade.get('earnings_date')
+    recommendation = trade.get('recommendation')
 
     # Parse purchase value
     try:
@@ -594,56 +600,80 @@ def _insider_why(trade: dict) -> str:
     except (ValueError, TypeError):
         purchase_val = 0
 
-    # Parse market cap
-    mcap_val = None
+    parts = []
+
+    # 1. What the company does
+    if business:
+        parts.append(business)
+    elif industry:
+        parts.append(f'חברת {industry}')
+
+    # 2. Why NOW — earnings / target / recommendation
+    if earnings:
+        from datetime import date
+        try:
+            today = date.today()
+            ed = date.fromisoformat(earnings)
+            days = (ed - today).days
+            if days == 0:
+                parts.append('דוחות היום — קנה לפני שהתוצאות יוצאות')
+            elif 0 < days <= 7:
+                parts.append(f'דוחות עוד {days} ימים — כנראה יודע שהם יהיו טובים')
+            elif 0 < days <= 30:
+                parts.append(f'דוחות ב-{earnings} — צובר לפני')
+        except (ValueError, TypeError):
+            pass
+
+    if target and upside:
+        if upside > 100:
+            parts.append(f'אנליסטים נותנים יעד ${target} — פוטנציאל של {upside:.0f}% מכאן')
+        elif upside > 30:
+            parts.append(f'יעד אנליסטים ${target} ({upside:+.0f}%) — קונה מתחת ליעד')
+
+    if recommendation:
+        parts.append(f'המלצת וול סטריט: {recommendation}')
+
+    # 3. Who is buying and what it means
+    if 'CEO' in title:
+        parts.append('ה-CEO שם כסף מהכיס — הוא יודע הכי טוב מה קורה בחברה')
+    elif 'CFO' in title:
+        parts.append('ה-CFO קונה — הוא רואה את המספרים לפני כולם')
+    elif 'COO' in title or 'PRESIDENT' in title:
+        parts.append('הנשיא/מנכ"ל קונה — רואה צמיחה מבפנים')
+    elif 'DIRECTOR' in title:
+        parts.append('דירקטור קונה — חבר הנהלה רואה הזדמנות')
+    elif '10%' in (trade.get('title') or ''):
+        parts.append('בעל שליטה מגדיל אחזקה — משקיע גדול שמאמין בחברה')
+
+    # 4. Purchase size context
     if mcap_str:
         try:
             if mcap_str.endswith('B'):
                 mcap_val = float(mcap_str[:-1]) * 1e9
             elif mcap_str.endswith('M'):
                 mcap_val = float(mcap_str[:-1]) * 1e6
+            else:
+                mcap_val = None
+            if mcap_val and purchase_val:
+                pct = (purchase_val / mcap_val) * 100
+                if pct >= 1:
+                    parts.append(f'הקנייה שווה {pct:.1f}% מכל החברה — זה חריג מאוד')
+                elif pct >= 0.1:
+                    parts.append(f'הקנייה שווה {pct:.2f}% מהחברה — משמעותי')
         except (ValueError, TypeError):
             pass
 
-    reasons = []
-
-    # Purchase significance vs market cap
-    if mcap_val and purchase_val:
-        pct = (purchase_val / mcap_val) * 100
-        if pct >= 1:
-            reasons.append(f'קנייה של {pct:.1f}% מהחברה — חריג מאוד')
-        elif pct >= 0.1:
-            reasons.append(f'קנייה של {pct:.2f}% מהחברה — משמעותי')
-
-    # Title-based reason
-    if 'CEO' in title:
-        reasons.append('CEO קונה = ביטחון מקסימלי בעתיד החברה')
-    elif 'CFO' in title:
-        reasons.append('CFO קונה = מי שמכיר את המספרים מבפנים')
-    elif 'COO' in title or 'PRESIDENT' in title:
-        reasons.append('מנכ"ל/נשיא קונה = רואה צמיחה מבפנים')
-    elif 'DIRECTOR' in title:
-        reasons.append('דירקטור קונה = חבר דירקטוריון רואה הזדמנות')
-    elif '10%' in (trade.get('title') or ''):
-        reasons.append('בעל שליטה מגדיל = מאמין בחברה')
-
-    # Price action since buy
+    # 5. Price action context
     if chg is not None:
         if chg < -5:
-            reasons.append(f'המניה ירדה {chg:.1f}% — קונה בזול, לא מודאג')
+            parts.append(f'המניה ירדה {chg:.1f}% — הוא קונה בדיוק כשאחרים בורחים')
         elif chg > 5:
-            reasons.append(f'כבר עלתה {chg:+.1f}% מאז — הקנייה מוכיחה')
+            parts.append(f'המניה כבר עלתה {chg:+.1f}% מאז הקנייה')
 
-    # Large purchase signal
-    if purchase_val >= 5_000_000:
-        reasons.append('קנייה מעל $5M — אמון יוצא דופן')
-    elif purchase_val >= 1_000_000:
-        reasons.append('קנייה מעל $1M — כסף רציני מהכיס')
+    if not parts:
+        parts.append('דיווח חובה ל-SEC — מידע מאומת')
 
-    if not reasons:
-        reasons.append('קנייה חייבת דיווח ל-SEC — מידע אמין 100%')
-
-    return ' | '.join(reasons[:2])
+    return '. '.join(parts[:4])
 
 
 # ── 4b. Insider Enrichment (yfinance batch) ─────────────────────────────────────
@@ -690,35 +720,76 @@ def _fetch_insider_enrichment(tickers: List[str]) -> Dict[str, dict]:
     except Exception as e:
         print(f'[SectorBriefing] insider price fetch error: {e}')
 
-    # Phase 2: Market cap from Ticker.info (threaded, with timeout per ticker)
+    # Phase 2: Full company intel from Ticker.info (threaded)
     import concurrent.futures
 
-    def _get_mcap(ticker):
+    def _get_company_intel(ticker):
+        """Fetch market cap, industry, business summary, analyst target, earnings."""
+        intel = {}
         try:
             t = yf.Ticker(ticker)
             info = t.get_info() if hasattr(t, 'get_info') else t.info
+
+            # Market cap
             mcap = info.get('marketCap') or info.get('market_cap')
             if mcap:
                 if mcap >= 1_000_000_000:
-                    return f'{mcap / 1_000_000_000:.1f}B'
+                    intel['market_cap'] = f'{mcap / 1_000_000_000:.1f}B'
                 elif mcap >= 1_000_000:
-                    return f'{mcap / 1_000_000:.0f}M'
-                return str(mcap)
+                    intel['market_cap'] = f'{mcap / 1_000_000:.0f}M'
+
+            # Industry + sector
+            intel['industry'] = info.get('industry', '')
+            intel['sector'] = info.get('sector', '')
+
+            # Business summary — first sentence only
+            summary = info.get('longBusinessSummary', '')
+            if summary:
+                first_sentence = summary.split('.')[0]
+                intel['business'] = first_sentence[:120]
+
+            # Analyst target
+            target = info.get('targetMeanPrice')
+            if target:
+                intel['target_price'] = round(target, 2)
+                current = info.get('currentPrice') or info.get('regularMarketPrice')
+                if current and target:
+                    intel['upside_pct'] = round((target - current) / current * 100, 1)
+
+            # Recommendation
+            rec = info.get('recommendationKey')
+            if rec and rec != 'none':
+                rec_map = {'strong_buy': 'קנייה חזקה', 'buy': 'קנייה', 'hold': 'החזקה',
+                           'sell': 'מכירה', 'strong_sell': 'מכירה חזקה'}
+                intel['recommendation'] = rec_map.get(rec, rec)
+
+            intel['analyst_count'] = info.get('numberOfAnalystOpinions')
+
+            # Earnings date
+            try:
+                cal = t.calendar
+                if cal is not None and hasattr(cal, 'get') and cal.get('Earnings Date'):
+                    ed = cal['Earnings Date']
+                    if isinstance(ed, list) and ed:
+                        intel['earnings_date'] = str(ed[0].date()) if hasattr(ed[0], 'date') else str(ed[0])
+            except Exception:
+                pass
+
         except Exception:
             pass
-        return None
+        return intel
 
-    # Only fetch market cap for tickers we have price data for (max 20 to be safe)
-    mcap_tickers = [t for t in unique if t in result][:20]
-    if mcap_tickers:
+    # Fetch for top tickers (max 15 to be safe)
+    intel_tickers = [t for t in unique if t in result][:15]
+    if intel_tickers:
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
-            futures = {pool.submit(_get_mcap, t): t for t in mcap_tickers}
-            for future in concurrent.futures.as_completed(futures, timeout=8):
+            futures = {pool.submit(_get_company_intel, t): t for t in intel_tickers}
+            for future in concurrent.futures.as_completed(futures, timeout=12):
                 t = futures[future]
                 try:
-                    mcap = future.result(timeout=1)
-                    if mcap and t in result:
-                        result[t]['market_cap'] = mcap
+                    intel = future.result(timeout=2)
+                    if intel and t in result:
+                        result[t].update(intel)
                 except Exception:
                     pass
 
@@ -1842,12 +1913,11 @@ def _generate_gold_signals(
         price = buys[0].get('current_price')
         price_str = f'${price:.2f}' if price else ''
         val_str = f'${total_val:,.0f}' if total_val else ''
-        reason = _insider_reason(tk, buys)
+        # Use the enriched 'why' from the trade (has full company intel)
+        reason = buys[0].get('why', '')
         best_title_w, best_title = max((_title_weight(b.get('title', '')) for b in buys), key=lambda x: x[0])
 
-        # Build detail line (skip None parts)
-        detail_parts = [p for p in [mcap, reason] if p]
-        detail_line = ' | '.join(detail_parts) if detail_parts else reason
+        detail_line = reason or f'{mcap}'
 
         if len(buys) >= 2:
             titles = ', '.join(dict.fromkeys(_title_weight(b.get('title', ''))[1] for b in buys))
@@ -2400,8 +2470,15 @@ async def get_sector_briefing() -> dict:
                     trade['change_pct'] = enrich.get('change_pct')
                     trade['current_price'] = enrich.get('price')
                     trade['market_cap_live'] = enrich.get('market_cap')
+                    # Company intel for "why" analysis
+                    trade['industry'] = enrich.get('industry', '')
+                    trade['business'] = enrich.get('business', '')
+                    trade['target_price'] = enrich.get('target_price')
+                    trade['upside_pct'] = enrich.get('upside_pct')
+                    trade['earnings_date'] = enrich.get('earnings_date')
+                    trade['recommendation'] = enrich.get('recommendation')
 
-                    # Generate 'why' reason for each trade
+                    # Generate 'why' reason using full company intel
                     trade['why'] = _insider_why(trade)
 
                 _insider_cache = new_insider
