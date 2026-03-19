@@ -427,8 +427,15 @@ function HeatmapTile({ s, tf, isExpanded, onToggle }) {
       {/* Macro impact badges */}
       <ImpactBadges impacts={s.impacts} />
 
-      {/* Bottom: ETF + Volume + drivers hint */}
-      <div className="flex items-center justify-between mt-1.5">
+      {/* Hot industry hint */}
+      {s.hot_industry && (
+        <div className="text-[9px] text-amber-400/70 mt-1 truncate">
+          {s.hot_industry.name}
+        </div>
+      )}
+
+      {/* Bottom: ETF + Volume */}
+      <div className="flex items-center justify-between mt-1">
         <span className="text-[10px] text-slate-500">{s.etf} ${s.price}</span>
         <div className="flex items-center gap-1">
           <VolumeBadge ratio={s.volume_ratio} />
@@ -474,14 +481,55 @@ function SectorDetail({ sector, stocks, isLoadingStocks, onLoadStocks }) {
           <MomentumGauge score={sector.momentum_score} size={36} />
         </div>
 
-        {/* Drivers */}
-        {sector.drivers?.length > 0 && (
+        {/* Top Movers (actual market movers) */}
+        {sector.top_movers?.length > 0 && (
           <div className="flex items-center gap-2 mt-2 flex-wrap">
-            <span className="text-[10px] text-slate-500">מניות מובילות:</span>
-            {sector.drivers.map(d => (
-              <span key={d.ticker} className="text-xs bg-slate-800/60 rounded-lg px-2 py-0.5">
-                <span className="text-slate-300 font-medium">{d.ticker}</span>
-                <span className={`ml-1 font-bold ${chgColor(d.change_pct)}`}>{fmtChg(d.change_pct)}</span>
+            <span className="text-[10px] text-amber-400 font-medium">מניות שזזות:</span>
+            {sector.top_movers.slice(0, 5).map(m => (
+              <span key={m.ticker} className="text-xs bg-slate-800/60 rounded-lg px-2 py-0.5">
+                <span className="text-white font-bold">{m.ticker}</span>
+                <span className={`ml-1 font-bold ${chgColor(m.change_pct)}`}>{fmtChg(m.change_pct)}</span>
+                {m.industry && (
+                  <span className="text-[9px] text-slate-600 mr-1">{m.industry}</span>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Hot Industry */}
+        {sector.hot_industry && (
+          <div className="mt-2 bg-amber-950/30 border border-amber-800/30 rounded-lg px-3 py-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Zap size={12} className="text-amber-400 shrink-0" />
+              <span className="text-[11px] font-semibold text-amber-300">
+                תת-סקטור חם: {sector.hot_industry.name}
+              </span>
+              <span className={`text-[10px] font-bold ${chgColor(sector.hot_industry.avg_change)}`}>
+                ממוצע {fmtChg(sector.hot_industry.avg_change)}
+              </span>
+              <span className="text-[9px] text-slate-500">
+                ({sector.hot_industry.count} מניות)
+              </span>
+            </div>
+            {sector.hot_industry.tickers?.length > 0 && (
+              <div className="flex gap-1.5 mt-1">
+                {sector.hot_industry.tickers.map(t => (
+                  <span key={t} className="text-[10px] text-amber-400/80 bg-amber-950/40 rounded px-1.5 py-0.5">{t}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ETF Holdings (weights) */}
+        {sector.holdings?.length > 0 && (
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <span className="text-[10px] text-slate-500">משקולות ETF:</span>
+            {sector.holdings.map(d => (
+              <span key={d.ticker} className="text-xs bg-slate-800/40 rounded-lg px-2 py-0.5">
+                <span className="text-slate-400 font-medium">{d.ticker}</span>
+                <span className={`ml-1 ${chgColor(d.change_pct)}`}>{fmtChg(d.change_pct)}</span>
               </span>
             ))}
           </div>

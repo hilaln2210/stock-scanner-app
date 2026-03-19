@@ -71,6 +71,21 @@ GROWTH_ETFS = {'XLK', 'XLY', 'XLC'}
 DEFENSIVE_ETFS = {'XLU', 'XLP', 'XLV'}
 CYCLICAL_ETFS = {'XLI', 'XLE', 'XLB'}
 
+# Mapping Finviz sector names → our ETF keys
+FINVIZ_SECTOR_MAP = {
+    'Technology':              'XLK',
+    'Financial':               'XLF',
+    'Healthcare':              'XLV',
+    'Energy':                  'XLE',
+    'Industrials':             'XLI',
+    'Consumer Cyclical':       'XLY',
+    'Consumer Defensive':      'XLP',
+    'Communication Services':  'XLC',
+    'Basic Materials':         'XLB',
+    'Real Estate':             'XLRE',
+    'Utilities':               'XLU',
+}
+
 _HEADERS = {
     'User-Agent': (
         'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
@@ -124,6 +139,11 @@ _MACRO_TTL = 60  # 1 minute — critical real-time data
 _market_news_cache: Optional[List[dict]] = None
 _market_news_cache_at: float = 0.0
 _MARKET_NEWS_TTL = 300  # 5 minutes
+
+# All-sector movers cache (unified Finviz call)
+_all_movers_cache: Optional[Dict[str, dict]] = None
+_all_movers_cache_at: float = 0.0
+_ALL_MOVERS_TTL = 180  # 3 minutes
 
 # ── Macro Indicator Definitions ──────────────────────────────────────────────────
 
@@ -645,20 +665,31 @@ def _translate_titles(news_items: List[dict]) -> List[dict]:
     return news_items
 
 
-def _fetch_sector_news(etf_tickers: List[str]) -> Dict[str, List[dict]]:
+def _fetch_sector_news(etf_tickers: List[str], extra_tickers: Dict[str, List[str]] = None) -> Dict[str, List[dict]]:
     """
-    Fetch news for multiple sector ETFs + their top holdings.
+    Fetch news for multiple sector ETFs + their top holdings + hot industry tickers.
     Returns {etf: [news items]} with Hebrew-translated titles.
     """
+    extra_tickers = extra_tickers or {}
     result: Dict[str, List[dict]] = {}
     all_news: List[dict] = []
 
     for etf in etf_tickers:
-        tickers_to_check = [etf] + ETF_TOP_HOLDINGS.get(etf, [])[:2]
+        # Priority: hot industry tickers first, then ETF + holdings
+        hot_tickers = extra_tickers.get(etf, [])
+        tickers_to_check = hot_tickers + [etf] + ETF_TOP_HOLDINGS.get(etf, [])[:2]
+        # Deduplicate while preserving order
+        seen_t = set()
+        unique_tickers = []
+        for t in tickers_to_check:
+            if t not in seen_t:
+                seen_t.add(t)
+                unique_tickers.append(t)
+
         etf_news: List[dict] = []
 
-        for ticker in tickers_to_check:
-            if len(etf_news) >= 3:
+        for ticker in unique_tickers:
+            if len(etf_news) >= 4:
                 break
             items = _fetch_news_for_ticker(ticker, 2)
             etf_news.extend(items)
@@ -669,7 +700,7 @@ def _fetch_sector_news(etf_tickers: List[str]) -> Dict[str, List[dict]]:
             if n['title'] not in seen:
                 seen.add(n['title'])
                 deduped.append(n)
-        deduped = deduped[:3]
+        deduped = deduped[:4]
         result[etf] = deduped
         all_news.extend(deduped)
 
@@ -1008,6 +1039,151 @@ def _fetch_market_news() -> List[dict]:
     return all_news
 
 
+# ── 12. All-Sector Movers (single Finviz call) ─────────────────────────────────
+
+async def _fetch_all_movers(session: aiohttp.ClientSession) -> Dict[str, dict]:
+    """
+    Fetch top movers across ALL sectors from Finviz in 3 pages (60 stocks).
+    Single unified call replaces 11 separate sector calls.
+    Groups by sector + identifies hottest industry per sector.
+    Returns {etf_key: {movers: [...], hot_industry: {name, count, avg_change, top_ticker}}}.
+    """
+    import re as _re
+    all_stocks = []
+
+    for page_start in [1, 21, 41]:  # 3 pages = ~60 stocks
+        url = (
+            f'https://finviz.com/screener.ashx?v=111'
+            f'&f=sh_avgvol_o200'
+            f'&o=-change&r={page_start}'
+        )
+        try:
+            async with session.get(
+                url, headers=_HEADERS, timeout=aiohttp.ClientTimeout(total=12)
+            ) as resp:
+                if resp.status != 200:
+                    print(f"[SectorBriefing] all-movers page {page_start} HTTP {resp.status}")
+                    break
+                html = await resp.text()
+
+            soup = BeautifulSoup(html, 'html.parser')
+
+            # Find results table
+            table = None
+            link = soup.find('a', href=_re.compile(r'quote\.ashx\?t='))
+            if link:
+                node = link
+                for _ in range(12):
+                    node = node.parent
+                    if node.name == 'table':
+                        table = node
+                        break
+                    if node.name == 'body':
+                        break
+            if not table:
+                for t in soup.find_all('table'):
+                    hdr = t.find('tr')
+                    if hdr and 'Ticker' in [c.get_text(strip=True) for c in hdr.find_all(['th', 'td'])]:
+                        table = t
+                        break
+            if not table:
+                break
+
+            rows = table.find_all('tr')
+            header_cells = rows[0].find_all(['th', 'td'])
+            col = {c.get_text(strip=True): i for i, c in enumerate(header_cells)}
+
+            def gcol(row_cells, name, default=''):
+                i = col.get(name)
+                return row_cells[i].get_text(strip=True) if i is not None and i < len(row_cells) else default
+
+            for row in rows[1:]:
+                cells = row.find_all('td')
+                if not cells:
+                    continue
+
+                ticker = gcol(cells, 'Ticker')
+                if not ticker or ticker.isdigit():
+                    continue
+
+                sector = gcol(cells, 'Sector')
+                industry = gcol(cells, 'Industry')
+
+                try:
+                    chg = float(gcol(cells, 'Change', '0').replace('%', '').replace('+', ''))
+                    price_str = gcol(cells, 'Price', '0').replace('$', '').replace(',', '')
+                    price = float(price_str) if price_str else 0.0
+                    vol_str = gcol(cells, 'Volume', '0').replace(',', '')
+                    volume = int(vol_str) if vol_str.isdigit() else 0
+                except Exception:
+                    continue
+
+                all_stocks.append({
+                    'ticker':     ticker,
+                    'company':    gcol(cells, 'Company'),
+                    'sector':     sector,
+                    'industry':   industry,
+                    'change_pct': chg,
+                    'price':      price,
+                    'volume':     volume,
+                    'market_cap': gcol(cells, 'Market Cap'),
+                })
+
+        except Exception as e:
+            print(f"[SectorBriefing] all-movers page {page_start} error: {e}")
+            break
+
+    # Group by sector → ETF key
+    result: Dict[str, dict] = {}
+    for etf_key in SECTOR_ETFS:
+        result[etf_key] = {'movers': [], 'hot_industry': None}
+
+    for stock in all_stocks:
+        etf_key = FINVIZ_SECTOR_MAP.get(stock['sector'])
+        if etf_key and etf_key in result:
+            result[etf_key]['movers'].append(stock)
+
+    # For each sector, find hottest industry
+    for etf_key, data in result.items():
+        movers = data['movers']
+        if not movers:
+            continue
+
+        # Keep only top 5 movers per sector
+        data['movers'] = movers[:5]
+
+        # Group by industry
+        industry_map: Dict[str, List[dict]] = {}
+        for m in movers:
+            ind = m.get('industry', '')
+            if ind:
+                if ind not in industry_map:
+                    industry_map[ind] = []
+                industry_map[ind].append(m)
+
+        if industry_map:
+            # Score: count * avg_change — more stocks with higher change = hotter
+            best_industry = None
+            best_score = -999
+            for ind_name, ind_stocks in industry_map.items():
+                avg_chg = sum(s['change_pct'] for s in ind_stocks) / len(ind_stocks)
+                score = len(ind_stocks) * avg_chg
+                if score > best_score:
+                    best_score = score
+                    best_industry = {
+                        'name': ind_name,
+                        'count': len(ind_stocks),
+                        'avg_change': round(avg_chg, 2),
+                        'top_ticker': ind_stocks[0]['ticker'],
+                        'tickers': [s['ticker'] for s in ind_stocks[:3]],
+                    }
+            data['hot_industry'] = best_industry
+
+    total = sum(len(d['movers']) for d in result.values())
+    print(f'[SectorBriefing] all-movers: {total} stocks across {sum(1 for d in result.values() if d["movers"])} sectors')
+    return result
+
+
 # ── On-Demand Per-Sector Movers ─────────────────────────────────────────────────
 
 async def get_stocks_for_sector(finviz_filter: str) -> List[dict]:
@@ -1045,6 +1221,7 @@ async def get_sector_briefing() -> dict:
     global _news_cache, _news_cache_at
     global _macro_cache, _macro_cache_at
     global _market_news_cache, _market_news_cache_at
+    global _all_movers_cache, _all_movers_cache_at
 
     now = _time.time()
 
@@ -1079,9 +1256,10 @@ async def get_sector_briefing() -> dict:
     insider_stale = _insider_cache is None or (now - _insider_cache_at) >= _INSIDER_CACHE_TTL
     news_stale = not _news_cache or (now - _news_cache_at) >= _NEWS_CACHE_TTL
 
-    # ── Macro & market news staleness ─────────────────────────────────────────
+    # ── Macro, market news, all-movers staleness ──────────────────────────────
     macro_stale = _macro_cache is None or (now - _macro_cache_at) >= _MACRO_TTL
     market_news_stale = _market_news_cache is None or (now - _market_news_cache_at) >= _MARKET_NEWS_TTL
+    all_movers_stale = _all_movers_cache is None or (now - _all_movers_cache_at) >= _ALL_MOVERS_TTL
 
     # ── Launch independent fetches concurrently ───────────────────────────────
     drivers_task = None
@@ -1092,6 +1270,7 @@ async def get_sector_briefing() -> dict:
     news_task = None
     macro_task = None
     market_news_task = None
+    all_movers_task = None
 
     if drivers_stale:
         print('[SectorBriefing] Refreshing drivers...')
@@ -1133,10 +1312,18 @@ async def get_sector_briefing() -> dict:
         insider_task = asyncio.ensure_future(asyncio.wait_for(_do_insider(), timeout=18))
 
     if news_stale and sectors:
+        # Include hot_industry top tickers in news fetch for richer coverage
+        extra_tickers = {}
+        if _all_movers_cache:
+            for etf_key, am in _all_movers_cache.items():
+                hi = am.get('hot_industry')
+                if hi and hi.get('top_ticker'):
+                    extra_tickers[etf_key] = hi['tickers'][:2]
+
         top_etfs = [s['etf'] for s in sorted(sectors, key=lambda x: abs(x['change_pct']), reverse=True)[:5]]
         print(f'[SectorBriefing] Refreshing news for {top_etfs}...')
         news_task = asyncio.ensure_future(asyncio.wait_for(
-            asyncio.to_thread(_fetch_sector_news, top_etfs),
+            asyncio.to_thread(_fetch_sector_news, top_etfs, extra_tickers),
             timeout=25,
         ))
 
@@ -1153,6 +1340,15 @@ async def get_sector_briefing() -> dict:
             asyncio.to_thread(_fetch_market_news),
             timeout=25,
         ))
+
+    if all_movers_stale:
+        print('[SectorBriefing] Refreshing all-sector movers...')
+
+        async def _do_all_movers():
+            async with aiohttp.ClientSession() as session:
+                return await _fetch_all_movers(session)
+
+        all_movers_task = asyncio.ensure_future(asyncio.wait_for(_do_all_movers(), timeout=25))
 
     # ── Await all tasks ────────────────────────────────────────────────────────
     if drivers_task is not None:
@@ -1255,6 +1451,17 @@ async def get_sector_briefing() -> dict:
         except Exception as e:
             print(f'[SectorBriefing] market news error: {e}')
 
+    if all_movers_task is not None:
+        try:
+            new_am = await all_movers_task
+            if new_am:
+                _all_movers_cache = new_am
+                _all_movers_cache_at = _time.time()
+        except (asyncio.TimeoutError, FuturesTimeout):
+            print('[SectorBriefing] all-movers timeout')
+        except Exception as e:
+            print(f'[SectorBriefing] all-movers error: {e}')
+
     # ── Compute sector impacts from macro data ──────────────────────────────────
     macro_data = _macro_cache or {}
     sector_impacts = _compute_sector_impacts(macro_data) if macro_data else {}
@@ -1262,21 +1469,36 @@ async def get_sector_briefing() -> dict:
     # ── Merge all data into sectors ─────────────────────────────────────────────
     multi_tf = _multi_tf_cache or {}
     sparklines = _sparkline_cache or {}
+    all_movers = _all_movers_cache or {}
 
     sectors_full = []
     for s in sectors:
         entry = dict(s)
         etf = entry['etf']
 
-        # Drivers
+        # ETF top holdings (weight-based)
         holdings = ETF_TOP_HOLDINGS.get(etf, [])
-        drivers = []
+        weights = []
         for h in holdings:
             h_chg = _drivers_cache.get(h)
             if h_chg is not None:
-                drivers.append({'ticker': h, 'change_pct': h_chg})
-        drivers.sort(key=lambda x: x['change_pct'], reverse=True)
-        entry['drivers'] = drivers
+                weights.append({'ticker': h, 'change_pct': h_chg})
+        weights.sort(key=lambda x: x['change_pct'], reverse=True)
+        entry['holdings'] = weights  # renamed from 'drivers' — these are ETF weights
+
+        # Actual top movers from Finviz (real market movers, not just ETF weights)
+        am = all_movers.get(etf, {})
+        entry['top_movers'] = am.get('movers', [])
+        entry['hot_industry'] = am.get('hot_industry')
+
+        # drivers = top_movers if available, fallback to holdings
+        if entry['top_movers']:
+            entry['drivers'] = [
+                {'ticker': m['ticker'], 'change_pct': m['change_pct']}
+                for m in entry['top_movers'][:3]
+            ]
+        else:
+            entry['drivers'] = weights
 
         # Multi-timeframe
         tf = multi_tf.get(etf, {})
@@ -1363,6 +1585,7 @@ def invalidate_cache() -> None:
     global _insider_cache_at, _news_cache_at
     global _multi_tf_cache_at, _sparkline_cache_at
     global _macro_cache_at, _market_news_cache_at
+    global _all_movers_cache_at
     _etf_cache_at = 0.0
     _drivers_cache_at = 0.0
     _stocks_cache_at = 0.0
@@ -1372,3 +1595,4 @@ def invalidate_cache() -> None:
     _sparkline_cache_at = 0.0
     _macro_cache_at = 0.0
     _market_news_cache_at = 0.0
+    _all_movers_cache_at = 0.0
