@@ -3268,12 +3268,12 @@ async def _fetch_yfinance_prices(tickers: list) -> dict:
             if len(tickers) == 1:
                 t = tickers[0]
                 tk = yf.Ticker(t)
-                hist = tk.history(period='1d', interval='1m', timeout=8)
+                hist = tk.history(period='1d', interval='1m', prepost=True, timeout=8)
                 if not hist.empty:
                     prices[t] = float(hist['Close'].dropna().iloc[-1])
             else:
                 data = yf.download(tickers, period='1d', interval='1m',
-                                   progress=False, timeout=10, group_by='ticker')
+                                   prepost=True, progress=False, timeout=10, group_by='ticker')
                 for t in tickers:
                     try:
                         col = data[t]['Close'] if t in data.columns.get_level_values(0) else data['Close']
@@ -4188,7 +4188,7 @@ async def arena_hot_movers(min_chg: float = Query(5.0)):
     def _get_intraday(ticker: str) -> dict:
         """Fetch 5m intraday bars → chg_30m / chg_1h. Kept lean — no extra HTTP calls."""
         try:
-            hist = _yf2.Ticker(ticker).history(period='1d', interval='5m', prepost=False, timeout=5)
+            hist = _yf2.Ticker(ticker).history(period='1d', interval='5m', prepost=True, timeout=5)
             if hist is None or len(hist) < 1:
                 return {}
             closes = hist['Close'].dropna()
@@ -4443,7 +4443,7 @@ async def smart_portfolio_arena_think():
         tickers_to_try = list(_SMART_PORTFOLIO_UNIVERSE)[:20]
         try:
             data_yf = yf.download(tickers_to_try, period="1d", interval="5m",
-                                   group_by="ticker", progress=False, timeout=8)
+                                   prepost=True, group_by="ticker", progress=False, timeout=8)
             minimal = []
             for t in tickers_to_try:
                 try:
@@ -4533,7 +4533,7 @@ async def smart_portfolio_arena_think():
     if _btc_t.time() - _BTC_LAST_FETCH > 60:
         try:
             import yfinance as _yf
-            _btc_hist = _yf.Ticker("BTC-USD").history(period="1d", interval="1m", timeout=4)
+            _btc_hist = _yf.Ticker("BTC-USD").history(period="1d", interval="1m", prepost=True, timeout=4)
             if not _btc_hist.empty:
                 _btc_price = float(_btc_hist['Close'].iloc[-1])
                 _BTC_PRICE_HISTORY.append((_btc_t.time(), _btc_price))
