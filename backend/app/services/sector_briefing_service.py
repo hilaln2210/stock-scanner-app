@@ -1184,6 +1184,119 @@ async def _fetch_all_movers(session: aiohttp.ClientSession) -> Dict[str, dict]:
     return result
 
 
+# ── 13. Smart Money Flow Analysis ──────────────────────────────────────────────
+
+def _compute_money_flow(sectors: List[dict]) -> dict:
+    """
+    Compute Smart Money flow signals per sector using:
+    - ETF volume ratio (institutional trading drives large ETF volume)
+    - Price direction (accumulation = high vol + up, distribution = high vol + down)
+    - Multi-timeframe consistency (same direction across timeframes = conviction)
+
+    Returns {etf: {score, signal, label}} + summary.
+    """
+    flows: Dict[str, dict] = {}
+
+    for s in sectors:
+        etf = s['etf']
+        chg = s.get('change_pct', 0) or 0
+        vol_ratio = s.get('volume_ratio') or 1.0
+        w1 = s.get('w1') or 0
+        m1 = s.get('m1') or 0
+
+        # Core flow: volume_ratio * direction-weighted change
+        # Cap change at ±5 to prevent extreme outliers
+        capped_chg = max(-5, min(5, chg))
+        flow_score = vol_ratio * capped_chg
+
+        # Conviction bonus: consistent direction across timeframes
+        same_dir_w1 = (chg > 0 and w1 > 0) or (chg < 0 and w1 < 0)
+        same_dir_m1 = (chg > 0 and m1 > 0) or (chg < 0 and m1 < 0)
+        conviction = 0
+        if same_dir_w1:
+            conviction += 1
+        if same_dir_m1:
+            conviction += 1
+
+        # Boost score with conviction (consistent trend = smart money, not noise)
+        if conviction >= 2:
+            flow_score *= 1.5
+        elif conviction == 1:
+            flow_score *= 1.2
+
+        # Volume signal amplification
+        if vol_ratio >= 2.0:
+            flow_score *= 1.3  # unusually high volume = institutional activity
+
+        # Classify
+        if flow_score > 5:
+            signal, label = 'strong_accumulation', 'הצטברות חזקה'
+        elif flow_score > 2:
+            signal, label = 'accumulation', 'הצטברות'
+        elif flow_score > 0.5:
+            signal, label = 'mild_accumulation', 'הצטברות קלה'
+        elif flow_score < -5:
+            signal, label = 'strong_distribution', 'חלוקה חזקה'
+        elif flow_score < -2:
+            signal, label = 'distribution', 'חלוקה'
+        elif flow_score < -0.5:
+            signal, label = 'mild_distribution', 'חלוקה קלה'
+        else:
+            signal, label = 'neutral', 'ניטרלי'
+
+        flows[etf] = {
+            'score': round(flow_score, 2),
+            'signal': signal,
+            'label': label,
+            'conviction': conviction,
+            'volume_signal': 'high' if vol_ratio >= 2.0 else 'elevated' if vol_ratio >= 1.3 else 'normal',
+        }
+
+    # Summary: top accumulators and distributors
+    sorted_by_score = sorted(flows.items(), key=lambda x: x[1]['score'], reverse=True)
+    top_accumulation = [
+        {'etf': etf, **flow}
+        for etf, flow in sorted_by_score[:3]
+        if flow['score'] > 0.5
+    ]
+    top_distribution = [
+        {'etf': etf, **flow}
+        for etf, flow in sorted_by_score[-3:]
+        if flow['score'] < -0.5
+    ]
+    top_distribution.reverse()  # most negative first
+
+    return {
+        'flows': flows,
+        'top_accumulation': top_accumulation,
+        'top_distribution': top_distribution,
+    }
+
+
+def _map_insiders_to_sectors(insider_trades: List[dict], all_movers: Dict[str, dict]) -> Dict[str, List[dict]]:
+    """
+    Map insider trades to sector ETFs using the all-movers data.
+    Detects cluster buys (multiple insiders buying in same sector).
+    Returns {etf: [insider trades in that sector]}.
+    """
+    # Build ticker→sector map from all_movers data
+    ticker_to_sector: Dict[str, str] = {}
+    for etf_key, data in all_movers.items():
+        for m in data.get('movers', []):
+            ticker_to_sector[m['ticker']] = etf_key
+
+    # Map each insider trade to its sector
+    sector_insiders: Dict[str, List[dict]] = {}
+    for trade in insider_trades:
+        etf = ticker_to_sector.get(trade['ticker'])
+        if etf:
+            if etf not in sector_insiders:
+                sector_insiders[etf] = []
+            sector_insiders[etf].append(trade)
+
+    return sector_insiders
+
+
 # ── On-Demand Per-Sector Movers ─────────────────────────────────────────────────
 
 async def get_stocks_for_sector(finviz_filter: str) -> List[dict]:
@@ -1557,6 +1670,22 @@ async def get_sector_briefing() -> dict:
     # Market pulse
     pulse = _compute_market_pulse(sectors, spy_data)
 
+    # Smart money flow analysis
+    smart_money = _compute_money_flow(sectors_full)
+
+    # Add money_flow to each sector entry
+    for entry in sectors_full:
+        flow = smart_money['flows'].get(entry['etf'])
+        if flow:
+            entry['money_flow'] = flow
+
+    # Map insider trades to sectors for cluster buy detection
+    sector_insiders = _map_insiders_to_sectors(insider_trades, all_movers)
+    for entry in sectors_full:
+        si = sector_insiders.get(entry['etf'], [])
+        entry['sector_insider_count'] = len(si)
+        entry['sector_insiders'] = si[:3]  # top 3 insider trades for this sector
+
     result = {
         'generated_at':    datetime.now().isoformat(),
         'sectors':         sectors_full,
@@ -1567,6 +1696,10 @@ async def get_sector_briefing() -> dict:
         'market_pulse':    pulse,
         'macro':           macro_data,
         'market_news':     _market_news_cache or [],
+        'smart_money':     {
+            'top_accumulation': smart_money['top_accumulation'],
+            'top_distribution': smart_money['top_distribution'],
+        },
     }
 
     top_name = result['top_sector']['name'] if result['top_sector'] else 'none'

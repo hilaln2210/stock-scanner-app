@@ -4,7 +4,7 @@ import axios from 'axios';
 import {
   RefreshCw, TrendingUp, TrendingDown, AlertCircle, Newspaper,
   ChevronDown, ChevronUp, Zap, Shield, Activity, BarChart3,
-  ArrowUpRight, ArrowDownRight, Minus,
+  ArrowUpRight, ArrowDownRight, Minus, DollarSign, Users,
 } from 'lucide-react';
 
 const api = axios.create({ baseURL: '/api' });
@@ -261,6 +261,108 @@ function MarketNewsFeed({ news }) {
   );
 }
 
+// ── Smart Money Summary ─────────────────────────────────────────────────────────
+
+function SmartMoneySummary({ smartMoney, sectors }) {
+  if (!smartMoney) return null;
+  const { top_accumulation = [], top_distribution = [] } = smartMoney;
+  if (!top_accumulation.length && !top_distribution.length) return null;
+
+  const getName = (etf) => sectors.find(s => s.etf === etf)?.name || etf;
+  const getIcon = (etf) => sectors.find(s => s.etf === etf)?.icon || '';
+
+  return (
+    <div className="bg-slate-900/60 border border-slate-700/50 rounded-2xl p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <DollarSign size={16} className="text-amber-400" />
+        <h3 className="text-sm font-semibold text-amber-300">כסף חכם — לאן זורם הכסף?</h3>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Accumulation (money flowing IN) */}
+        {top_accumulation.length > 0 && (
+          <div className="bg-emerald-950/30 border border-emerald-800/30 rounded-xl p-3">
+            <div className="flex items-center gap-1.5 mb-2">
+              <ArrowUpRight size={14} className="text-emerald-400" />
+              <span className="text-[11px] font-semibold text-emerald-400">כסף נכנס (הצטברות)</span>
+            </div>
+            <div className="space-y-1.5">
+              {top_accumulation.map(item => (
+                <div key={item.etf} className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm">{getIcon(item.etf)}</span>
+                    <span className="text-xs text-slate-200 font-medium">{getName(item.etf)}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-emerald-400 font-bold">{item.label}</span>
+                    {item.conviction >= 2 && (
+                      <span className="text-[8px] bg-emerald-900/60 text-emerald-300 rounded px-1 py-0.5">שכנוע</span>
+                    )}
+                    {item.volume_signal === 'high' && (
+                      <span className="text-[8px] bg-amber-900/60 text-amber-300 rounded px-1 py-0.5">Vol!</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Distribution (money flowing OUT) */}
+        {top_distribution.length > 0 && (
+          <div className="bg-red-950/30 border border-red-800/30 rounded-xl p-3">
+            <div className="flex items-center gap-1.5 mb-2">
+              <ArrowDownRight size={14} className="text-red-400" />
+              <span className="text-[11px] font-semibold text-red-400">כסף יוצא (חלוקה)</span>
+            </div>
+            <div className="space-y-1.5">
+              {top_distribution.map(item => (
+                <div key={item.etf} className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm">{getIcon(item.etf)}</span>
+                    <span className="text-xs text-slate-200 font-medium">{getName(item.etf)}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-red-400 font-bold">{item.label}</span>
+                    {item.conviction >= 2 && (
+                      <span className="text-[8px] bg-red-900/60 text-red-300 rounded px-1 py-0.5">שכנוע</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Money Flow Badge ────────────────────────────────────────────────────────────
+
+function MoneyFlowBadge({ flow }) {
+  if (!flow || flow.signal === 'neutral') return null;
+
+  const configs = {
+    strong_accumulation: { color: 'text-emerald-300 bg-emerald-950/60', arrow: '▲▲' },
+    accumulation:        { color: 'text-emerald-400 bg-emerald-950/40', arrow: '▲' },
+    mild_accumulation:   { color: 'text-emerald-400/60 bg-emerald-950/30', arrow: '△' },
+    strong_distribution: { color: 'text-red-300 bg-red-950/60', arrow: '▼▼' },
+    distribution:        { color: 'text-red-400 bg-red-950/40', arrow: '▼' },
+    mild_distribution:   { color: 'text-red-400/60 bg-red-950/30', arrow: '▽' },
+  };
+  const cfg = configs[flow.signal] || null;
+  if (!cfg) return null;
+
+  return (
+    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${cfg.color}`}
+      title={flow.label}
+    >
+      {cfg.arrow} {flow.label}
+    </span>
+  );
+}
+
 // ── Sector Impact Badges ────────────────────────────────────────────────────────
 
 function ImpactBadges({ impacts }) {
@@ -434,10 +536,18 @@ function HeatmapTile({ s, tf, isExpanded, onToggle }) {
         </div>
       )}
 
-      {/* Bottom: ETF + Volume */}
+      {/* Money flow badge */}
+      <MoneyFlowBadge flow={s.money_flow} />
+
+      {/* Bottom: ETF + Volume + Insiders */}
       <div className="flex items-center justify-between mt-1">
         <span className="text-[10px] text-slate-500">{s.etf} ${s.price}</span>
         <div className="flex items-center gap-1">
+          {s.sector_insider_count > 0 && (
+            <span className="text-[9px] px-1 py-0.5 rounded-full text-amber-400 bg-amber-950/40">
+              {s.sector_insider_count} insider{s.sector_insider_count > 1 ? 's' : ''}
+            </span>
+          )}
           <VolumeBadge ratio={s.volume_ratio} />
         </div>
       </div>
@@ -549,6 +659,44 @@ function SectorDetail({ sector, stocks, isLoadingStocks, onLoadStocks }) {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Money Flow + Sector Insiders */}
+        <div className="flex flex-wrap items-center gap-3 mt-2">
+          {sector.money_flow && sector.money_flow.signal !== 'neutral' && (
+            <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium
+              ${sector.money_flow.score > 0
+                ? 'bg-emerald-950/40 border border-emerald-800/30 text-emerald-300'
+                : 'bg-red-950/40 border border-red-800/30 text-red-300'
+              }`}>
+              <DollarSign size={12} />
+              <span>{sector.money_flow.label}</span>
+              {sector.money_flow.conviction >= 2 && (
+                <span className="text-[9px] opacity-70">(שכנוע רב-מסגרתי)</span>
+              )}
+            </div>
+          )}
+
+          {sector.sector_insider_count > 0 && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px]
+              bg-amber-950/30 border border-amber-800/30 text-amber-300">
+              <Users size={12} />
+              <span>{sector.sector_insider_count} קניות מנהלים בסקטור</span>
+            </div>
+          )}
+        </div>
+
+        {/* Sector-specific insider trades */}
+        {sector.sector_insiders?.length > 0 && (
+          <div className="mt-2 space-y-1">
+            {sector.sector_insiders.map((t, i) => (
+              <div key={i} className="flex items-center gap-2 text-[10px] bg-amber-950/20 rounded-lg px-2 py-1">
+                <span className="text-amber-400 font-bold">{t.ticker}</span>
+                <span className="text-slate-400 truncate">{t.insider}</span>
+                {t.value && <span className="text-amber-300 mr-auto">{t.value}</span>}
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -875,6 +1023,9 @@ export default function SectorBriefing() {
 
           {/* ── Market News ────────────────────────────────────────────────────── */}
           <MarketNewsFeed news={marketNews} />
+
+          {/* ── Smart Money ─────────────────────────────────────────────────────── */}
+          <SmartMoneySummary smartMoney={data?.smart_money} sectors={sectors} />
 
           {/* ── Sector Heatmap / List ──────────────────────────────────────────── */}
           {viewMode === 'heatmap' ? (
