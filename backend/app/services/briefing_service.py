@@ -745,7 +745,7 @@ def _fetch_market_status_sync() -> Dict:
         for sym in ['SPY', 'QQQ']:
             try:
                 t = yf.Ticker(sym)
-                intra = t.history(period='1d', interval='5m', timeout=5)
+                intra = t.history(period='1d', interval='5m', timeout=5, prepost=True)
                 # Fetch 1y daily for SPY (MA200), 5d for QQQ
                 period_str = '1y' if sym == 'SPY' else '5d'
                 daily = t.history(period=period_str, interval='1d', timeout=5)

@@ -443,7 +443,7 @@ class IBService:
                         tickers_needed,
                         period="2d", interval="1m",
                         progress=False, auto_adjust=True, timeout=10,
-                        group_by="ticker",
+                        group_by="ticker", prepost=True,
                     )
                     if data is not None and not data.empty:
                         log.info(f"[IB] yfinance columns: {data.columns.tolist()[:6]}, nlevels={data.columns.nlevels}")
@@ -476,7 +476,7 @@ class IBService:
                 missing = [tk for tk in tickers_needed if tk not in yf_prices]
                 for tk in missing:
                     try:
-                        hist = yf.Ticker(tk).history(period="2d", interval="1m", timeout=8)
+                        hist = yf.Ticker(tk).history(period="2d", interval="1m", timeout=8, prepost=True)
                         if hist is not None and not hist.empty:
                             cs = hist["Close"].dropna()
                             if not cs.empty:

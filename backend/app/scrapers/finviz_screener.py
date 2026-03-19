@@ -477,7 +477,7 @@ class FinvizScreener:
             # --- Intraday data for VWAP ---
             hist_intraday = None
             try:
-                hist_intraday = stock.history(period='1d', interval='5m', timeout=5)
+                hist_intraday = stock.history(period='1d', interval='5m', timeout=5, prepost=True)
             except Exception:
                 pass
             vwap = 0

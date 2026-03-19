@@ -420,6 +420,7 @@ def _fetch_sparklines() -> Dict[str, List[float]]:
             progress=False,
             timeout=12,
             auto_adjust=True,
+            prepost=True,
         )
         close = data.get('Close', data) if hasattr(data, 'get') else data
 
