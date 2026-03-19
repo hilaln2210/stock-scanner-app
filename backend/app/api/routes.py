@@ -1174,12 +1174,14 @@ async def research_insider_catalyst(ticker: str):
                     upside = round((target - current) / current * 100, 1)
                     count = info.get('numberOfAnalystOpinions', 0)
                     rec = info.get('recommendationKey', '')
+                    rec_heb = {'strong_buy': 'קנייה חזקה', 'buy': 'קנייה', 'hold': 'החזקה',
+                               'sell': 'מכירה', 'strong_sell': 'מכירה חזקה'}.get(rec, rec)
                     if abs(upside) > 15 and count:
                         result['findings'].append({
                             'type': 'analyst',
                             'icon': '🎯',
-                            'text': f'{count} אנליסטים, יעד ${target:.0f} ({upside:+.0f}%), המלצה: {rec}',
-                            'source': 'Wall Street Consensus',
+                            'text': f'{count} אנליסטים, יעד ${target:.0f} ({upside:+.0f}%), המלצה: {rec_heb}',
+                            'source': 'קונצנזוס וול סטריט',
                             'age': '',
                         })
 
@@ -1201,7 +1203,7 @@ async def research_insider_catalyst(ticker: str):
                         'type': 'ownership',
                         'icon': '👔',
                         'text': f'אחזקת אנשי פנים: {io*100:.1f}% מהחברה',
-                        'source': 'SEC Filings',
+                        'source': 'דיווחי SEC',
                         'age': '',
                     })
 
@@ -1212,7 +1214,7 @@ async def research_insider_catalyst(ticker: str):
                         'type': 'institutional',
                         'icon': '🏛️',
                         'text': f'אחזקות מוסדיות: {it*100:.1f}%',
-                        'source': 'SEC 13F',
+                        'source': 'דיווחי SEC 13F',
                         'age': '',
                     })
 
@@ -1231,7 +1233,7 @@ async def research_insider_catalyst(ticker: str):
                             'type': 'volume',
                             'icon': '📊',
                             'text': f'ספייק נפח ×{max_vol/avg_vol:.1f} ב-5 ימים אחרונים, שינוי {week_chg:+.1f}%',
-                            'source': 'Price Data',
+                            'source': 'נתוני מסחר',
                             'age': '',
                         })
                     elif abs(week_chg) > 10:
@@ -1239,7 +1241,7 @@ async def research_insider_catalyst(ticker: str):
                             'type': 'price_move',
                             'icon': '📈' if week_chg > 0 else '📉',
                             'text': f'תנועה של {week_chg:+.1f}% ב-5 ימים אחרונים',
-                            'source': 'Price Data',
+                            'source': 'נתוני מסחר',
                             'age': '',
                         })
             except Exception:
@@ -1264,13 +1266,27 @@ async def research_insider_catalyst(ticker: str):
             else:
                 result['conclusion'] = f'נמצאו {len(result["findings"])} ממצאים — בדוק את הפרטים'
 
+        # Translate news titles to Hebrew
+        news_findings = [f for f in result['findings'] if f['type'] == 'news']
+        if news_findings:
+            try:
+                from deep_translator import GoogleTranslator
+                translator = GoogleTranslator(source='en', target='iw')
+                titles = [f['text'] for f in news_findings]
+                translated = translator.translate_batch(titles)
+                for i, t in enumerate(translated):
+                    if t:
+                        news_findings[i]['text'] = t
+            except Exception:
+                pass  # keep English if translation fails
+
         result['status'] = 'done'
         return result
 
     try:
         res = await asyncio.wait_for(
             asyncio.to_thread(_research),
-            timeout=20,
+            timeout=25,
         )
         return res
     except asyncio.TimeoutError:
