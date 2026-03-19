@@ -1621,7 +1621,240 @@ def _fetch_stock_intelligence(stocks: List[dict], max_stocks: int = 6) -> Dict[s
     return intel_map
 
 
-# ── 15. Smart Money Flow Analysis ──────────────────────────────────────────────
+# ── 15. Gold Signal Engine ─────────────────────────────────────────────────────
+
+def _generate_gold_signals(
+    all_movers: Dict[str, dict],
+    insider_trades: List[dict],
+    macro_data: dict,
+    intel: Dict[str, dict],
+) -> List[dict]:
+    """
+    Generate ranked, actionable signals from ALL data sources.
+    No articles — short punchy Hebrew messages with clear action.
+    Returns sorted list of {level, icon, message, ticker, action, source}.
+    """
+    signals = []
+
+    # ── 1. Insider Cluster Buys ────────────────────────────────────────────
+    ticker_buys: Dict[str, list] = {}
+    for t in insider_trades:
+        tk = t.get('ticker', '')
+        if tk:
+            if tk not in ticker_buys:
+                ticker_buys[tk] = []
+            ticker_buys[tk].append(t)
+
+    for tk, buys in ticker_buys.items():
+        if len(buys) >= 2:
+            total_val = 0
+            for b in buys:
+                try:
+                    v = b.get('value', '').replace('$', '').replace(',', '').replace('+', '')
+                    total_val += int(v)
+                except (ValueError, TypeError):
+                    pass
+            val_str = f'${total_val:,.0f}' if total_val else ''
+            mcap = buys[0].get('market_cap_live', '')
+            price = buys[0].get('current_price')
+            price_str = f' (${price:.2f})' if price else ''
+            signals.append({
+                'level': 'gold',
+                'icon': '🔥',
+                'message': f'{len(buys)} מנהלים קנו {val_str} ב-{tk}{price_str} תוך 48 שעות',
+                'detail': f'Cluster Buy | {mcap}' if mcap else 'Cluster Buy',
+                'ticker': tk,
+                'action': 'עוקבים אחרי מנהלים — סיגנל חזק',
+                'source': 'insider_cluster',
+            })
+        elif len(buys) == 1:
+            b = buys[0]
+            val = b.get('value', '')
+            try:
+                v = int(val.replace('$', '').replace(',', '').replace('+', ''))
+                if v >= 500_000:
+                    mcap = b.get('market_cap_live', '')
+                    price = b.get('current_price')
+                    price_str = f' (${price:.2f})' if price else ''
+                    signals.append({
+                        'level': 'gold',
+                        'icon': '👔',
+                        'message': f'{b.get("insider", "מנהל")[:20]} קנה {val} ב-{tk}{price_str}',
+                        'detail': f'{b.get("title", "")} | {mcap}' if mcap else b.get('title'),
+                        'ticker': tk,
+                        'action': 'מנהל שם כסף רציני מהכיס',
+                        'source': 'insider_big',
+                    })
+            except (ValueError, TypeError):
+                pass
+
+    # ── 2. Squeeze Setups ──────────────────────────────────────────────────
+    for etf_data in all_movers.values():
+        for m in etf_data.get('movers', []):
+            fs = m.get('float_short') or 0
+            chg = m.get('change_pct', 0)
+            vol = m.get('volume') or 0
+            avg_vol = m.get('avg_volume') or vol or 1
+            vr = vol / avg_vol if avg_vol > 0 else 1
+            fl = m.get('float_shares')
+            inst_tr = m.get('inst_trans') or 0
+
+            if fs >= 20 and vr >= 2 and chg > 5:
+                fl_str = f', Float {fl/1e6:.1f}M' if fl and fl < 30e6 else ''
+                est = m.get('move_estimate', {})
+                target = f' → יעד +{est["target_pct"]}%' if est.get('target_pct') else ''
+                signals.append({
+                    'level': 'gold',
+                    'icon': '🩳💥',
+                    'message': f'{m["ticker"]} סקוויז פעיל! שורט {fs:.0f}% × נפח {vr:.1f}x{fl_str}{target}',
+                    'detail': m.get('industry'),
+                    'ticker': m['ticker'],
+                    'action': 'שורטיסטים נלכדים — מומנטום ממשיך',
+                    'source': 'squeeze',
+                })
+            elif fs >= 15 and chg > 3 and vr >= 1.5:
+                signals.append({
+                    'level': 'silver',
+                    'icon': '🩳',
+                    'message': f'{m["ticker"]} לחץ שורט — {fs:.0f}% שורט, נפח {vr:.1f}x, עלייה {chg:+.1f}%',
+                    'ticker': m['ticker'],
+                    'action': 'פוטנציאל סקוויז אם הנפח ממשיך',
+                    'source': 'short_pressure',
+                })
+
+            if inst_tr > 8 and chg > 3:
+                intel_data = intel.get(m['ticker'], {})
+                target_str = f' | יעד ${intel_data["target_price"]}' if intel_data.get('target_price') else ''
+                signals.append({
+                    'level': 'silver',
+                    'icon': '🏛️',
+                    'message': f'מוסדיים צוברים {m["ticker"]} — +{inst_tr:.0f}% ברבעון{target_str}',
+                    'ticker': m['ticker'],
+                    'action': 'כסף חכם נכנס — מגמה מתמשכת',
+                    'source': 'inst_acc',
+                })
+
+            if fl and fl < 10e6 and chg > 10 and vr >= 2:
+                signals.append({
+                    'level': 'silver',
+                    'icon': '💎',
+                    'message': f'{m["ticker"]} ריצת Float קטן — {fl/1e6:.1f}M מניות, {chg:+.1f}%, נפח ×{vr:.0f}',
+                    'ticker': m['ticker'],
+                    'action': 'Float קטן + נפח = תנועה חדה',
+                    'source': 'float_run',
+                })
+
+            insider_tr = m.get('insider_trans') or 0
+            if insider_tr > 3 and fs >= 10:
+                signals.append({
+                    'level': 'gold',
+                    'icon': '🎯',
+                    'message': f'{m["ticker"]} — מנהלים קונים +{insider_tr:.0f}% בזמן ששורט {fs:.0f}%',
+                    'ticker': m['ticker'],
+                    'action': 'מנהלים נגד השורטיסטים — מלכודת',
+                    'source': 'insider_vs_short',
+                })
+
+    # ── 3. Earnings plays ──────────────────────────────────────────────────
+    from datetime import date
+    today = str(date.today())
+    for ticker, data in intel.items():
+        ed = data.get('earnings_date')
+        if not ed:
+            continue
+        target = data.get('target_price')
+        upside = data.get('upside_pct')
+
+        if ed == today:
+            up_str = f' | יעד ${target} ({upside:+.0f}%)' if target and upside else ''
+            signals.append({
+                'level': 'gold',
+                'icon': '📅🔥',
+                'message': f'{ticker} מדווח דוחות היום!{up_str}',
+                'ticker': ticker,
+                'action': 'דוחות היום — תנועה חדה צפויה',
+                'source': 'earnings_today',
+            })
+
+    # ── 4. Analyst targets with extreme upside ─────────────────────────────
+    for ticker, data in intel.items():
+        upside = data.get('upside_pct')
+        target = data.get('target_price')
+        rec = data.get('recommendation')
+        count = data.get('analyst_count')
+        if upside and target and count:
+            if upside > 100 and count >= 2:
+                signals.append({
+                    'level': 'gold',
+                    'icon': '🎯',
+                    'message': f'{ticker} — {count} אנליסטים, יעד ${target} ({upside:+.0f}% upside!)',
+                    'detail': f'המלצה: {rec}' if rec else None,
+                    'ticker': ticker,
+                    'action': 'פער ענק מיעד — שווה חקירה',
+                    'source': 'analyst_extreme',
+                })
+            elif upside > 50 and count >= 3:
+                signals.append({
+                    'level': 'silver',
+                    'icon': '📊',
+                    'message': f'{ticker} — {count} אנליסטים, יעד ${target} ({upside:+.0f}%)',
+                    'ticker': ticker,
+                    'action': 'upside משמעותי לפי וול סטריט',
+                    'source': 'analyst_upside',
+                })
+
+    # ── 5. Macro alerts ────────────────────────────────────────────────────
+    if macro_data:
+        vix = macro_data.get('vix_level', {})
+        if vix.get('level') == 'extreme':
+            signals.append({
+                'level': 'gold', 'icon': '🚨',
+                'message': f'VIX {vix.get("value", 0):.1f} — פאניקה בשוק!',
+                'action': 'סיכון מקסימלי — הגנתיים בלבד',
+                'source': 'vix_extreme',
+            })
+        elif vix.get('level') == 'high':
+            signals.append({
+                'level': 'silver', 'icon': '😰',
+                'message': f'VIX {vix.get("value", 0):.1f} — פחד מוגבר',
+                'action': 'תנודתיות גבוהה — זהירות',
+                'source': 'vix_high',
+            })
+
+        for ind in macro_data.get('indicators', []):
+            if ind['ticker'] == 'GC=F' and abs(ind.get('change_pct', 0)) > 2:
+                d = 'עולה' if ind['change_pct'] > 0 else 'יורד'
+                signals.append({
+                    'level': 'silver', 'icon': '🥇',
+                    'message': f'זהב {d} {abs(ind["change_pct"]):.1f}% — ${ind["price"]:.0f}',
+                    'action': 'Risk-Off, מחפשים מקלט' if ind['change_pct'] > 0 else 'Risk-On, תיאבון לסיכון',
+                    'source': 'gold_move',
+                })
+            if ind['ticker'] == 'CL=F' and abs(ind.get('change_pct', 0)) > 3:
+                d = 'זינוק' if ind['change_pct'] > 0 else 'צניחה'
+                signals.append({
+                    'level': 'silver', 'icon': '🛢️',
+                    'message': f'נפט {d} {abs(ind["change_pct"]):.1f}% — ${ind["price"]:.0f}',
+                    'action': 'אנרגיה מושפעת ישירות',
+                    'source': 'oil_move',
+                })
+
+    # ── Sort & deduplicate ─────────────────────────────────────────────────
+    level_order = {'gold': 0, 'silver': 1, 'bronze': 2}
+    signals.sort(key=lambda x: level_order.get(x.get('level', 'bronze'), 2))
+
+    seen = set()
+    unique = []
+    for s in signals:
+        key = f'{s.get("ticker", "")}-{s.get("source", "")}'
+        if key not in seen:
+            seen.add(key)
+            unique.append(s)
+
+    return unique[:20]
+
+
+# ── 16. Smart Money Flow Analysis ──────────────────────────────────────────────
 
 def _compute_money_flow(sectors: List[dict]) -> dict:
     """
@@ -2167,6 +2400,10 @@ async def get_sector_briefing() -> dict:
         'market_pulse':    pulse,
         'macro':           macro_data,
         'market_news':     _market_news_cache or [],
+        'gold_signals':    _generate_gold_signals(
+            all_movers, insider_trades, macro_data,
+            _intel_cache or {},
+        ),
         'smart_money':     {
             'top_accumulation': smart_money['top_accumulation'],
             'top_distribution': smart_money['top_distribution'],

@@ -224,35 +224,67 @@ function MacroStrip({ macro }) {
   );
 }
 
-// ── Market News Feed ────────────────────────────────────────────────────────────
+// ── Gold Signals ────────────────────────────────────────────────────────────────
 
-function MarketNewsFeed({ news }) {
+function GoldSignals({ signals }) {
   const [expanded, setExpanded] = useState(false);
-  if (!news?.length) return null;
+  if (!signals?.length) return null;
 
-  const shown = expanded ? news : news.slice(0, 3);
+  const goldCount = signals.filter(s => s.level === 'gold').length;
+  const shown = expanded ? signals : signals.slice(0, 6);
+
+  const levelBg = {
+    gold: 'bg-amber-950/40 border-amber-700/30',
+    silver: 'bg-slate-800/40 border-slate-700/30',
+    bronze: 'bg-slate-800/30 border-slate-700/20',
+  };
+  const levelAccent = {
+    gold: 'text-amber-300',
+    silver: 'text-slate-300',
+    bronze: 'text-slate-400',
+  };
 
   return (
-    <div className="bg-slate-900/60 border border-slate-700/50 rounded-2xl overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-slate-700/40 flex items-center justify-between">
+    <div className="bg-slate-900/60 border border-amber-700/30 rounded-2xl overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-amber-700/20 bg-amber-950/20 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Newspaper size={14} className="text-blue-400" />
-          <h3 className="text-sm font-semibold text-blue-300">חדשות שוק קריטיות</h3>
+          <span className="text-base">⚡</span>
+          <h3 className="text-sm font-bold text-amber-300">סיגנלים — מידע זהב</h3>
+          {goldCount > 0 && (
+            <span className="text-[9px] bg-amber-800/50 text-amber-200 rounded-full px-2 py-0.5 font-bold">
+              {goldCount} זהב
+            </span>
+          )}
         </div>
-        {news.length > 3 && (
+        {signals.length > 6 && (
           <button onClick={() => setExpanded(!expanded)} className="text-[10px] text-slate-500 hover:text-slate-300">
-            {expanded ? 'הצג פחות' : `עוד ${news.length - 3}`}
+            {expanded ? 'הצג פחות' : `עוד ${signals.length - 6}`}
           </button>
         )}
       </div>
       <div className="divide-y divide-slate-700/20">
-        {shown.map((n, i) => (
-          <div key={i} className="px-4 py-2 hover:bg-slate-800/20 transition-colors">
-            <p className="text-[12px] text-slate-200 leading-snug">{n.title}</p>
-            <div className="flex gap-2 mt-0.5">
-              {n.ticker && <span className="text-[9px] text-blue-400/70 font-medium">{n.ticker}</span>}
-              {n.source && <span className="text-[9px] text-slate-600">{n.source}</span>}
-              {n.pub_date && <span className="text-[9px] text-slate-600">{fmtTime(n.pub_date)}</span>}
+        {shown.map((s, i) => (
+          <div key={i} className={`px-4 py-2.5 hover:bg-slate-800/20 transition-colors border-r-2
+            ${s.level === 'gold' ? 'border-r-amber-500' : 'border-r-slate-600'}`}>
+            <div className="flex items-start gap-2">
+              <span className="text-base shrink-0">{s.icon}</span>
+              <div className="flex-1 min-w-0">
+                <p className={`text-[12px] font-medium leading-snug ${levelAccent[s.level]}`}>
+                  {s.message}
+                </p>
+                {s.detail && (
+                  <p className="text-[10px] text-slate-500 mt-0.5">{s.detail}</p>
+                )}
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[10px] text-emerald-400/80 font-medium">→ {s.action}</span>
+                  {s.ticker && (
+                    <span className="text-[9px] text-slate-600 bg-slate-800/60 rounded px-1">{s.ticker}</span>
+                  )}
+                </div>
+              </div>
+              {s.level === 'gold' && (
+                <span className="text-[9px] text-amber-500 font-bold shrink-0">GOLD</span>
+              )}
             </div>
           </div>
         ))}
@@ -1229,8 +1261,8 @@ export default function SectorBriefing() {
             <RotationSignal rotation={rotation} />
           </div>
 
-          {/* ── Market News ────────────────────────────────────────────────────── */}
-          <MarketNewsFeed news={marketNews} />
+          {/* ── Gold Signals ──────────────────────────────────────────────────── */}
+          <GoldSignals signals={data?.gold_signals} />
 
           {/* ── Smart Money ─────────────────────────────────────────────────────── */}
           <SmartMoneySummary smartMoney={data?.smart_money} sectors={sectors} />
