@@ -226,70 +226,122 @@ function MacroStrip({ macro }) {
 
 // ── Gold Signals ────────────────────────────────────────────────────────────────
 
+function ResearchPanel({ ticker, onClose }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['insider-research', ticker],
+    queryFn: () => api.get(`/research/insider-catalyst?ticker=${ticker}`).then(r => r.data),
+    staleTime: 5 * 60_000,
+  });
+
+  return (
+    <div className="mt-2 bg-slate-950/80 border border-amber-700/40 rounded-xl p-3 animate-in slide-in-from-top-2">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-bold text-amber-300">
+          {isLoading ? '🔍 חוקר...' : `🔬 חקירה: ${data?.company || ticker}`}
+        </span>
+        <button onClick={onClose} className="text-slate-500 hover:text-slate-300 text-xs px-2">✕</button>
+      </div>
+      {isLoading && (
+        <div className="flex items-center gap-2 py-3">
+          <RefreshCw className="w-3 h-3 animate-spin text-amber-400" />
+          <span className="text-[11px] text-slate-400">מחפש חדשות, דוחות, שורט, אנליסטים...</span>
+        </div>
+      )}
+      {data?.findings?.map((f, i) => (
+        <div key={i} className="flex items-start gap-2 py-1.5 border-t border-slate-800/50 first:border-0">
+          <span className="text-sm shrink-0">{f.icon}</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] text-slate-200 leading-snug">{f.text}</p>
+            <div className="flex items-center gap-2 mt-0.5">
+              {f.source && <span className="text-[9px] text-slate-500">{f.source}</span>}
+              {f.age && <span className="text-[9px] text-amber-600">{f.age}</span>}
+            </div>
+          </div>
+        </div>
+      ))}
+      {data?.conclusion && (
+        <div className="mt-2 pt-2 border-t border-amber-700/30">
+          <p className="text-[11px] font-bold text-amber-400 leading-snug">{data.conclusion}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GoldSignals({ signals }) {
   const [expanded, setExpanded] = useState(false);
+  const [researchTicker, setResearchTicker] = useState(null);
   if (!signals?.length) return null;
 
   const goldCount = signals.filter(s => s.level === 'gold').length;
   const shown = expanded ? signals : signals.slice(0, 6);
 
-  const levelBg = {
-    gold: 'bg-amber-950/40 border-amber-700/30',
-    silver: 'bg-slate-800/40 border-slate-700/30',
-    bronze: 'bg-slate-800/30 border-slate-700/20',
-  };
   const levelAccent = {
     gold: 'text-amber-300',
     silver: 'text-slate-300',
     bronze: 'text-slate-400',
   };
 
+  const needsResearch = (s) =>
+    s.detail?.includes('סימן חזק לאירוע צפוי') || s.detail?.includes('קנייה חריגה');
+
   return (
     <div className="bg-slate-900/60 border border-amber-700/30 rounded-2xl overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-amber-700/20 bg-amber-950/20 flex items-center justify-between">
+      <div className="px-3 sm:px-4 py-2.5 border-b border-amber-700/20 bg-amber-950/20 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-base">⚡</span>
           <h3 className="text-sm font-bold text-amber-300">סיגנלים — מידע זהב</h3>
           {goldCount > 0 && (
-            <span className="text-[9px] bg-amber-800/50 text-amber-200 rounded-full px-2 py-0.5 font-bold">
+            <span className="text-[10px] bg-amber-800/50 text-amber-200 rounded-full px-2 py-0.5 font-bold">
               {goldCount} זהב
             </span>
           )}
         </div>
         {signals.length > 6 && (
-          <button onClick={() => setExpanded(!expanded)} className="text-[10px] text-slate-500 hover:text-slate-300">
+          <button onClick={() => setExpanded(!expanded)} className="text-[11px] text-slate-500 hover:text-slate-300 py-1">
             {expanded ? 'הצג פחות' : `עוד ${signals.length - 6}`}
           </button>
         )}
       </div>
       <div className="divide-y divide-slate-700/20">
         {shown.map((s, i) => (
-          <div key={i} className={`px-4 py-2.5 hover:bg-slate-800/20 transition-colors border-r-2
+          <div key={i} className={`px-3 sm:px-4 py-2.5 hover:bg-slate-800/20 transition-colors border-r-2
             ${s.level === 'gold' ? 'border-r-amber-500' : 'border-r-slate-600'}`}>
             <div className="flex items-start gap-2">
               <span className="text-base shrink-0">{s.icon}</span>
               <div className="flex-1 min-w-0">
-                <p className={`text-[12px] font-medium leading-snug ${levelAccent[s.level]}`}>
+                <p className={`text-[12px] sm:text-[13px] font-medium leading-snug ${levelAccent[s.level]}`}>
                   {s.message}
                 </p>
-                {s.detail && (
-                  <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">{s.detail}</p>
+                {s.detail && s.detail !== 'No clear catalyst' && (
+                  <p className="text-[11px] text-amber-400/70 mt-0.5 leading-snug font-medium">{s.detail}</p>
                 )}
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[10px] text-emerald-400/80 font-medium">→ {s.action}</span>
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  <span className="text-[10px] sm:text-[11px] text-emerald-400/80 font-medium">→ {s.action}</span>
                   {s.ticker && (
-                    <span className="text-[9px] text-slate-600 bg-slate-800/60 rounded px-1">{s.ticker}</span>
+                    <span className="text-[10px] text-slate-600 bg-slate-800/60 rounded px-1">{s.ticker}</span>
+                  )}
+                  {needsResearch(s) && s.ticker && (
+                    <button
+                      onClick={() => setResearchTicker(researchTicker === s.ticker ? null : s.ticker)}
+                      className="text-[10px] sm:text-[11px] bg-amber-700/40 hover:bg-amber-600/50 text-amber-200 rounded-lg px-2 py-1 font-bold transition-colors active:scale-95"
+                    >
+                      {researchTicker === s.ticker ? '🔬 סגור' : '🔍 חקור אירוע'}
+                    </button>
                   )}
                 </div>
                 {s.data_source && (
-                  <div className="text-[9px] text-slate-600 mt-0.5 flex items-center gap-1">
+                  <div className="text-[9px] sm:text-[10px] text-slate-600 mt-0.5 flex items-center gap-1">
                     <span className="text-emerald-600">✓</span>
                     <span>{s.data_source}</span>
                   </div>
                 )}
+                {researchTicker === s.ticker && (
+                  <ResearchPanel ticker={s.ticker} onClose={() => setResearchTicker(null)} />
+                )}
               </div>
               {s.level === 'gold' && (
-                <span className="text-[9px] text-amber-500 font-bold shrink-0">GOLD</span>
+                <span className="text-[10px] text-amber-500 font-bold shrink-0">GOLD</span>
               )}
             </div>
           </div>
@@ -1025,52 +1077,43 @@ function insiderSignal(chg) {
 
 function InsiderRow({ t }) {
   const sig = insiderSignal(t.change_pct);
+  const ageColor = t.filing_age_hours < 6 ? 'text-green-400' : t.filing_age_hours < 24 ? 'text-yellow-500' : 'text-slate-600';
+  const ageText = t.filing_age_hours != null
+    ? (t.filing_age_hours < 1 ? 'עכשיו' : t.filing_age_hours < 24 ? `לפני ${Math.round(t.filing_age_hours)} שע׳` : `לפני ${Math.round(t.filing_age_hours / 24)} ימים`)
+    : null;
+
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5 border-b border-slate-700/30 last:border-0
-      hover:bg-slate-800/30 transition-colors">
-      {/* Ticker + change + price + mcap */}
-      <div className="w-28 shrink-0">
-        <div className="flex items-center gap-1.5">
+    <div className="px-3 py-2.5 border-b border-slate-700/30 last:border-0 hover:bg-slate-800/30 transition-colors">
+      {/* Row 1: Ticker + change + value + freshness */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
           <span className="text-sm font-bold text-emerald-400">{t.ticker}</span>
           {t.change_pct != null && (
-            <span className={`text-xs font-bold ${chgColor(t.change_pct)}`}>
-              {fmtChg(t.change_pct)}
-            </span>
+            <span className={`text-xs font-bold ${chgColor(t.change_pct)}`}>{fmtChg(t.change_pct)}</span>
           )}
-        </div>
-        <div className="flex items-center gap-1.5">
           {t.current_price && (
-            <span className="text-[10px] text-white font-medium">${t.current_price.toFixed(2)}</span>
+            <span className="text-[11px] text-white/70">${t.current_price.toFixed(2)}</span>
           )}
-          {t.market_cap_live && (
-            <span className="text-[10px] text-slate-500">{t.market_cap_live}</span>
-          )}
+          {sig && <span className={`text-[10px] sm:text-[11px] ${sig.color}`}>{sig.text}</span>}
         </div>
-        {sig && (
-          <div className={`text-[10px] ${sig.color}`}>{sig.text}</div>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {t.value && <span className="text-xs font-medium text-amber-400">{t.value}</span>}
+          {ageText && <span className={`text-[10px] ${ageColor}`}>{ageText}</span>}
+        </div>
       </div>
-      {/* Insider name + title + why */}
-      <div className="flex-1 min-w-0">
-        <div className="text-xs text-slate-200 truncate">{t.insider || t.company || '—'}</div>
-        <div className="text-[10px] text-slate-500 truncate">{t.title || ''}</div>
-        {t.why && t.why !== 'No clear catalyst' && (
-          <div className="text-[10px] text-amber-400/70 mt-0.5 leading-snug">{t.why}</div>
-        )}
-        {t.why === 'No clear catalyst' && (
-          <div className="text-[10px] text-slate-500/50 mt-0.5">אין קטליסט ברור</div>
-        )}
+      {/* Row 2: Insider name + title */}
+      <div className="flex items-center gap-2 mt-1">
+        <span className="text-[11px] sm:text-xs text-slate-200">{t.insider || t.company || '—'}</span>
+        {t.title && <span className="text-[10px] sm:text-[11px] text-slate-500">({t.title})</span>}
+        {t.market_cap_live && <span className="text-[10px] text-slate-600">{t.market_cap_live}</span>}
       </div>
-      {/* Value + date + freshness */}
-      <div className="text-left shrink-0">
-        {t.value && <div className="text-xs font-medium text-amber-400">{t.value}</div>}
-        {t.date && <div className="text-[10px] text-slate-500">{t.date}</div>}
-        {t.filing_age_hours != null && (
-          <div className={`text-[9px] ${t.filing_age_hours < 6 ? 'text-green-400' : t.filing_age_hours < 24 ? 'text-yellow-500' : 'text-slate-600'}`}>
-            {t.filing_age_hours < 1 ? 'עכשיו' : t.filing_age_hours < 24 ? `לפני ${Math.round(t.filing_age_hours)} שע׳` : `לפני ${Math.round(t.filing_age_hours / 24)} ימים`}
-          </div>
-        )}
-      </div>
+      {/* Row 3: Why / catalyst */}
+      {t.why && t.why !== 'No clear catalyst' && (
+        <div className="text-[11px] text-amber-400/80 mt-1 leading-snug">{t.why}</div>
+      )}
+      {t.why === 'No clear catalyst' && (
+        <div className="text-[10px] text-slate-500/50 mt-0.5">אין קטליסט ברור</div>
+      )}
     </div>
   );
 }
@@ -1294,7 +1337,7 @@ export default function SectorBriefing() {
                 return (
                   <div key={group}>
                     <GroupHeader group={group} />
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
                       {items.map(s => (
                         <div key={s.etf} className="space-y-2">
                           <HeatmapTile

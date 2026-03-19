@@ -209,12 +209,11 @@ def _fetch_etf_only() -> List[dict]:
     try:
         data = yf.download(
             etf_tickers,
-            period='2d',
+            period='5d',
             interval='1d',
             progress=False,
             timeout=10,
             auto_adjust=True,
-            prepost=True,
         )
         close = data.get('Close', data) if hasattr(data, 'get') else data
 
@@ -260,12 +259,11 @@ def _fetch_drivers() -> Dict[str, float]:
     try:
         data = yf.download(
             holding_tickers,
-            period='2d',
+            period='5d',
             interval='1d',
             progress=False,
             timeout=15,
             auto_adjust=True,
-            prepost=True,
         )
         close = data.get('Close', data) if hasattr(data, 'get') else data
 
@@ -793,12 +791,11 @@ def _fetch_insider_enrichment(tickers: List[str]) -> Dict[str, dict]:
     try:
         data = yf.download(
             unique,
-            period='2d',
+            period='5d',
             interval='1d',
             progress=False,
             timeout=12,
             auto_adjust=True,
-            prepost=True,
         )
         close = data.get('Close', data) if hasattr(data, 'get') else data
         for t in unique:
@@ -2557,21 +2554,26 @@ async def get_sector_briefing() -> dict:
             new_insider = await insider_task
             if new_insider is not None:
                 insider_tickers = list(dict.fromkeys(t['ticker'] for t in new_insider))
+                print(f'[SectorBriefing] Enriching {len(insider_tickers)} insider tickers...')
                 try:
                     insider_enrichment = await asyncio.wait_for(
                         asyncio.to_thread(_fetch_insider_enrichment, insider_tickers),
-                        timeout=20,
+                        timeout=30,
                     )
+                    print(f'[SectorBriefing] Insider enrichment: {len(insider_enrichment)} tickers enriched')
                 except (asyncio.TimeoutError, FuturesTimeout):
+                    print('[SectorBriefing] Insider enrichment TIMEOUT')
                     insider_enrichment = {}
 
                 # Fetch recent news for insider tickers (catalyst detection)
                 try:
                     insider_news = await asyncio.wait_for(
                         asyncio.to_thread(_fetch_insider_news_batch, insider_tickers),
-                        timeout=18,
+                        timeout=20,
                     )
+                    print(f'[SectorBriefing] Insider news: {len(insider_news)} tickers with news')
                 except (asyncio.TimeoutError, FuturesTimeout):
+                    print('[SectorBriefing] Insider news TIMEOUT')
                     insider_news = {}
 
                 for trade in new_insider:

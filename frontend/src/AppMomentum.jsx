@@ -303,13 +303,13 @@ function MomentumDashboard() {
         </div>
 
         {/* Controls */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Language */}
           <div className="flex rounded-lg overflow-hidden text-xs font-bold"
             style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
             {['en','he'].map(lang => (
               <button key={lang} onClick={() => setLanguage(lang)}
-                className="px-2.5 py-1.5 transition-all"
+                className="px-2 sm:px-2.5 py-2 sm:py-1.5 transition-all"
                 style={{
                   background: language === lang ? '#3b82f6' : 'transparent',
                   color: language === lang ? '#fff' : '#64748b',
@@ -322,7 +322,7 @@ function MomentumDashboard() {
           {/* Live mode */}
           <button
             onClick={() => { setLiveMode(!liveMode); setAutoRefresh(liveMode ? 0 : 30); }}
-            className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all"
+            className="px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all"
             style={{
               background: liveMode ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.04)',
               border: `1px solid ${liveMode ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.06)'}`,
@@ -356,7 +356,7 @@ function MomentumDashboard() {
 
           {/* Refresh button */}
           <button onClick={handleQuickRefresh}
-            className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all"
+            className="px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all"
             style={{
               background: 'rgba(59,130,246,0.12)',
               border: '1px solid rgba(59,130,246,0.3)',
@@ -380,7 +380,7 @@ function MomentumDashboard() {
               <button key={tab.key}
                 ref={isActive ? activeTabRef : null}
                 onClick={() => setViewMode(tab.key)}
-                className="relative px-4 py-3 text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-1.5"
+                className="relative px-2.5 sm:px-4 py-3 text-xs sm:text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-1"
                 style={{ color: isActive ? '#fff' : '#475569' }}
                 onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = '#94a3b8'; }}
                 onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = '#475569'; }}>

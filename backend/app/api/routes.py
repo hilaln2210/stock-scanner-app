@@ -1082,6 +1082,203 @@ async def get_sector_briefing(force: bool = False):
                 "sector_stocks": [], "insider_trades": []}
 
 
+@router.get("/research/insider-catalyst")
+async def research_insider_catalyst(ticker: str):
+    """
+    Aggressive research: find the REAL catalyst behind an insider purchase.
+    Fetches: recent news, price action, SEC filings context, fundamentals.
+    Returns factual findings only — no guessing.
+    """
+    import yfinance as yf
+    import concurrent.futures
+    from datetime import date, timedelta
+
+    findings = []
+    ticker = ticker.upper().strip()
+
+    def _research():
+        result = {'ticker': ticker, 'findings': [], 'status': 'researching'}
+        try:
+            t = yf.Ticker(ticker)
+
+            # 1. Recent news (last 3 days)
+            try:
+                news = t.news or []
+                from datetime import datetime, timezone
+                now_utc = datetime.now(timezone.utc)
+                for item in news[:15]:
+                    content = item.get('content', item)
+                    title = content.get('title', '') or content.get('headline', '')
+                    pub_date = content.get('pubDate', '')
+                    source = ''
+                    provider = content.get('provider', {})
+                    if isinstance(provider, dict):
+                        source = provider.get('displayName', '')
+                    age_str = ''
+                    if pub_date:
+                        try:
+                            pd = datetime.fromisoformat(pub_date.replace('Z', '+00:00'))
+                            age_h = (now_utc - pd).total_seconds() / 3600
+                            if age_h > 72:
+                                continue
+                            if age_h < 1:
+                                age_str = 'עכשיו'
+                            elif age_h < 24:
+                                age_str = f'לפני {int(age_h)} שעות'
+                            else:
+                                age_str = f'לפני {int(age_h/24)} ימים'
+                        except Exception:
+                            pass
+                    if title:
+                        result['findings'].append({
+                            'type': 'news',
+                            'icon': '📰',
+                            'text': title,
+                            'source': source,
+                            'age': age_str,
+                        })
+            except Exception:
+                pass
+
+            # 2. Fundamentals snapshot
+            try:
+                info = t.get_info() if hasattr(t, 'get_info') else t.info
+                result['company'] = info.get('shortName', ticker)
+                result['sector'] = info.get('sector', '')
+                result['industry'] = info.get('industry', '')
+
+                # Earnings
+                try:
+                    cal = t.calendar
+                    if cal and hasattr(cal, 'get') and cal.get('Earnings Date'):
+                        ed = cal['Earnings Date']
+                        if isinstance(ed, list) and ed:
+                            ed_str = str(ed[0].date()) if hasattr(ed[0], 'date') else str(ed[0])
+                            days = (date.fromisoformat(ed_str) - date.today()).days
+                            if -3 <= days <= 30:
+                                label = 'היום!' if days == 0 else f'עוד {days} ימים' if days > 0 else f'לפני {abs(days)} ימים'
+                                result['findings'].append({
+                                    'type': 'earnings',
+                                    'icon': '📅',
+                                    'text': f'דוחות {label} ({ed_str})',
+                                    'source': 'yfinance Calendar',
+                                    'age': '',
+                                })
+                except Exception:
+                    pass
+
+                # Analyst target
+                target = info.get('targetMeanPrice')
+                current = info.get('currentPrice') or info.get('regularMarketPrice')
+                if target and current:
+                    upside = round((target - current) / current * 100, 1)
+                    count = info.get('numberOfAnalystOpinions', 0)
+                    rec = info.get('recommendationKey', '')
+                    if abs(upside) > 15 and count:
+                        result['findings'].append({
+                            'type': 'analyst',
+                            'icon': '🎯',
+                            'text': f'{count} אנליסטים, יעד ${target:.0f} ({upside:+.0f}%), המלצה: {rec}',
+                            'source': 'Wall Street Consensus',
+                            'age': '',
+                        })
+
+                # Short interest
+                sf = info.get('shortPercentOfFloat')
+                if sf and sf > 8:
+                    result['findings'].append({
+                        'type': 'short',
+                        'icon': '🩳',
+                        'text': f'שורט {sf:.1f}% מהפלואט — לחץ שורט {"גבוה מאוד" if sf > 20 else "גבוה"}',
+                        'source': 'FINRA',
+                        'age': '',
+                    })
+
+                # Insider ownership
+                io = info.get('heldPercentInsiders')
+                if io and io > 0.1:
+                    result['findings'].append({
+                        'type': 'ownership',
+                        'icon': '👔',
+                        'text': f'אחזקת אנשי פנים: {io*100:.1f}% מהחברה',
+                        'source': 'SEC Filings',
+                        'age': '',
+                    })
+
+                # Institutional changes
+                it = info.get('heldPercentInstitutions')
+                if it:
+                    result['findings'].append({
+                        'type': 'institutional',
+                        'icon': '🏛️',
+                        'text': f'אחזקות מוסדיות: {it*100:.1f}%',
+                        'source': 'SEC 13F',
+                        'age': '',
+                    })
+
+            except Exception:
+                pass
+
+            # 3. Price action last 5 days
+            try:
+                hist = t.history(period='5d', timeout=5)
+                if len(hist) >= 2:
+                    week_chg = (float(hist['Close'].iloc[-1]) - float(hist['Close'].iloc[0])) / float(hist['Close'].iloc[0]) * 100
+                    max_vol = float(hist['Volume'].max())
+                    avg_vol = float(hist['Volume'].mean())
+                    if max_vol > avg_vol * 2:
+                        result['findings'].append({
+                            'type': 'volume',
+                            'icon': '📊',
+                            'text': f'ספייק נפח ×{max_vol/avg_vol:.1f} ב-5 ימים אחרונים, שינוי {week_chg:+.1f}%',
+                            'source': 'Price Data',
+                            'age': '',
+                        })
+                    elif abs(week_chg) > 10:
+                        result['findings'].append({
+                            'type': 'price_move',
+                            'icon': '📈' if week_chg > 0 else '📉',
+                            'text': f'תנועה של {week_chg:+.1f}% ב-5 ימים אחרונים',
+                            'source': 'Price Data',
+                            'age': '',
+                        })
+            except Exception:
+                pass
+
+        except Exception as e:
+            result['error'] = str(e)
+
+        # Summary conclusion
+        if not result['findings']:
+            result['conclusion'] = 'No clear catalyst — אין מידע מספיק לקבוע סיבה'
+        else:
+            news_count = sum(1 for f in result['findings'] if f['type'] == 'news')
+            has_earnings = any(f['type'] == 'earnings' for f in result['findings'])
+            has_short = any(f['type'] == 'short' for f in result['findings'])
+            if has_earnings:
+                result['conclusion'] = 'קטליסט סביר: דוחות קרובים — הinsider צובר לפני פרסום'
+            elif news_count >= 2:
+                result['conclusion'] = 'קטליסט סביר: חדשות משמעותיות אחרונות'
+            elif has_short:
+                result['conclusion'] = 'קטליסט סביר: לחץ שורט גבוה — Insider קונה נגד השורטיסטים'
+            else:
+                result['conclusion'] = f'נמצאו {len(result["findings"])} ממצאים — בדוק את הפרטים'
+
+        result['status'] = 'done'
+        return result
+
+    try:
+        res = await asyncio.wait_for(
+            asyncio.to_thread(_research),
+            timeout=20,
+        )
+        return res
+    except asyncio.TimeoutError:
+        return {'ticker': ticker, 'findings': [], 'status': 'timeout', 'conclusion': 'חקירה נכשלה — timeout'}
+    except Exception as e:
+        return {'ticker': ticker, 'findings': [], 'status': 'error', 'conclusion': f'שגיאה: {e}'}
+
+
 @router.get("/briefing/sector/movers")
 async def get_sector_movers(filter: str):
     """
