@@ -412,13 +412,35 @@ function GeoEventAlerts({ events }) {
               ))}
             </div>
 
-            {/* Play tickers */}
-            {ev.play_tickers?.length > 0 && (
+            {/* Play tickers with live % change */}
+            {(ev.play_tickers_enriched || ev.play_tickers)?.length > 0 && (
               <div className="mt-1.5">
                 <span className="text-[10px] text-emerald-500 font-medium">מניות לעקוב: </span>
-                <span className="text-[11px] text-emerald-400 font-bold">
-                  {ev.play_tickers.join(' • ')}
-                </span>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {(ev.play_tickers_enriched || ev.play_tickers.map(t => ({ticker: t}))).map((item, j) => {
+                    const tk = typeof item === 'string' ? item : item.ticker;
+                    const chg = typeof item === 'object' ? item.change_pct : null;
+                    const price = typeof item === 'object' ? item.price : null;
+                    return (
+                      <span key={j} className={`text-[11px] px-2 py-0.5 rounded-lg border font-medium
+                        ${chg != null && chg > 5 ? 'bg-emerald-950/50 border-emerald-600/40 text-emerald-300' :
+                          chg != null && chg > 0 ? 'bg-emerald-950/30 border-emerald-700/30 text-emerald-400' :
+                          chg != null && chg < -3 ? 'bg-red-950/40 border-red-600/30 text-red-300' :
+                          chg != null && chg < 0 ? 'bg-red-950/20 border-red-700/20 text-red-400' :
+                          'bg-slate-800/60 border-slate-700/30 text-slate-300'}`}>
+                        <span className="font-bold">{tk}</span>
+                        {chg != null && (
+                          <span className={`mr-1 ${chg >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+                            {chg > 0 ? '+' : ''}{chg.toFixed(1)}%
+                          </span>
+                        )}
+                        {price != null && (
+                          <span className="text-[9px] text-white/50">${price}</span>
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
               </div>
             )}
 

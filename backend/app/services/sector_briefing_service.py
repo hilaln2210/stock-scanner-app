@@ -1849,10 +1849,12 @@ async def _fetch_geo_events() -> List[dict]:
         return _geo_cache
     try:
         events = await asyncio.to_thread(_scan_geopolitical_events)
-        _geo_cache = events
-        _geo_cache_at = _time.time()
+
         if events:
             print(f'[GeoScanner] Detected {len(events)} geopolitical events')
+
+        _geo_cache = events
+        _geo_cache_at = _time.time()
         return events
     except Exception as e:
         print(f'[GeoScanner] Error: {e}')
@@ -3653,6 +3655,42 @@ async def get_sector_briefing() -> dict:
         si = sector_insiders.get(entry['etf'], [])
         entry['sector_insider_count'] = len(si)
         entry['sector_insiders'] = si[:3]  # top 3 insider trades for this sector
+
+    # Enrich geo events with live prices for play_tickers
+    if geo_events:
+        # Check if already enriched (from cache)
+        needs_enrich = any(not ev.get('play_tickers_enriched') for ev in geo_events)
+        if needs_enrich:
+            try:
+                all_geo_tickers = list(dict.fromkeys(
+                    t for ev in geo_events for t in ev.get('play_tickers', [])
+                ))[:20]
+                if all_geo_tickers:
+                    def _geo_batch():
+                        # Split into two batches to avoid yfinance 15-ticker limit
+                        r = _fetch_live_prices_batch(all_geo_tickers[:15])
+                        if len(all_geo_tickers) > 15:
+                            r2 = _fetch_live_prices_batch(all_geo_tickers[15:])
+                            r.update(r2)
+                        return r
+
+                    geo_prices = await asyncio.wait_for(
+                        asyncio.to_thread(_geo_batch),
+                        timeout=15,
+                    )
+                    for ev in geo_events:
+                        enriched = []
+                        for tk in ev.get('play_tickers', []):
+                            p = geo_prices.get(tk, {})
+                            enriched.append({
+                                'ticker': tk,
+                                'change_pct': p.get('change_pct'),
+                                'price': p.get('price'),
+                            })
+                        enriched.sort(key=lambda x: abs(x.get('change_pct') or 0), reverse=True)
+                        ev['play_tickers_enriched'] = enriched
+            except (asyncio.TimeoutError, FuturesTimeout, Exception):
+                pass
 
     # Multi-TF enrichment for movers (skip on cold start, enrich on 2nd+ call)
     if all_movers:
