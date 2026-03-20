@@ -2173,12 +2173,35 @@ async def _fetch_all_movers(session: aiohttp.ClientSession) -> Dict[str, dict]:
                 score = len(ind_stocks) * avg_chg
                 if score > best_score:
                     best_score = score
+                    # Build detailed stock list (all stocks in this industry)
+                    detailed = []
+                    for s in sorted(ind_stocks, key=lambda x: abs(x.get('change_pct', 0)), reverse=True):
+                        rvol = s.get('rel_volume') or s.get('avg_volume')
+                        vol = s.get('volume', 0) or 0
+                        avg_vol = s.get('avg_volume')
+                        # Compute rel_volume if we have avg
+                        rv = round(vol / avg_vol, 1) if avg_vol and avg_vol > 0 else s.get('rel_volume')
+                        detailed.append({
+                            'ticker':     s['ticker'],
+                            'price':      s.get('price'),
+                            'change_pct': s.get('change_pct'),
+                            'volume':     vol,
+                            'rel_volume': rv,
+                            'market_cap': s.get('market_cap', ''),
+                            'chg_30m':    s.get('chg_30m'),
+                            'chg_4h':     s.get('chg_4h'),
+                            'chg_1w':     s.get('chg_1w'),
+                            'float_short': s.get('float_short'),
+                            'is_standout': s.get('is_standout', False),
+                        })
+
                     best_industry = {
                         'name': ind_name,
                         'count': len(ind_stocks),
                         'avg_change': round(avg_chg, 2),
                         'top_ticker': ind_stocks[0]['ticker'],
                         'tickers': [s['ticker'] for s in ind_stocks[:3]],
+                        'stocks': detailed[:8],  # All stocks (up to 8)
                     }
             data['hot_industry'] = best_industry
 
@@ -3648,6 +3671,61 @@ async def get_sector_briefing() -> dict:
         flow = smart_money['flows'].get(entry['etf'])
         if flow:
             entry['money_flow'] = flow
+
+    # Enrich hot_industry with "why" reason from geo events + macro
+    if geo_events and all_movers:
+        # Build lookup: which industries are affected by geo events
+        geo_reasons: Dict[str, str] = {}  # {industry_keyword: reason}
+        for ev in geo_events:
+            theme = ev.get('theme', '')
+            headline = ev.get('headline', '')
+            conf = ev.get('confidence', '')
+            commodity = ev.get('commodity_name', '')
+            short_reason = headline[:80] if headline else ''
+
+            # Map themes to industry keywords
+            if theme in ('oil_supply', 'strait_hormuz'):
+                for kw in ['Oil & Gas', 'Energy', 'Petroleum', 'Crude', 'Refin']:
+                    geo_reasons[kw] = f'{commodity}: {short_reason}'
+            elif theme == 'gas_supply':
+                for kw in ['Gas', 'LNG', 'Natural Gas', 'Utilities']:
+                    geo_reasons[kw] = f'{commodity}: {short_reason}'
+            elif theme == 'gold_safe_haven':
+                for kw in ['Gold', 'Silver', 'Mining', 'Metals']:
+                    geo_reasons[kw] = f'{commodity}: {short_reason}'
+            elif theme == 'defense':
+                for kw in ['Aerospace', 'Defense']:
+                    geo_reasons[kw] = f'ביטחון: {short_reason}'
+
+        # Also add macro-driven reasons
+        if macro_data:
+            for ind in macro_data.get('indicators', []):
+                chg = ind.get('change_pct', 0)
+                name = ind.get('name', '')
+                if name == 'נפט' and abs(chg) > 2:
+                    d = 'עולה' if chg > 0 else 'יורד'
+                    for kw in ['Oil & Gas', 'Energy']:
+                        if kw not in geo_reasons:
+                            geo_reasons[kw] = f'נפט {d} {abs(chg):.1f}%'
+                if name == 'גז טבעי' and abs(chg) > 2:
+                    d = 'עולה' if chg > 0 else 'יורד'
+                    for kw in ['Gas', 'LNG', 'Natural Gas']:
+                        if kw not in geo_reasons:
+                            geo_reasons[kw] = f'גז טבעי {d} {abs(chg):.1f}%'
+
+        # Attach reason to each sector's hot_industry
+        for entry in sectors_full:
+            hi = entry.get('top_movers_data', {}).get('hot_industry') if isinstance(entry.get('top_movers_data'), dict) else None
+            # Access hot_industry from all_movers
+            etf = entry.get('etf', '')
+            am = all_movers.get(etf, {})
+            hi = am.get('hot_industry')
+            if hi and hi.get('name'):
+                ind_name = hi['name']
+                for kw, reason in geo_reasons.items():
+                    if kw.lower() in ind_name.lower():
+                        hi['reason'] = reason
+                        break
 
     # Map insider trades to sectors for cluster buy detection
     sector_insiders = _map_insiders_to_sectors(insider_trades, all_movers)

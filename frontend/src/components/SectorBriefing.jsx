@@ -960,26 +960,79 @@ function SectorDetail({ sector, stocks, isLoadingStocks, onLoadStocks }) {
 
         {/* Hot Industry */}
         {sector.hot_industry && (
-          <div className="mt-2 bg-amber-950/30 border border-amber-800/30 rounded-lg px-3 py-1.5">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Zap size={12} className="text-amber-400 shrink-0" />
-              <span className="text-[11px] font-semibold text-amber-300">
-                תת-סקטור חם: {sector.hot_industry.name}
-              </span>
-              <span className={`text-[10px] font-bold ${chgColor(sector.hot_industry.avg_change)}`}>
-                ממוצע {fmtChg(sector.hot_industry.avg_change)}
-              </span>
-              <span className="text-[9px] text-slate-500">
-                ({sector.hot_industry.count} מניות)
-              </span>
+          <div className="mt-2 bg-amber-950/30 border border-amber-800/30 rounded-xl overflow-hidden">
+            <div className="px-3 py-2 border-b border-amber-800/20">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Zap size={12} className="text-amber-400 shrink-0" />
+                <span className="text-[11px] font-semibold text-amber-300">
+                  תת-סקטור חם: {sector.hot_industry.name}
+                </span>
+                <span className={`text-[10px] font-bold ${chgColor(sector.hot_industry.avg_change)}`}>
+                  ממוצע {fmtChg(sector.hot_industry.avg_change)}
+                </span>
+                <span className="text-[9px] text-slate-500">
+                  ({sector.hot_industry.count} מניות)
+                </span>
+              </div>
+              {sector.hot_industry.reason && (
+                <div className="text-[11px] text-amber-400/80 mt-1 leading-snug">
+                  💡 {sector.hot_industry.reason}
+                </div>
+              )}
             </div>
-            {sector.hot_industry.tickers?.length > 0 && (
-              <div className="flex gap-1.5 mt-1">
+            {sector.hot_industry.stocks?.length > 0 ? (
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="text-[9px] text-slate-500 border-b border-amber-800/15">
+                    <th className="text-right px-2 py-1 font-medium">טיקר</th>
+                    <th className="text-right px-1 py-1 font-medium">מחיר</th>
+                    <th className="text-right px-1 py-1 font-medium">יום</th>
+                    <th className="text-right px-1 py-1 font-medium">שבוע</th>
+                    <th className="text-right px-1 py-1 font-medium">נפח</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sector.hot_industry.stocks.map(s => {
+                    const fmtVol = (v) => {
+                      if (!v) return '—';
+                      if (v >= 1e6) return `${(v/1e6).toFixed(1)}M`;
+                      if (v >= 1e3) return `${(v/1e3).toFixed(0)}K`;
+                      return v;
+                    };
+                    return (
+                      <tr key={s.ticker} className={`border-b border-amber-900/10 hover:bg-amber-950/20
+                        ${s.is_standout ? 'bg-amber-950/30 border-r-2 border-r-amber-500' : ''}`}>
+                        <td className="px-2 py-1">
+                          <span className={`font-bold ${s.is_standout ? 'text-amber-300' : 'text-white'}`}>
+                            {s.is_standout && '★ '}{s.ticker}
+                          </span>
+                          {s.market_cap && <span className="text-[8px] text-slate-600 mr-1">{s.market_cap}</span>}
+                        </td>
+                        <td className="px-1 py-1 text-right text-white/80">${s.price}</td>
+                        <td className={`px-1 py-1 text-right font-bold ${chgColor(s.change_pct)}`}>
+                          {fmtChg(s.change_pct)}
+                        </td>
+                        <td className={`px-1 py-1 text-right font-medium ${chgColor(s.chg_1w)}`}>
+                          {s.chg_1w != null ? `${s.chg_1w > 0 ? '+' : ''}${s.chg_1w}%` : '—'}
+                        </td>
+                        <td className="px-1 py-1 text-right">
+                          <span className="text-slate-400">{fmtVol(s.volume)}</span>
+                          {s.rel_volume != null && s.rel_volume >= 2 && (
+                            <span className="text-orange-400 text-[9px] mr-0.5 font-bold"> x{s.rel_volume}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : sector.hot_industry.tickers?.length > 0 ? (
+              <div className="flex gap-1.5 px-3 py-1.5">
                 {sector.hot_industry.tickers.map(t => (
                   <span key={t} className="text-[10px] text-amber-400/80 bg-amber-950/40 rounded px-1.5 py-0.5">{t}</span>
                 ))}
               </div>
-            )}
+            ) : null}
           </div>
         )}
 
