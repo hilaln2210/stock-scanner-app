@@ -860,35 +860,79 @@ function SectorDetail({ sector, stocks, isLoadingStocks, onLoadStocks }) {
           <MomentumGauge score={sector.momentum_score} size={36} />
         </div>
 
-        {/* Top Movers (actual market movers) */}
+        {/* Top Movers — multi-timeframe table */}
         {sector.top_movers?.length > 0 && (
-          <div className="flex items-center gap-2 mt-2 flex-wrap">
-            <span className="text-[10px] text-amber-400 font-medium">מניות שזזות:</span>
-            {sector.top_movers.slice(0, 5).map(m => (
-              <span key={m.ticker} className={`text-xs rounded-lg px-2 py-0.5
-                ${m.flags?.length ? 'bg-amber-950/30 border border-amber-800/20' : 'bg-slate-800/60'}`}>
-                <span className="text-white font-bold">{m.ticker}</span>
-                <span className={`ml-1 font-bold ${chgColor(m.change_pct)}`}>{fmtChg(m.change_pct)}</span>
-                {m.flags?.map((f, i) => (
-                  <span key={i} className="text-[9px] mr-0.5" title={f.label}>{f.icon}</span>
-                ))}
-                {m.move_estimate && (
-                  <span className="text-[9px] text-emerald-400/80 mr-0.5"
-                    title={`${m.move_estimate.catalyst} • ${m.move_estimate.timeframe}`}>
-                    →+{m.move_estimate.target_pct}%
-                  </span>
-                )}
-                {m.intel?.target_price && (
-                  <span className="text-[9px] text-blue-400/70 mr-0.5"
-                    title={`יעד אנליסטים: $${m.intel.target_price}`}>
-                    🎯${m.intel.target_price}
-                  </span>
-                )}
-                {m.industry && (
-                  <span className="text-[9px] text-slate-600 mr-1">{m.industry}</span>
-                )}
-              </span>
-            ))}
+          <div className="mt-2 bg-slate-800/40 rounded-xl overflow-hidden border border-slate-700/30">
+            <div className="px-3 py-1.5 border-b border-slate-700/20 flex items-center gap-2">
+              <span className="text-[10px] text-amber-400 font-medium">מניות שזזות:</span>
+            </div>
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="text-[9px] text-slate-500 border-b border-slate-700/20">
+                  <th className="text-right px-2 py-1 font-medium">טיקר</th>
+                  <th className="text-right px-1 py-1 font-medium">מחיר</th>
+                  <th className="text-right px-1 py-1 font-medium">30 ד׳</th>
+                  <th className="text-right px-1 py-1 font-medium">4 שע׳</th>
+                  <th className="text-right px-1 py-1 font-medium">יום</th>
+                  <th className="text-right px-1 py-1 font-medium">שבוע</th>
+                  <th className="text-right px-1 py-1 font-medium">נפח</th>
+                  <th className="text-right px-1 py-1 font-medium"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {sector.top_movers.slice(0, 5).map(m => {
+                  const standout = m.is_standout;
+                  const fmtVol = (v) => {
+                    if (!v) return '—';
+                    if (v >= 1e6) return `${(v/1e6).toFixed(1)}M`;
+                    if (v >= 1e3) return `${(v/1e3).toFixed(0)}K`;
+                    return v;
+                  };
+                  return (
+                    <tr key={m.ticker} className={`border-b border-slate-700/10 hover:bg-slate-700/20 transition-colors
+                      ${standout ? 'bg-amber-950/20 border-r-2 border-r-amber-500' : ''}`}>
+                      <td className="px-2 py-1.5">
+                        <div className="flex items-center gap-1">
+                          {standout && <span className="text-amber-400 text-[9px]">★</span>}
+                          <span className={`font-bold ${standout ? 'text-amber-300' : 'text-white'}`}>{m.ticker}</span>
+                          {m.flags?.map((f, i) => (
+                            <span key={i} className="text-[8px]" title={f.label}>{f.icon}</span>
+                          ))}
+                        </div>
+                        {m.industry && <div className="text-[8px] text-slate-600 leading-tight">{m.industry}</div>}
+                      </td>
+                      <td className="px-1 py-1.5 text-right text-white/80">${m.price}</td>
+                      <td className={`px-1 py-1.5 text-right font-medium ${chgColor(m.chg_30m)}`}>
+                        {m.chg_30m != null ? `${m.chg_30m > 0 ? '+' : ''}${m.chg_30m}%` : '—'}
+                      </td>
+                      <td className={`px-1 py-1.5 text-right font-medium ${chgColor(m.chg_4h)}`}>
+                        {m.chg_4h != null ? `${m.chg_4h > 0 ? '+' : ''}${m.chg_4h}%` : '—'}
+                      </td>
+                      <td className={`px-1 py-1.5 text-right font-bold ${chgColor(m.change_pct)}`}>
+                        {fmtChg(m.change_pct)}
+                      </td>
+                      <td className={`px-1 py-1.5 text-right font-medium ${chgColor(m.chg_1w)}`}>
+                        {m.chg_1w != null ? `${m.chg_1w > 0 ? '+' : ''}${m.chg_1w}%` : '—'}
+                      </td>
+                      <td className="px-1 py-1.5 text-right">
+                        <span className="text-slate-400">{fmtVol(m.volume)}</span>
+                        {m.rel_volume >= 2 && (
+                          <span className="text-orange-400 text-[9px] mr-0.5">x{m.rel_volume.toFixed(1)}</span>
+                        )}
+                      </td>
+                      <td className="px-1 py-1.5 text-right">
+                        {m.move_estimate && (
+                          <span className="text-[9px] text-emerald-400/80"
+                            title={`${m.move_estimate.catalyst} • ${m.move_estimate.timeframe}`}>
+                            →{m.move_estimate.target_pct}%
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
 

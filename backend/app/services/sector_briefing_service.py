@@ -2120,6 +2120,15 @@ async def _fetch_all_movers(session: aiohttp.ClientSession) -> Dict[str, dict]:
         if estimate:
             stock['move_estimate'] = estimate
 
+    # ── Phase 4: Mark standout stock per sector ──────────────────────────────
+    # Score: |change| * max(rel_volume, 1) * small_cap_bonus
+    for stock in all_stocks:
+        chg = abs(stock.get('change_pct', 0) or 0)
+        rvol = stock.get('rel_volume', 1) or 1
+        price = stock.get('price', 0) or 0
+        small_cap = 1.5 if price < 20 else 1.0
+        stock['_standout_score'] = chg * min(rvol, 10) * small_cap
+
     # Group by sector → ETF key
     result: Dict[str, dict] = {}
     for etf_key in SECTOR_ETFS:
@@ -2138,6 +2147,11 @@ async def _fetch_all_movers(session: aiohttp.ClientSession) -> Dict[str, dict]:
 
         # Keep only top 5 movers per sector
         data['movers'] = movers[:5]
+
+        # Mark standout (highest score in this sector)
+        best = max(data['movers'], key=lambda s: s.get('_standout_score', 0))
+        if best.get('_standout_score', 0) > 5:
+            best['is_standout'] = True
 
         # Group by industry
         industry_map: Dict[str, List[dict]] = {}
@@ -2168,6 +2182,89 @@ async def _fetch_all_movers(session: aiohttp.ClientSession) -> Dict[str, dict]:
 
     total = sum(len(d['movers']) for d in result.values())
     print(f'[SectorBriefing] all-movers: {total} stocks across {sum(1 for d in result.values() if d["movers"])} sectors')
+    return result
+
+
+# ── 12b. Multi-Timeframe Mover Enrichment ─────────────────────────────────────
+
+def _fetch_multi_timeframe_movers(tickers: List[str]) -> Dict[str, dict]:
+    """
+    Fetch 30m, 4h, 1d, 1w changes for a list of tickers.
+    Uses hourly bars (5d) for 4h/1d/1w, and 5m bars (1d) for 30m.
+    Returns {ticker: {chg_30m, chg_4h, chg_1d, chg_1w}}.
+    """
+    if not tickers:
+        return {}
+    result: Dict[str, dict] = {}
+    unique = list(dict.fromkeys(tickers))[:30]
+
+    try:
+        # Hourly bars for 4h, 1d, 1w
+        hourly = yf.download(
+            unique, period='5d', interval='1h',
+            progress=False, timeout=12, auto_adjust=True, prepost=True
+        )
+        h_close = hourly.get('Close', hourly) if hasattr(hourly, 'get') else hourly
+
+        for tk in unique:
+            try:
+                if len(unique) > 1:
+                    prices = h_close[tk].dropna()
+                else:
+                    prices = h_close.dropna()
+                if len(prices) < 2:
+                    continue
+
+                curr = float(prices.iloc[-1])
+                entry = {}
+
+                # 4h change (~4 bars back)
+                if len(prices) >= 5:
+                    ref = float(prices.iloc[-5])
+                    entry['chg_4h'] = round((curr - ref) / ref * 100, 2) if ref else None
+
+                # 1d change (~7 bars back for regular hours)
+                if len(prices) >= 8:
+                    ref = float(prices.iloc[-8])
+                    entry['chg_1d'] = round((curr - ref) / ref * 100, 2) if ref else None
+
+                # 1w change (all data = ~5 days)
+                if len(prices) >= 20:
+                    ref = float(prices.iloc[0])
+                    entry['chg_1w'] = round((curr - ref) / ref * 100, 2) if ref else None
+
+                result[tk] = entry
+            except Exception:
+                pass
+
+        # 5m bars for 30min change
+        try:
+            intra = yf.download(
+                unique[:15], period='1d', interval='5m',
+                progress=False, timeout=8, auto_adjust=True, prepost=True
+            )
+            i_close = intra.get('Close', intra) if hasattr(intra, 'get') else intra
+
+            for tk in unique[:15]:
+                try:
+                    if len(unique[:15]) > 1:
+                        prices = i_close[tk].dropna()
+                    else:
+                        prices = i_close.dropna()
+                    if len(prices) >= 7:
+                        curr = float(prices.iloc[-1])
+                        ref = float(prices.iloc[-7])  # 6 bars * 5m = 30m
+                        if tk not in result:
+                            result[tk] = {}
+                        result[tk]['chg_30m'] = round((curr - ref) / ref * 100, 2) if ref else None
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f'[SectorBriefing] 5m bars error: {e}')
+
+    except Exception as e:
+        print(f'[SectorBriefing] multi-TF mover error: {e}')
+
     return result
 
 
@@ -3556,6 +3653,31 @@ async def get_sector_briefing() -> dict:
         si = sector_insiders.get(entry['etf'], [])
         entry['sector_insider_count'] = len(si)
         entry['sector_insiders'] = si[:3]  # top 3 insider trades for this sector
+
+    # Multi-TF enrichment for movers (skip on cold start, enrich on 2nd+ call)
+    if all_movers:
+        # Check if first mover already has TF data
+        first_movers = next((d['movers'] for d in all_movers.values() if d.get('movers')), [])
+        needs_tf = first_movers and first_movers[0].get('chg_4h') is None
+        if needs_tf:
+            try:
+                all_tickers = []
+                for etf_data in all_movers.values():
+                    all_tickers.extend(m['ticker'] for m in etf_data.get('movers', []))
+                if all_tickers:
+                    tf_data = await asyncio.wait_for(
+                        asyncio.to_thread(_fetch_multi_timeframe_movers, all_tickers[:30]),
+                        timeout=15,
+                    )
+                    for etf_data in all_movers.values():
+                        for m in etf_data.get('movers', []):
+                            tf = tf_data.get(m['ticker'], {})
+                            m['chg_30m'] = tf.get('chg_30m')
+                            m['chg_4h']  = tf.get('chg_4h')
+                            m['chg_1d']  = tf.get('chg_1d')
+                            m['chg_1w']  = tf.get('chg_1w')
+            except (asyncio.TimeoutError, FuturesTimeout, Exception):
+                pass
 
     result = {
         'generated_at':    datetime.now().isoformat(),
