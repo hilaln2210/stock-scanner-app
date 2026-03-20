@@ -701,14 +701,23 @@ def _score_insider_track_record(
     if price_data is None or price_data.empty:
         return {}
 
-    # Build a date→price lookup
+    # Build a date→price lookup (handle both DataFrame and Series from yfinance)
+    import pandas as pd
     price_lookup = {}
-    for idx, row in price_data.iterrows():
-        d = idx.date() if hasattr(idx, 'date') else idx
-        try:
-            price_lookup[d] = float(row.iloc[0]) if hasattr(row, 'iloc') else float(row)
-        except (ValueError, TypeError):
-            pass
+    if isinstance(price_data, pd.Series):
+        for idx, val in price_data.items():
+            d = idx.date() if hasattr(idx, 'date') else idx
+            try:
+                price_lookup[d] = float(val)
+            except (ValueError, TypeError):
+                pass
+    else:
+        for idx, row in price_data.iterrows():
+            d = idx.date() if hasattr(idx, 'date') else idx
+            try:
+                price_lookup[d] = float(row.iloc[0]) if hasattr(row, 'iloc') else float(row)
+            except (ValueError, TypeError):
+                pass
 
     if not price_lookup:
         return {}
@@ -786,7 +795,7 @@ def _score_insider_track_record(
             avg_ret = None
 
         # Grade: A (track record ≥ 70%), B (≥ 50%), C (< 50%), N (new/unknown)
-        if total >= 2 and win_rate is not None:
+        if total >= 1 and win_rate is not None:
             if win_rate >= 70:
                 grade = 'A'
             elif win_rate >= 50:
