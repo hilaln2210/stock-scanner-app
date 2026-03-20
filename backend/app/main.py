@@ -894,6 +894,33 @@ async def health():
 # Include API routes
 app.include_router(router, prefix="/api")
 
+# ── Connection tracker — Telegram alert on new IP ────────────────────────────
+_seen_ips: set = set()
+
+@app.middleware("http")
+async def connection_tracker(request: Request, call_next):
+    ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else "unknown").split(",")[0].strip()
+    # Only track page loads (not API polling noise)
+    path = request.url.path
+    if ip not in _seen_ips and (path == "/" or path.startswith("/api/arena") or path.startswith("/api/briefing")):
+        _seen_ips.add(ip)
+        try:
+            from app.services.alerts_service import send_telegram
+            from datetime import datetime, timezone, timedelta
+            now = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=3)))
+            ua = request.headers.get("User-Agent", "")[:80]
+            asyncio.create_task(send_telegram(
+                f"🔌 <b>חיבור חדש</b>\n"
+                f"🌐 IP: <code>{ip}</code>\n"
+                f"📍 Path: <code>{path}</code>\n"
+                f"🕐 {now.strftime('%H:%M:%S')} (IST)\n"
+                f"📱 {ua}"
+            ))
+        except Exception:
+            pass
+    return await call_next(request)
+
+
 # Cache headers for API responses
 @app.middleware("http")
 async def add_cache_headers(request: Request, call_next):
