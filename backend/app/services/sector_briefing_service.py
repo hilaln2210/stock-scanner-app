@@ -815,17 +815,8 @@ def _score_insider_track_record(
     return scores
 
 
-async def _enrich_insider_scores(
-    session: aiohttp.ClientSession, trades: List[dict]
-) -> None:
-    """
-    For each unique ticker in trades, fetch 6-month insider history + price data,
-    score each insider's track record, and attach results to trades.
-    Also groups trades by ticker to add cluster buy info.
-    """
-    import concurrent.futures
-
-    # ── 1. Cluster buy info ──────────────────────────────────────────────
+def _enrich_cluster_buys(trades: List[dict]) -> None:
+    """Fast synchronous grouping of trades by ticker for cluster buy detection."""
     ticker_groups: Dict[str, list] = {}
     for t in trades:
         tk = t.get('ticker', '')
@@ -837,7 +828,6 @@ async def _enrich_insider_scores(
         for t in group:
             t['same_ticker_buys'] = count
             if count > 1:
-                # List of other insiders who bought same ticker
                 others = [
                     {'insider': o.get('insider', ''), 'value': o.get('value', ''),
                      'date': o.get('date', ''), 'title': o.get('title', '')}
@@ -847,7 +837,23 @@ async def _enrich_insider_scores(
             else:
                 t['other_buyers'] = []
 
-    # ── 2. Insider track record scoring ──────────────────────────────────
+
+async def _enrich_insider_scores(
+    session: aiohttp.ClientSession, trades: List[dict]
+) -> None:
+    """
+    For each unique ticker in trades, fetch 6-month insider history + price data,
+    score each insider's track record, and attach results to trades.
+    """
+    import concurrent.futures
+
+    ticker_groups: Dict[str, list] = {}
+    for t in trades:
+        tk = t.get('ticker', '')
+        if tk:
+            ticker_groups.setdefault(tk, []).append(t)
+
+    # ── Insider track record scoring ──────────────────────────────────
     now = _time.time()
     tickers_to_score = []
     for tk in ticker_groups:
@@ -2881,7 +2887,7 @@ async def get_sector_briefing() -> dict:
         try:
             sectors = await asyncio.wait_for(
                 asyncio.to_thread(_fetch_etf_only),
-                timeout=15,
+                timeout=10,
             )
             if sectors:
                 _etf_cache = sectors
@@ -3070,7 +3076,7 @@ async def get_sector_briefing() -> dict:
                 try:
                     insider_enrichment = await asyncio.wait_for(
                         asyncio.to_thread(_fetch_insider_enrichment, insider_tickers),
-                        timeout=25,
+                        timeout=12,
                     )
                     print(f'[SectorBriefing] Insider enrichment: {len(insider_enrichment)} tickers enriched')
                 except (asyncio.TimeoutError, FuturesTimeout):
@@ -3081,7 +3087,7 @@ async def get_sector_briefing() -> dict:
                 try:
                     insider_news = await asyncio.wait_for(
                         asyncio.to_thread(_fetch_insider_news_batch, insider_tickers),
-                        timeout=20,
+                        timeout=10,
                     )
                     print(f'[SectorBriefing] Insider news: {len(insider_news)} tickers with news')
                 except (asyncio.TimeoutError, FuturesTimeout):
@@ -3108,16 +3114,19 @@ async def get_sector_briefing() -> dict:
                     # Generate 'why' reason using real catalysts + company intel
                     trade['why'] = _insider_why(trade)
 
-                # Enrich with cluster buy info + insider track record scoring
-                try:
-                    async with aiohttp.ClientSession() as score_session:
-                        await asyncio.wait_for(
-                            _enrich_insider_scores(score_session, new_insider),
-                            timeout=30,
-                        )
-                    print(f'[SectorBriefing] Insider scores enriched')
-                except (asyncio.TimeoutError, Exception) as e:
-                    print(f'[SectorBriefing] Insider score enrichment error: {e}')
+                # Cluster buy grouping (fast, synchronous)
+                _enrich_cluster_buys(new_insider)
+
+                # Historical track record scoring (slow — fire and forget in background)
+                async def _bg_score():
+                    try:
+                        async with aiohttp.ClientSession() as score_session:
+                            await _enrich_insider_scores(score_session, new_insider)
+                        print(f'[SectorBriefing] Insider scores enriched (background)')
+                    except Exception as e:
+                        print(f'[SectorBriefing] Insider score bg error: {e}')
+
+                asyncio.ensure_future(_bg_score())
 
                 _insider_cache = new_insider
                 _insider_cache_at = _time.time()
