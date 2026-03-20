@@ -1620,22 +1620,7 @@ export default function SectorBriefing() {
             <RotationSignal rotation={rotation} />
           </div>
 
-          {/* ── Geopolitical Alerts ──────────────────────────────────────────── */}
-          <GeoEventAlerts events={data?.geo_events} />
-
-          {/* ── Gold Signals ──────────────────────────────────────────────────── */}
-          <GoldSignals signals={data?.gold_signals} />
-
-          {/* ── Macro Event Plays ─────────────────────────────────────────────── */}
-          <MacroEventPlays plays={data?.macro_event_plays} />
-
-          {/* ── Smart Money ─────────────────────────────────────────────────────── */}
-          <SmartMoneySummary smartMoney={data?.smart_money} sectors={sectors} />
-
-          {/* ── Feature Legend ──────────────────────────────────────────────────── */}
-          <FeatureLegend />
-
-          {/* ── Sector Heatmap / List ──────────────────────────────────────────── */}
+          {/* ── Sector Heatmap / List — MAIN CONTENT FIRST ─────────────────────── */}
           {viewMode === 'heatmap' ? (
             <div className="space-y-3">
               {/* Grouped heatmap */}
@@ -1742,6 +1727,21 @@ export default function SectorBriefing() {
               </div>
             </div>
           )}
+
+          {/* ── Geopolitical Alerts ──────────────────────────────────────────── */}
+          <GeoEventAlerts events={data?.geo_events} />
+
+          {/* ── Gold Signals ──────────────────────────────────────────────────── */}
+          <GoldSignals signals={data?.gold_signals} />
+
+          {/* ── Macro Event Plays ─────────────────────────────────────────────── */}
+          <MacroEventPlays plays={data?.macro_event_plays} />
+
+          {/* ── Smart Money ─────────────────────────────────────────────────────── */}
+          <SmartMoneySummary smartMoney={data?.smart_money} sectors={sectors} />
+
+          {/* ── Feature Legend ──────────────────────────────────────────────────── */}
+          <FeatureLegend />
 
           {/* ── Insider Trades ──────────────────────────────────────────────────── */}
           <div className="bg-slate-900/60 border border-slate-700/50 rounded-2xl overflow-hidden">
