@@ -1454,11 +1454,11 @@ export default function SectorBriefing() {
       const r = await api.get('/briefing/sector', { params });
       return r.data;
     },
-    staleTime: 25 * 1000,
-    refetchInterval: 30 * 1000,
+    staleTime: 90 * 1000,
+    refetchInterval: 2 * 60 * 1000,
     placeholderData: (prev) => prev,  // keep old data visible during refetch
-    retry: 2,
-    retryDelay: 3000,
+    retry: 1,
+    retryDelay: 5000,
   });
 
   const sectors        = data?.sectors        || [];

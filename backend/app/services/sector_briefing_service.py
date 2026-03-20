@@ -150,6 +150,11 @@ _intel_cache: Optional[Dict[str, dict]] = None
 _intel_cache_at: float = 0.0
 _INTEL_TTL = 300  # 5 minutes
 
+# Full response cache — returned instantly to users, refreshed in background
+_response_cache: Optional[dict] = None
+_response_cache_at: float = 0.0
+_RESPONSE_CACHE_TTL = 180  # 3 minutes
+
 # ── Macro Indicator Definitions ──────────────────────────────────────────────────
 
 MACRO_TICKERS = {
@@ -1042,8 +1047,9 @@ def _fetch_insider_news_batch(tickers: List[str]) -> Dict[str, List[dict]]:
     def _get_news(ticker):
         return ticker, _fetch_news_for_ticker(ticker, max_items=5)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
-        futures = {pool.submit(_get_news, t): t for t in unique}
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=3)
+    futures = {pool.submit(_get_news, t): t for t in unique}
+    try:
         for future in concurrent.futures.as_completed(futures, timeout=15):
             try:
                 t, news = future.result(timeout=3)
@@ -1051,6 +1057,10 @@ def _fetch_insider_news_batch(tickers: List[str]) -> Dict[str, List[dict]]:
                     result[t] = news
             except Exception:
                 pass
+    except concurrent.futures.TimeoutError:
+        pass
+    finally:
+        pool.shutdown(wait=False)
 
     return result
 
@@ -1232,8 +1242,9 @@ def _fetch_insider_enrichment(tickers: List[str]) -> Dict[str, dict]:
     # Fetch for top tickers (max 8 — Render free plan friendly)
     intel_tickers = [t for t in unique if t in result][:8]
     if intel_tickers:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-            futures = {pool.submit(_get_company_intel, t): t for t in intel_tickers}
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+        futures = {pool.submit(_get_company_intel, t): t for t in intel_tickers}
+        try:
             for future in concurrent.futures.as_completed(futures, timeout=10):
                 t = futures[future]
                 try:
@@ -1242,6 +1253,10 @@ def _fetch_insider_enrichment(tickers: List[str]) -> Dict[str, dict]:
                         result[t].update(intel)
                 except Exception:
                     pass
+        except concurrent.futures.TimeoutError:
+            pass
+        finally:
+            pool.shutdown(wait=False)
 
     return result
 
@@ -1259,8 +1274,11 @@ def _fetch_news_for_ticker(ticker: str, max_items: int = 3) -> List[dict]:
             t = yf.Ticker(ticker)
             return t.news or []
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        try:
             raw = pool.submit(_inner).result(timeout=4)
+        finally:
+            pool.shutdown(wait=False)
 
         results = []
         from datetime import timezone
@@ -2547,8 +2565,9 @@ def _fetch_stock_intelligence(stocks: List[dict], max_stocks: int = 6) -> Dict[s
 
     intel_map: Dict[str, dict] = {}
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
-        futures = {pool.submit(_get_intel, s): s['ticker'] for s in top_stocks}
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=3)
+    futures = {pool.submit(_get_intel, s): s['ticker'] for s in top_stocks}
+    try:
         for future in concurrent.futures.as_completed(futures, timeout=12):
             try:
                 ticker, intel = future.result(timeout=2)
@@ -2556,6 +2575,10 @@ def _fetch_stock_intelligence(stocks: List[dict], max_stocks: int = 6) -> Dict[s
                     intel_map[ticker] = intel
             except Exception:
                 pass
+    except concurrent.futures.TimeoutError:
+        pass
+    finally:
+        pool.shutdown(wait=False)
 
     # Also add catalyst analysis for stocks that didn't get full enrichment
     for s in stocks:
@@ -3221,7 +3244,8 @@ async def get_stocks_for_sector(finviz_filter: str) -> List[dict]:
 async def get_sector_briefing() -> dict:
     """
     Returns the full sector briefing dict with all intelligence data.
-    Uses 8 separate caches with different TTLs.
+    Full response is cached for 3 minutes — returned instantly on every call.
+    Background scheduler refreshes the cache every 3 minutes.
     """
     global _etf_cache, _etf_cache_at
     global _drivers_cache, _drivers_cache_at
@@ -3234,8 +3258,13 @@ async def get_sector_briefing() -> dict:
     global _market_news_cache, _market_news_cache_at
     global _all_movers_cache, _all_movers_cache_at
     global _intel_cache, _intel_cache_at
+    global _response_cache, _response_cache_at
 
     now = _time.time()
+
+    # ── Serve from full response cache if fresh (instant response) ────────────
+    if _response_cache is not None and (now - _response_cache_at) < _RESPONSE_CACHE_TTL:
+        return _response_cache
 
     # ── 1a. ETF prices (30s TTL) ──────────────────────────────────────────────
     if _etf_cache is None or (now - _etf_cache_at) >= _ETF_CACHE_TTL:
@@ -3549,26 +3578,30 @@ async def get_sector_briefing() -> dict:
         print(f'[SectorBriefing] geo events error: {e}')
         geo_events = _geo_cache or []
 
-    # ── Fetch stock intelligence (after all_movers is resolved) ──────────────
+    # ── Fetch stock intelligence in background (non-blocking) ────────────────
     intel_stale = _intel_cache is None or (now - _intel_cache_at) >= _INTEL_TTL
     if intel_stale and _all_movers_cache:
         all_movers_list = []
         for data in _all_movers_cache.values():
             all_movers_list.extend(data.get('movers', []))
         if all_movers_list:
-            print(f'[SectorBriefing] Fetching stock intelligence for {len(all_movers_list)} movers...')
-            try:
-                new_intel = await asyncio.wait_for(
-                    asyncio.to_thread(_fetch_stock_intelligence, all_movers_list, 8),
-                    timeout=25,
-                )
-                if new_intel is not None:
-                    _intel_cache = new_intel
-                    _intel_cache_at = _time.time()
-            except (asyncio.TimeoutError, FuturesTimeout):
-                print('[SectorBriefing] intelligence timeout')
-            except Exception as e:
-                print(f'[SectorBriefing] intelligence error: {e}')
+            print(f'[SectorBriefing] Scheduling stock intelligence for {len(all_movers_list)} movers (background)...')
+
+            async def _bg_intel(movers):
+                global _intel_cache, _intel_cache_at
+                try:
+                    new_intel = await asyncio.wait_for(
+                        asyncio.to_thread(_fetch_stock_intelligence, movers, 8),
+                        timeout=25,
+                    )
+                    if new_intel is not None:
+                        _intel_cache = new_intel
+                        _intel_cache_at = _time.time()
+                        print(f'[SectorBriefing] intelligence ready: {len(new_intel)} stocks')
+                except Exception:
+                    pass
+
+            asyncio.ensure_future(_bg_intel(list(all_movers_list)))
 
     # Attach intelligence to stocks
     intel = _intel_cache or {}
@@ -3793,30 +3826,32 @@ async def get_sector_briefing() -> dict:
             except (asyncio.TimeoutError, FuturesTimeout, Exception):
                 pass
 
-    # Multi-TF enrichment for movers (skip on cold start, enrich on 2nd+ call)
+    # Multi-TF enrichment for movers — background, non-blocking
     if all_movers:
-        # Check if first mover already has TF data
         first_movers = next((d['movers'] for d in all_movers.values() if d.get('movers')), [])
         needs_tf = first_movers and first_movers[0].get('chg_4h') is None
         if needs_tf:
-            try:
-                all_tickers = []
-                for etf_data in all_movers.values():
-                    all_tickers.extend(m['ticker'] for m in etf_data.get('movers', []))
-                if all_tickers:
+            async def _bg_tf(movers_snapshot):
+                try:
+                    all_tickers = [m['ticker'] for m in movers_snapshot]
+                    if not all_tickers:
+                        return
                     tf_data = await asyncio.wait_for(
                         asyncio.to_thread(_fetch_multi_timeframe_movers, all_tickers[:30]),
                         timeout=15,
                     )
-                    for etf_data in all_movers.values():
-                        for m in etf_data.get('movers', []):
-                            tf = tf_data.get(m['ticker'], {})
-                            m['chg_30m'] = tf.get('chg_30m')
-                            m['chg_4h']  = tf.get('chg_4h')
-                            m['chg_1d']  = tf.get('chg_1d')
-                            m['chg_1w']  = tf.get('chg_1w')
-            except (asyncio.TimeoutError, FuturesTimeout, Exception):
-                pass
+                    for m in movers_snapshot:
+                        tf = tf_data.get(m['ticker'], {})
+                        m['chg_30m'] = tf.get('chg_30m')
+                        m['chg_4h']  = tf.get('chg_4h')
+                        m['chg_1d']  = tf.get('chg_1d')
+                        m['chg_1w']  = tf.get('chg_1w')
+                    print('[SectorBriefing] TF enrichment done')
+                except Exception:
+                    pass
+
+            flat_movers = [m for d in all_movers.values() for m in d.get('movers', [])]
+            asyncio.ensure_future(_bg_tf(flat_movers))
 
     result = {
         'generated_at':    datetime.now().isoformat(),

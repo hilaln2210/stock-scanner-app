@@ -89,6 +89,17 @@ async def lifespan(app: FastAPI):
         await scheduled_scrape()
     asyncio.create_task(_delayed_scrape())
 
+    # Pre-warm sector briefing cache so first user request is fast
+    async def _prewarm_sectors():
+        await asyncio.sleep(5)
+        try:
+            from app.services.sector_briefing_service import get_sector_briefing
+            await asyncio.wait_for(get_sector_briefing(), timeout=45)
+            print('[Startup] Sector briefing cache warmed up')
+        except Exception as e:
+            print(f'[Startup] Sector pre-warm failed (non-critical): {e}')
+    asyncio.create_task(_prewarm_sectors())
+
     # Smart Portfolio AI Brain — runs every 5 minutes during all trading sessions
     async def _smart_portfolio_tick():
         from datetime import datetime, timezone, timedelta
@@ -351,6 +362,17 @@ async def lifespan(app: FastAPI):
 
     scheduler.add_job(_refresh_arena_aux_caches, "interval", minutes=30, id="arena_aux_cache_job",
                       max_instances=1, coalesce=True)
+
+    # Sector briefing background refresh — keeps cache warm so user requests are instant
+    async def _refresh_sector_briefing():
+        try:
+            from app.services.sector_briefing_service import get_sector_briefing
+            await asyncio.wait_for(get_sector_briefing(), timeout=45)
+        except Exception:
+            pass
+
+    scheduler.add_job(_refresh_sector_briefing, "interval", minutes=3,
+                      id="sector_refresh_job", max_instances=1, coalesce=True)
     print("Smart Portfolio Brain: every 5min | Arena: autonomous every 30s | Seasonal/Pattern: every 30min")
 
     # Arena daily winner at 16:05 ET (Mon-Fri), weekly winner on Fridays
