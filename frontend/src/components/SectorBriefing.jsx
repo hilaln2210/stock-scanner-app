@@ -1072,12 +1072,25 @@ function insiderSignal(chg) {
   return { text: 'יציבה', color: 'text-slate-400' };
 }
 
+function insiderGradeBadge(grade, winRate, totalTrades) {
+  if (!grade || grade === 'N') {
+    if (totalTrades === 0) return { text: 'חדש', color: 'bg-slate-700 text-slate-400', tip: 'אין היסטוריה' };
+    return { text: 'חדש', color: 'bg-slate-700 text-slate-400', tip: 'פחות מ-2 עסקאות להערכה' };
+  }
+  if (grade === 'A') return { text: `${winRate}% הצלחה`, color: 'bg-emerald-900/60 text-emerald-300 border border-emerald-600/40', tip: `${totalTrades} עסקאות • הצלחה גבוהה` };
+  if (grade === 'B') return { text: `${winRate}% הצלחה`, color: 'bg-amber-900/40 text-amber-300 border border-amber-600/30', tip: `${totalTrades} עסקאות • הצלחה בינונית` };
+  return { text: `${winRate}% הצלחה`, color: 'bg-red-900/40 text-red-300 border border-red-600/30', tip: `${totalTrades} עסקאות • הצלחה נמוכה — זהירות` };
+}
+
 function InsiderRow({ t }) {
   const sig = insiderSignal(t.change_pct);
   const ageColor = t.filing_age_hours < 6 ? 'text-green-400' : t.filing_age_hours < 24 ? 'text-yellow-500' : 'text-slate-600';
   const ageText = t.filing_age_hours != null
     ? (t.filing_age_hours < 1 ? 'עכשיו' : t.filing_age_hours < 24 ? `לפני ${Math.round(t.filing_age_hours)} שע׳` : `לפני ${Math.round(t.filing_age_hours / 24)} ימים`)
     : null;
+
+  const gradeBadge = insiderGradeBadge(t.insider_grade, t.insider_win_rate, t.insider_total_trades || 0);
+  const clusterCount = t.same_ticker_buys || 1;
 
   return (
     <div className="px-3 py-2.5 border-b border-slate-700/30 last:border-0 hover:bg-slate-800/30 transition-colors">
@@ -1092,24 +1105,49 @@ function InsiderRow({ t }) {
             <span className="text-[11px] text-white/70">${t.current_price.toFixed(2)}</span>
           )}
           {sig && <span className={`text-[10px] sm:text-[11px] ${sig.color}`}>{sig.text}</span>}
+          {clusterCount > 1 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-900/50 text-purple-300 border border-purple-600/30 font-medium">
+              {clusterCount} רוכשים
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {t.value && <span className="text-xs font-medium text-amber-400">{t.value}</span>}
           {ageText && <span className={`text-[10px] ${ageColor}`}>{ageText}</span>}
         </div>
       </div>
-      {/* Row 2: Insider name + title */}
+      {/* Row 2: Insider name + title + quality badge */}
       <div className="flex items-center gap-2 mt-1">
         <span className="text-[11px] sm:text-xs text-slate-200">{t.insider || t.company || '—'}</span>
         {t.title && <span className="text-[10px] sm:text-[11px] text-slate-500">({t.title})</span>}
+        <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${gradeBadge.color}`} title={gradeBadge.tip}>
+          {gradeBadge.text}
+        </span>
+        {t.insider_avg_return != null && t.insider_total_trades >= 2 && (
+          <span className={`text-[9px] ${t.insider_avg_return >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+            ממוצע {t.insider_avg_return > 0 ? '+' : ''}{t.insider_avg_return}%
+          </span>
+        )}
         {t.market_cap_live && <span className="text-[10px] text-slate-600">{t.market_cap_live}</span>}
       </div>
+      {/* Row 2.5: Other buyers (cluster buy detail) */}
+      {t.other_buyers && t.other_buyers.length > 0 && (
+        <div className="text-[10px] text-purple-400/70 mt-0.5 leading-snug">
+          גם קנו: {t.other_buyers.map(o => `${o.insider || 'מנהל'}${o.title ? ` (${o.title})` : ''} ${o.value || ''}`).join(' • ')}
+        </div>
+      )}
       {/* Row 3: Why / catalyst */}
       {t.why && t.why !== 'No clear catalyst' && (
         <div className="text-[11px] text-amber-400/80 mt-1 leading-snug">{t.why}</div>
       )}
       {t.why === 'No clear catalyst' && (
         <div className="text-[10px] text-slate-500/50 mt-0.5">אין קטליסט ברור</div>
+      )}
+      {/* Grade C warning */}
+      {t.insider_grade === 'C' && (
+        <div className="text-[10px] text-red-400/60 mt-0.5">
+          ⚠️ אחוזי הצלחה נמוכים — {t.insider_win_rate}% מתוך {t.insider_total_trades} עסקאות
+        </div>
       )}
     </div>
   );

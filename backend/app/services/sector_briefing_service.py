@@ -601,6 +601,318 @@ async def _fetch_insider_trades(session: aiohttp.ClientSession) -> List[dict]:
         return []
 
 
+# ── 3b. Insider History + Track Record Scoring ───────────────────────────────────
+
+_insider_score_cache: Dict[str, dict] = {}   # {ticker: {scores, fetched_at}}
+_INSIDER_SCORE_TTL = 86400  # 24 hours — track records change slowly
+
+async def _fetch_insider_history(session: aiohttp.ClientSession, ticker: str) -> List[dict]:
+    """
+    Fetch 6-month insider trade history for a ticker from OpenInsider.
+    Returns list of {insider, date, price, value, trade_type}.
+    """
+    url = (
+        f'http://openinsider.com/screener?s={ticker}&o=&pl=&ph=&ll=&lh=&fd=180'
+        '&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=&xp=1&vl=25&vh=&ocl=&och=&'
+        'sic1=-1&sicl=100&sich=9999&grp=0&nfl=&nfh=&nil=&nih=&nol=&noh=&'
+        'v2l=&v2h=&oc2l=&oc2h=&sortcol=0&cnt=100&action=1'
+    )
+    try:
+        async with session.get(
+            url, headers=_HEADERS, timeout=aiohttp.ClientTimeout(total=12)
+        ) as resp:
+            if resp.status != 200:
+                return []
+            html = await resp.text()
+
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table', class_='tinytable')
+        if not table:
+            return []
+
+        rows = table.find_all('tr')
+        if len(rows) < 2:
+            return []
+
+        header_cells = rows[0].find_all(['th', 'td'])
+        headers = [h.get_text(strip=True).replace('\xa0', ' ') for h in header_cells]
+
+        def gcell(row_cells, *names):
+            for name in names:
+                try:
+                    i = headers.index(name)
+                    if i < len(row_cells):
+                        return row_cells[i].get_text(strip=True)
+                except ValueError:
+                    pass
+            return ''
+
+        trades = []
+        for row in rows[1:]:
+            cells = row.find_all('td')
+            if len(cells) < 5:
+                continue
+            insider = gcell(cells, 'Insider Name', 'Insider')
+            title   = gcell(cells, 'Title')
+            date_s  = gcell(cells, 'Filing Date', 'Date', 'Filed')
+            price   = gcell(cells, 'Price')
+            value   = gcell(cells, 'Value', 'Val')
+            trade_type = gcell(cells, 'Trade Type', 'Type', 'X')
+
+            # Only purchases
+            if trade_type and 'P' not in trade_type:
+                continue
+
+            try:
+                price_f = float(price.replace('$', '').replace(',', ''))
+            except (ValueError, TypeError):
+                price_f = None
+
+            trades.append({
+                'insider': insider,
+                'title':   title,
+                'date':    date_s,
+                'price':   price_f,
+                'value':   value,
+            })
+        return trades
+
+    except Exception as e:
+        print(f'[SectorBriefing] insider history fetch error ({ticker}): {e}')
+        return []
+
+
+def _score_insider_track_record(
+    history: List[dict], price_data, current_trades: List[dict]
+) -> Dict[str, dict]:
+    """
+    Score each insider based on stock performance 30 days after their historical buys.
+    price_data: pandas DataFrame with daily Close prices for the ticker (6+ months).
+    Returns {insider_name: {win_rate, avg_return, total_trades, grade}}.
+    """
+    from datetime import date, timedelta
+
+    if price_data is None or price_data.empty:
+        return {}
+
+    # Build a date→price lookup
+    price_lookup = {}
+    for idx, row in price_data.iterrows():
+        d = idx.date() if hasattr(idx, 'date') else idx
+        try:
+            price_lookup[d] = float(row.iloc[0]) if hasattr(row, 'iloc') else float(row)
+        except (ValueError, TypeError):
+            pass
+
+    if not price_lookup:
+        return {}
+
+    sorted_dates = sorted(price_lookup.keys())
+    last_date = sorted_dates[-1] if sorted_dates else date.today()
+
+    # Group historical trades by insider
+    insider_trades_map: Dict[str, list] = {}
+    for h in history:
+        name = h.get('insider', '').strip()
+        if not name:
+            continue
+        if name not in insider_trades_map:
+            insider_trades_map[name] = []
+        insider_trades_map[name].append(h)
+
+    # Also add current insiders we're interested in (so they get scored even if no history)
+    for t in current_trades:
+        name = (t.get('insider') or '').strip()
+        if name and name not in insider_trades_map:
+            insider_trades_map[name] = []
+
+    scores: Dict[str, dict] = {}
+    for insider_name, trades in insider_trades_map.items():
+        wins = 0
+        total = 0
+        returns = []
+
+        for trade in trades:
+            buy_date = None
+            try:
+                ds = trade.get('date', '')
+                if ' ' in ds:
+                    ds = ds.split(' ')[0]
+                buy_date = date.fromisoformat(ds)
+            except (ValueError, TypeError):
+                continue
+
+            buy_price = trade.get('price')
+            if not buy_price:
+                continue
+
+            # Find price ~30 days later
+            check_date = buy_date + timedelta(days=30)
+            # If check_date is in the future, use latest available
+            if check_date > last_date:
+                check_date = last_date
+                # Skip if buy was too recent (< 10 days) to judge
+                if (last_date - buy_date).days < 10:
+                    continue
+
+            # Find closest trading day to check_date
+            best_date = None
+            for d in sorted_dates:
+                if d >= check_date:
+                    best_date = d
+                    break
+            if best_date is None and sorted_dates:
+                best_date = sorted_dates[-1]
+
+            if best_date and best_date in price_lookup:
+                later_price = price_lookup[best_date]
+                ret = (later_price - buy_price) / buy_price * 100
+                returns.append(ret)
+                total += 1
+                if ret > 0:
+                    wins += 1
+
+        if total > 0:
+            win_rate = round(wins / total * 100)
+            avg_ret = round(sum(returns) / len(returns), 1)
+        else:
+            win_rate = None
+            avg_ret = None
+
+        # Grade: A (track record ≥ 70%), B (≥ 50%), C (< 50%), N (new/unknown)
+        if total >= 2 and win_rate is not None:
+            if win_rate >= 70:
+                grade = 'A'
+            elif win_rate >= 50:
+                grade = 'B'
+            else:
+                grade = 'C'
+        else:
+            grade = 'N'  # New — not enough data
+
+        scores[insider_name] = {
+            'win_rate': win_rate,
+            'avg_return': avg_ret,
+            'total_trades': total,
+            'grade': grade,
+        }
+
+    return scores
+
+
+async def _enrich_insider_scores(
+    session: aiohttp.ClientSession, trades: List[dict]
+) -> None:
+    """
+    For each unique ticker in trades, fetch 6-month insider history + price data,
+    score each insider's track record, and attach results to trades.
+    Also groups trades by ticker to add cluster buy info.
+    """
+    import concurrent.futures
+
+    # ── 1. Cluster buy info ──────────────────────────────────────────────
+    ticker_groups: Dict[str, list] = {}
+    for t in trades:
+        tk = t.get('ticker', '')
+        if tk:
+            ticker_groups.setdefault(tk, []).append(t)
+
+    for tk, group in ticker_groups.items():
+        count = len(group)
+        for t in group:
+            t['same_ticker_buys'] = count
+            if count > 1:
+                # List of other insiders who bought same ticker
+                others = [
+                    {'insider': o.get('insider', ''), 'value': o.get('value', ''),
+                     'date': o.get('date', ''), 'title': o.get('title', '')}
+                    for o in group if o is not t
+                ]
+                t['other_buyers'] = others
+            else:
+                t['other_buyers'] = []
+
+    # ── 2. Insider track record scoring ──────────────────────────────────
+    now = _time.time()
+    tickers_to_score = []
+    for tk in ticker_groups:
+        cached = _insider_score_cache.get(tk)
+        if cached and (now - cached.get('fetched_at', 0)) < _INSIDER_SCORE_TTL:
+            # Use cached scores
+            for t in ticker_groups[tk]:
+                insider_name = (t.get('insider') or '').strip()
+                sc = cached.get('scores', {}).get(insider_name, {})
+                t['insider_grade'] = sc.get('grade', 'N')
+                t['insider_win_rate'] = sc.get('win_rate')
+                t['insider_avg_return'] = sc.get('avg_return')
+                t['insider_total_trades'] = sc.get('total_trades', 0)
+        else:
+            tickers_to_score.append(tk)
+
+    if not tickers_to_score:
+        return
+
+    # Limit to 8 tickers to avoid overloading
+    tickers_to_score = tickers_to_score[:8]
+
+    # Fetch history + prices in parallel
+    history_tasks = {
+        tk: _fetch_insider_history(session, tk) for tk in tickers_to_score
+    }
+    histories = {}
+    for tk, coro in history_tasks.items():
+        try:
+            histories[tk] = await asyncio.wait_for(coro, timeout=12)
+        except (asyncio.TimeoutError, Exception) as e:
+            print(f'[SectorBriefing] insider history timeout/error ({tk}): {e}')
+            histories[tk] = []
+
+    # Fetch 6-month price data for all tickers at once
+    price_data = {}
+    try:
+        def _dl():
+            return yf.download(
+                tickers_to_score, period='6mo', interval='1d',
+                progress=False, timeout=15, auto_adjust=True
+            )
+        raw = await asyncio.wait_for(asyncio.to_thread(_dl), timeout=20)
+        close = raw.get('Close', raw) if hasattr(raw, 'get') else raw
+        for tk in tickers_to_score:
+            try:
+                if len(tickers_to_score) > 1:
+                    col = close[tk].dropna()
+                else:
+                    col = close.dropna()
+                price_data[tk] = col
+            except Exception:
+                pass
+    except (asyncio.TimeoutError, Exception) as e:
+        print(f'[SectorBriefing] insider price history error: {e}')
+
+    # Score each ticker's insiders
+    for tk in tickers_to_score:
+        hist = histories.get(tk, [])
+        prices = price_data.get(tk)
+        group_trades = ticker_groups.get(tk, [])
+
+        scores = _score_insider_track_record(hist, prices, group_trades)
+
+        # Cache it
+        _insider_score_cache[tk] = {
+            'scores': scores,
+            'fetched_at': now,
+        }
+
+        # Attach to trades
+        for t in group_trades:
+            insider_name = (t.get('insider') or '').strip()
+            sc = scores.get(insider_name, {})
+            t['insider_grade'] = sc.get('grade', 'N')
+            t['insider_win_rate'] = sc.get('win_rate')
+            t['insider_avg_return'] = sc.get('avg_return')
+            t['insider_total_trades'] = sc.get('total_trades', 0)
+
+
 # ── 4. Insider Why Analysis ──────────────────────────────────────────────────────
 
 # Catalyst keyword patterns — ordered by specificity
@@ -2631,6 +2943,17 @@ async def get_sector_briefing() -> dict:
 
                     # Generate 'why' reason using real catalysts + company intel
                     trade['why'] = _insider_why(trade)
+
+                # Enrich with cluster buy info + insider track record scoring
+                try:
+                    async with aiohttp.ClientSession() as score_session:
+                        await asyncio.wait_for(
+                            _enrich_insider_scores(score_session, new_insider),
+                            timeout=30,
+                        )
+                    print(f'[SectorBriefing] Insider scores enriched')
+                except (asyncio.TimeoutError, Exception) as e:
+                    print(f'[SectorBriefing] Insider score enrichment error: {e}')
 
                 _insider_cache = new_insider
                 _insider_cache_at = _time.time()
