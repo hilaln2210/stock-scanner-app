@@ -126,7 +126,7 @@ function MomentumDashboard() {
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => setSearchTicker(val), 400);
   }, []);
-  const [viewMode, setViewMode]               = useState('finviz-table');
+  const [viewMode, setViewMode]               = useState('sector-briefing');
   const [newsCollapsed, setNewsCollapsed]     = useState(false);
   const [lastUpdateTime, setLastUpdateTime]   = useState(new Date());
   const [language, setLanguage]               = useState('he');

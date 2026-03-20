@@ -1075,11 +1075,13 @@ async def get_sector_briefing(force: bool = False):
         return result
     except asyncio.TimeoutError:
         return {"error": "timeout", "sectors": [], "top_sector": None,
-                "sector_stocks": [], "insider_trades": []}
+                "sector_stocks": [], "insider_trades": [],
+                "macro_event_plays": [], "gold_signals": [], "macro": None}
     except Exception as e:
         print(f"[/briefing/sector] error: {e}")
         return {"error": str(e), "sectors": [], "top_sector": None,
-                "sector_stocks": [], "insider_trades": []}
+                "sector_stocks": [], "insider_trades": [],
+                "macro_event_plays": [], "gold_signals": [], "macro": None}
 
 
 @router.get("/research/insider-catalyst")

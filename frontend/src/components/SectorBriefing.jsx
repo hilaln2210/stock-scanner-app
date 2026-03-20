@@ -1245,6 +1245,8 @@ export default function SectorBriefing() {
     staleTime: 25 * 1000,
     refetchInterval: 30 * 1000,
     placeholderData: (prev) => prev,  // keep old data visible during refetch
+    retry: 2,
+    retryDelay: 3000,
   });
 
   const sectors        = data?.sectors        || [];
