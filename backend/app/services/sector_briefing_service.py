@@ -156,6 +156,7 @@ MACRO_TICKERS = {
     '^VIX':      {'name': 'VIX',       'label': 'מדד פחד',        'icon': '😰', 'type': 'fear'},
     'GC=F':      {'name': 'זהב',       'label': 'זהב',           'icon': '🥇', 'type': 'safe_haven'},
     'CL=F':      {'name': 'נפט',       'label': 'נפט גולמי',     'icon': '🛢️', 'type': 'commodity'},
+    'NG=F':      {'name': 'גז טבעי',   'label': 'גז טבעי',       'icon': '🔥', 'type': 'commodity'},
     '^TNX':      {'name': '10Y',       'label': 'תשואה 10 שנים', 'icon': '📊', 'type': 'rates'},
     'DX-Y.NYB':  {'name': 'דולר',      'label': 'מדד דולר',      'icon': '💵', 'type': 'currency'},
     '^GSPC':     {'name': 'S&P 500',   'label': 'S&P 500',       'icon': '📈', 'type': 'index'},
@@ -173,6 +174,11 @@ IMPACT_RULES = [
     ('CL=F', 2,    ['XLI'],               'negative',  'נפט עולה → עלויות תעשייה עולות'),
     ('CL=F', -3,   ['XLE'],               'negative',  'נפט צונח → אנרגיה תחת לחץ'),
     ('CL=F', -3,   ['XLI', 'XLY'],        'positive',  'נפט יורד → הקלה בעלויות'),
+    # Natural Gas
+    ('NG=F', 3,    ['XLE'],               'positive',  'גז טבעי עולה → אנרגיה מרוויחה'),
+    ('NG=F', 5,    ['XLE'],               'positive',  'גז טבעי זינוק → small-cap אנרגיה ירוצו'),
+    ('NG=F', -4,   ['XLE'],               'negative',  'גז טבעי צונח → לחץ על מפיקי גז'),
+    ('NG=F', 3,    ['XLU'],               'positive',  'גז טבעי עולה → חברות חשמל יעלו מחירים'),
     # Gold
     ('GC=F', 1.5,  ['XLB'],               'positive',  'זהב עולה → חומרי גלם מרוויחים'),
     ('GC=F', 2,    ['XLK', 'XLY'],        'negative',  'זהב קופץ → סנטימנט risk-off'),
@@ -2540,6 +2546,26 @@ def _generate_gold_signals(
                     'action': 'אנרגיה מושפעת ישירות',
                     'source': 'oil_move',
                 })
+            # Natural gas alerts
+            if ind['ticker'] == 'NG=F' and abs(ind.get('change_pct', 0)) > 3:
+                chg = ind['change_pct']
+                lvl = 'gold' if abs(chg) > 8 else 'silver'
+                d = 'זינוק' if chg > 0 else 'צניחה'
+                signals.append({
+                    'level': lvl, 'icon': '🔥',
+                    'message': f'גז טבעי {d} {abs(chg):.1f}% — ${ind["price"]:.2f}',
+                    'action': 'Small-cap אנרגיה/גז ירוצו — חפש ANNA, AR, RRC, EQT, TELL' if chg > 0 else 'מפיקי גז תחת לחץ',
+                    'source': 'natgas_move',
+                })
+            # Oil big move (>5%) — escalate to gold
+            if ind['ticker'] == 'CL=F' and abs(ind.get('change_pct', 0)) > 5:
+                chg = ind['change_pct']
+                signals.append({
+                    'level': 'gold', 'icon': '🛢️🚨',
+                    'message': f'נפט {abs(chg):.1f}% — מהלך חריג! גיאופוליטי?',
+                    'action': 'חפש small-cap אנרגיה + הגנתיים. סקטור XLE ישפיע.',
+                    'source': 'oil_spike',
+                })
 
     # ── Sort & deduplicate ─────────────────────────────────────────────────
     level_order = {'gold': 0, 'silver': 1, 'bronze': 2}
@@ -2554,6 +2580,135 @@ def _generate_gold_signals(
             unique.append(s)
 
     return unique[:20]
+
+
+# ── 15b. Macro Event Plays — detect commodity/geopolitical-driven opportunities ─
+
+# Maps macro indicator spikes to Finviz sector filters for finding small-cap beneficiaries
+MACRO_PLAY_RULES = [
+    # (macro_ticker, min_abs_chg, direction, finviz_sector, play_label, filters)
+    ('NG=F',  3,  'up',   'sec_energy',           'גז טבעי',    {'cap_small': True, 'ta_change_u5': True}),
+    ('NG=F',  3,  'up',   'sec_utilities',         'גז → חשמל',  {'cap_small': True, 'ta_change_u5': True}),
+    ('CL=F',  3,  'up',   'sec_energy',           'נפט',         {'cap_small': True, 'ta_change_u5': True}),
+    ('CL=F',  3,  'down', 'sec_consumercyclical',  'נפט יורד',   {'cap_small': True, 'ta_change_u': True}),
+    ('GC=F',  2,  'up',   'sec_basicmaterials',    'זהב',        {'cap_small': True, 'ta_change_u5': True}),
+    ('^VIX', 10,  'up',   'sec_consumerdefensive', 'פאניקה',     {'cap_midover': True}),
+    ('^VIX', 10,  'up',   'sec_utilities',         'פאניקה',     {'cap_midover': True}),
+]
+
+_macro_plays_cache: Optional[List[dict]] = None
+_macro_plays_cache_at: float = 0.0
+_MACRO_PLAYS_TTL = 120  # 2 minutes
+
+
+def _detect_macro_event_plays(
+    macro_data: dict, all_movers: Dict[str, dict]
+) -> List[dict]:
+    """
+    When macro indicators spike, find small-cap stocks in affected sectors
+    that are already moving with unusual volume — these are the ANNA-type plays.
+    Uses already-fetched all_movers data (no extra API calls).
+    """
+    global _macro_plays_cache, _macro_plays_cache_at
+
+    now = _time.time()
+    if _macro_plays_cache is not None and (now - _macro_plays_cache_at) < _MACRO_PLAYS_TTL:
+        return _macro_plays_cache
+
+    if not macro_data or not macro_data.get('indicators'):
+        return []
+
+    indicator_changes = {i['ticker']: i for i in macro_data['indicators']}
+    plays: List[dict] = []
+
+    for macro_tk, min_chg, direction, sector_filter, play_label, _ in MACRO_PLAY_RULES:
+        ind = indicator_changes.get(macro_tk)
+        if not ind:
+            continue
+        chg = ind.get('change_pct', 0)
+
+        # Check if threshold triggered in correct direction
+        triggered = False
+        if direction == 'up' and chg >= min_chg:
+            triggered = True
+        elif direction == 'down' and chg <= -min_chg:
+            triggered = True
+        if not triggered:
+            continue
+
+        # Find matching sector in all_movers
+        sector_etf = None
+        for etf, info in SECTOR_ETFS.items():
+            if info.get('finviz') == sector_filter:
+                sector_etf = etf
+                break
+        if not sector_etf or sector_etf not in all_movers:
+            continue
+
+        movers = all_movers[sector_etf].get('movers', [])
+
+        # Filter for stocks with strong momentum + volume
+        for stock in movers:
+            stock_chg = stock.get('change_pct', 0) or 0
+            rvol = stock.get('rel_volume', 0) or 0
+            price = stock.get('price', 0) or 0
+            mcap = stock.get('market_cap', '')
+            ticker = stock.get('ticker', '')
+
+            # Must be moving significantly in the right direction
+            if direction == 'up' and stock_chg < 3:
+                continue
+            if direction == 'down' and stock_chg > -3:
+                continue
+
+            # Prioritize: unusual volume + big move + small cap
+            is_small_cap = any(x in str(mcap).lower() for x in ['m', 'micro']) if mcap else price < 20
+            vol_score = min(rvol, 10)
+            move_score = min(abs(stock_chg), 20)
+            priority = vol_score * 2 + move_score + (5 if is_small_cap else 0)
+
+            # Confidence based on signals alignment
+            confidence = 'Medium'
+            if rvol >= 3 and abs(stock_chg) >= 8 and is_small_cap:
+                confidence = 'High'
+            elif rvol >= 5 and abs(stock_chg) >= 15:
+                confidence = 'High'
+            elif rvol < 1.5 or abs(stock_chg) < 5:
+                confidence = 'Low'
+
+            plays.append({
+                'ticker': ticker,
+                'price': price,
+                'change_pct': round(stock_chg, 2),
+                'rel_volume': round(rvol, 1) if rvol else None,
+                'market_cap': mcap,
+                'macro_trigger': ind['name'],
+                'macro_change': round(chg, 2),
+                'macro_icon': ind.get('icon', ''),
+                'play_label': play_label,
+                'sector': SECTOR_ETFS.get(sector_etf, {}).get('name', ''),
+                'confidence': confidence,
+                'priority': priority,
+                'why': (
+                    f'{ind["name"]} {"עלה" if chg > 0 else "ירד"} {abs(chg):.1f}% → '
+                    f'{ticker} {"+"+str(round(stock_chg,1)) if stock_chg>0 else round(stock_chg,1)}% '
+                    f'עם נפח {"חריג x"+str(round(rvol,1)) if rvol and rvol>=2 else "רגיל"}'
+                ),
+            })
+
+    # Sort by priority (highest first), deduplicate by ticker
+    plays.sort(key=lambda x: x['priority'], reverse=True)
+    seen_tickers = set()
+    unique_plays = []
+    for p in plays:
+        if p['ticker'] not in seen_tickers:
+            seen_tickers.add(p['ticker'])
+            unique_plays.append(p)
+    unique_plays = unique_plays[:10]
+
+    _macro_plays_cache = unique_plays
+    _macro_plays_cache_at = now
+    return unique_plays
 
 
 # ── 16. Smart Money Flow Analysis ──────────────────────────────────────────────
@@ -3173,6 +3328,7 @@ async def get_sector_briefing() -> dict:
             all_movers, insider_trades, macro_data,
             _intel_cache or {},
         ),
+        'macro_event_plays': _detect_macro_event_plays(macro_data, all_movers),
         'smart_money':     {
             'top_accumulation': smart_money['top_accumulation'],
             'top_distribution': smart_money['top_distribution'],

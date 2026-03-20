@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import {
@@ -347,6 +347,58 @@ function GoldSignals({ signals }) {
     </div>
   );
 }
+
+// ── Macro Event Plays ────────────────────────────────────────────────────────────
+
+function MacroEventPlays({ plays }) {
+  if (!plays?.length) return null;
+
+  const confColor = { High: 'text-emerald-400', Medium: 'text-amber-400', Low: 'text-red-400' };
+  const confBg = { High: 'bg-emerald-900/40 border-emerald-600/30', Medium: 'bg-amber-900/30 border-amber-600/30', Low: 'bg-red-900/30 border-red-600/30' };
+
+  return (
+    <div className="bg-slate-900/60 border border-red-700/30 rounded-2xl overflow-hidden">
+      <div className="px-3 sm:px-4 py-2.5 border-b border-red-700/20 bg-red-950/20 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-base">🎯</span>
+          <h3 className="text-sm font-bold text-red-300">התראות מאקרו — מניות בתנועה</h3>
+          <span className="text-[10px] bg-red-800/50 text-red-200 rounded-full px-2 py-0.5 font-bold">
+            {plays.length} הזדמנויות
+          </span>
+        </div>
+      </div>
+      <div className="divide-y divide-slate-700/20">
+        {plays.map((p, i) => (
+          <div key={`${p.ticker}-${i}`} className="px-3 sm:px-4 py-2.5 hover:bg-slate-800/20 transition-colors">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-emerald-400">{p.ticker}</span>
+                <span className={`text-xs font-bold ${p.change_pct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {p.change_pct > 0 ? '+' : ''}{p.change_pct}%
+                </span>
+                {p.price && <span className="text-[11px] text-white/70">${p.price}</span>}
+                {p.rel_volume && p.rel_volume >= 2 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-900/40 text-orange-300 border border-orange-600/30">
+                    x{p.rel_volume} נפח
+                  </span>
+                )}
+              </div>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${confBg[p.confidence]} ${confColor[p.confidence]}`}>
+                {p.confidence === 'High' ? 'ביטחון גבוה' : p.confidence === 'Medium' ? 'ביטחון בינוני' : 'ביטחון נמוך'}
+              </span>
+            </div>
+            <div className="text-[11px] text-amber-400/80 mt-1 leading-snug">{p.why}</div>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-[10px] text-slate-500">{p.macro_icon} {p.play_label} | {p.sector}</span>
+              {p.market_cap && <span className="text-[10px] text-slate-600">{p.market_cap}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 
 // ── Smart Money Summary ─────────────────────────────────────────────────────────
 
@@ -1175,23 +1227,24 @@ function GroupHeader({ group }) {
 // ── main component ─────────────────────────────────────────────────────────────
 
 export default function SectorBriefing() {
-  const [forceKey, setForceKey] = useState(0);
   const [expandedSector, setExpandedSector] = useState(null);
   const [sectorStocksMap, setSectorStocksMap] = useState({}); // {filter: stocks[]}
   const [loadingFilter, setLoadingFilter] = useState(null);
   const [timeframe, setTimeframe] = useState('d1');
   const [viewMode, setViewMode] = useState('heatmap'); // heatmap | list
 
-  const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: ['sectorBriefing', forceKey],
+  const forceRef = useRef(false);
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
+    queryKey: ['sectorBriefing'],
     queryFn: async () => {
-      const r = await api.get('/briefing/sector', {
-        params: forceKey > 0 ? { force: true } : {},
-      });
+      const params = forceRef.current ? { force: true } : {};
+      forceRef.current = false;
+      const r = await api.get('/briefing/sector', { params });
       return r.data;
     },
     staleTime: 25 * 1000,
     refetchInterval: 30 * 1000,
+    placeholderData: (prev) => prev,  // keep old data visible during refetch
   });
 
   const sectors        = data?.sectors        || [];
@@ -1311,7 +1364,7 @@ export default function SectorBriefing() {
 
           {/* Refresh */}
           <button
-            onClick={() => setForceKey(k => k + 1)}
+            onClick={() => { forceRef.current = true; refetch(); }}
             disabled={isFetching}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700/60 border border-slate-600/50
               rounded-lg text-xs text-slate-300 hover:bg-slate-600/60 disabled:opacity-50 transition-all"
@@ -1355,6 +1408,9 @@ export default function SectorBriefing() {
 
           {/* ── Gold Signals ──────────────────────────────────────────────────── */}
           <GoldSignals signals={data?.gold_signals} />
+
+          {/* ── Macro Event Plays ─────────────────────────────────────────────── */}
+          <MacroEventPlays plays={data?.macro_event_plays} />
 
           {/* ── Smart Money ─────────────────────────────────────────────────────── */}
           <SmartMoneySummary smartMoney={data?.smart_money} sectors={sectors} />
