@@ -1,6 +1,6 @@
 {
   "week_start": "2026-03-16",
-  "current_day": "2026-03-17",
+  "current_day": "2026-03-20",
   "daily_history": [
     {
       "date": "2026-03-12",
@@ -42,31 +42,45 @@
         "SeasonalSwing": 0.0,
         "CryptoMomentumSync": 0.0
       }
+    },
+    {
+      "date": "2026-03-19",
+      "weekday": "Thursday",
+      "winner": "TrendRider",
+      "label": "\ud83d\udcc8 TrendRider",
+      "pnl_pcts": {
+        "First5Min": -97.59,
+        "VWAPReclaim": -96.31,
+        "PowerHour": -5.65,
+        "GapHold": -35.29,
+        "CatalystMover": -94.17,
+        "MomentumCont": -96.39,
+        "FloatRotation": -50.31,
+        "ShortSqueeze": -50.34,
+        "NanoRunner": -50.37,
+        "HCNews": -97.24,
+        "EarningsRunner": 0.0,
+        "AHMomentum": 0.0,
+        "TrendRider": 5.97,
+        "BaseBreakout": 5.97,
+        "MomentumSwing": 5.97,
+        "SeasonalSwing": -2.06,
+        "CryptoMomentumSync": 0.0
+      }
     }
   ],
   "weekly_winner": null,
   "weekly_winner_at": null,
-  "tick_count": 12426,
-  "last_tick": "2026-03-17T16:56:58.366544",
+  "tick_count": 20811,
+  "last_tick": "2026-03-21T00:15:45.640614",
   "portfolios": {
     "First5Min": {
       "name": "First5Min",
-      "cash": 12.33,
-      "equity": 24.3,
-      "pnl": -975.7,
+      "cash": 24.27,
+      "equity": 24.27,
+      "pnl": -975.73,
       "pnl_pct": -97.57,
-      "positions": {
-        "ERIC": {
-          "entry_price": 11.97,
-          "qty": 1,
-          "stop_loss": 10.56,
-          "target": 18.13,
-          "entry_time": "2026-03-16T22:16:35.752634",
-          "highest_price": 11.97,
-          "trailing_active": false,
-          "session": "aftermarket"
-        }
-      },
+      "positions": {},
       "trades": [
         {
           "ticker": "PLYX",
@@ -139,38 +153,69 @@
           "exit_time": "2026-03-17T15:48:50.481565",
           "was_partial": false,
           "session": "aftermarket"
+        },
+        {
+          "ticker": "ERIC",
+          "entry_price": 11.97,
+          "exit_price": 11.8,
+          "qty": 1,
+          "pnl": -0.17,
+          "pnl_pct": -1.42,
+          "reason": "Stale (2h, <2%)",
+          "entry_time": "2026-03-16T22:16:35.752634",
+          "exit_time": "2026-03-18T14:08:40.432247",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "DLO",
+          "entry_price": 12.58,
+          "exit_price": 12.53,
+          "qty": 1,
+          "pnl": -0.05,
+          "pnl_pct": -0.4,
+          "reason": "eod_replace",
+          "entry_time": "2026-03-19T15:30:10.051064",
+          "exit_time": "2026-03-19T22:15:39.603241",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "BCRX",
+          "entry_price": 9.81,
+          "exit_price": 10.0,
+          "qty": 1,
+          "pnl": 0.19,
+          "pnl_pct": 1.94,
+          "reason": "Stale (2h, <2%)",
+          "entry_time": "2026-03-19T22:15:39.614409",
+          "exit_time": "2026-03-20T19:46:03.057372",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "CAL",
+          "entry_price": 10.4,
+          "exit_price": 10.4,
+          "qty": 1,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-19T15:30:00.340332",
+          "exit_time": "2026-03-20T20:22:22.696152",
+          "was_partial": false,
+          "session": "regular"
         }
       ],
       "partial_taken": []
     },
     "VWAPReclaim": {
       "name": "VWAPReclaim",
-      "cash": 5.59,
-      "equity": 37.41,
-      "pnl": -962.59,
-      "pnl_pct": -96.26,
-      "positions": {
-        "TME": {
-          "entry_price": 15.09,
-          "qty": 1,
-          "stop_loss": 13.45,
-          "target": 22.18,
-          "entry_time": "2026-03-16T22:16:35.752795",
-          "highest_price": 15.09,
-          "trailing_active": false,
-          "session": "aftermarket"
-        },
-        "RLX": {
-          "entry_price": 2.35,
-          "qty": 7,
-          "stop_loss": 2.26,
-          "target": 2.63,
-          "entry_time": "2026-03-17T15:49:10.928142",
-          "highest_price": 2.39,
-          "trailing_active": false,
-          "session": "regular"
-        }
-      },
+      "cash": 31.04,
+      "equity": 31.04,
+      "pnl": -968.96,
+      "pnl_pct": -96.9,
+      "positions": {},
       "trades": [
         {
           "ticker": "TERN",
@@ -243,28 +288,95 @@
           "exit_time": "2026-03-17T15:48:50.481657",
           "was_partial": false,
           "session": "aftermarket"
+        },
+        {
+          "ticker": "RLX",
+          "entry_price": 2.35,
+          "exit_price": 2.32,
+          "qty": 7,
+          "pnl": -0.21,
+          "pnl_pct": -1.28,
+          "reason": "Stale (2h, <2%)",
+          "entry_time": "2026-03-17T15:49:10.928142",
+          "exit_time": "2026-03-19T14:04:15.430374",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "TME",
+          "entry_price": 15.09,
+          "exit_price": 10.29,
+          "qty": 1,
+          "pnl": -4.8,
+          "pnl_pct": -31.81,
+          "reason": "eod_replace",
+          "entry_time": "2026-03-16T22:16:35.752795",
+          "exit_time": "2026-03-19T22:15:39.603196",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "VG",
+          "entry_price": 15.74,
+          "exit_price": 14.29,
+          "qty": 1,
+          "pnl": -1.45,
+          "pnl_pct": -9.21,
+          "reason": "eod_replace",
+          "entry_time": "2026-03-19T15:31:17.206254",
+          "exit_time": "2026-03-19T22:15:39.603211",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "SRAD",
+          "entry_price": 19.69,
+          "exit_price": 19.87,
+          "qty": 1,
+          "pnl": 0.18,
+          "pnl_pct": 0.91,
+          "reason": "Stale (2h, <2%)",
+          "entry_time": "2026-03-19T22:15:49.881826",
+          "exit_time": "2026-03-20T18:46:31.768497",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "BCRX",
+          "entry_price": 9.81,
+          "exit_price": 10.0,
+          "qty": 1,
+          "pnl": 0.19,
+          "pnl_pct": 1.94,
+          "reason": "Stale (2h, <2%)",
+          "entry_time": "2026-03-19T22:15:39.614509",
+          "exit_time": "2026-03-20T19:46:03.057435",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "VG",
+          "entry_price": 15.78,
+          "exit_price": 15.78,
+          "qty": 1,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T18:55:01.571149",
+          "exit_time": "2026-03-20T20:22:22.696225",
+          "was_partial": false,
+          "session": "regular"
         }
       ],
       "partial_taken": []
     },
     "PowerHour": {
       "name": "PowerHour",
-      "cash": 602.94,
-      "equity": 992.49,
-      "pnl": -7.51,
-      "pnl_pct": -0.75,
-      "positions": {
-        "NBIS": {
-          "entry_price": 129.85,
-          "qty": 3,
-          "stop_loss": 118.03,
-          "target": 179.19,
-          "entry_time": "2026-03-16T22:16:35.752859",
-          "highest_price": 129.96,
-          "trailing_active": false,
-          "session": "aftermarket"
-        }
-      },
+      "cash": 933.73,
+      "equity": 933.73,
+      "pnl": -66.27,
+      "pnl_pct": -6.63,
+      "positions": {},
       "trades": [
         {
           "ticker": "TOI",
@@ -304,38 +416,108 @@
           "exit_time": "2026-03-17T15:48:50.482270",
           "was_partial": false,
           "session": "aftermarket"
+        },
+        {
+          "ticker": "NBIS",
+          "entry_price": 129.85,
+          "exit_price": 118.1,
+          "qty": 3,
+          "pnl": -35.25,
+          "pnl_pct": -9.05,
+          "reason": "Stale (1h, <2%)",
+          "entry_time": "2026-03-16T22:16:35.752859",
+          "exit_time": "2026-03-18T11:09:38.530003",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "VET",
+          "entry_price": 14.66,
+          "exit_price": 14.43,
+          "qty": 32,
+          "pnl": -7.36,
+          "pnl_pct": -1.57,
+          "reason": "Stale (1h, <2%)",
+          "entry_time": "2026-03-19T21:00:09.585643",
+          "exit_time": "2026-03-19T22:00:22.414104",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "SIG",
+          "entry_price": 90.85,
+          "exit_price": 89.57,
+          "qty": 5,
+          "pnl": -6.4,
+          "pnl_pct": -1.41,
+          "reason": "Stale (1h, <2%)",
+          "entry_time": "2026-03-19T21:00:21.125066",
+          "exit_time": "2026-03-19T22:00:22.414123",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "BCRX",
+          "entry_price": 9.81,
+          "exit_price": 10.0,
+          "qty": 17,
+          "pnl": 3.23,
+          "pnl_pct": 1.94,
+          "reason": "Stale (1h, <2%)",
+          "entry_time": "2026-03-19T22:15:49.881912",
+          "exit_time": "2026-03-20T19:46:03.057469",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "LITE",
+          "entry_price": 772.13,
+          "exit_price": 772.13,
+          "qty": 1,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-19T22:15:39.614579",
+          "exit_time": "2026-03-20T20:22:22.696251",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "SEDG",
+          "entry_price": 51.62,
+          "exit_price": 51.73,
+          "qty": 9,
+          "pnl": 0.99,
+          "pnl_pct": 0.21,
+          "reason": "Stale (1h, <2%)",
+          "entry_time": "2026-03-20T21:00:05.540005",
+          "exit_time": "2026-03-20T23:57:54.092589",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "SATL",
+          "entry_price": 3.7,
+          "exit_price": 3.59,
+          "qty": 127,
+          "pnl": -13.97,
+          "pnl_pct": -2.97,
+          "reason": "Stale (1h, <2%)",
+          "entry_time": "2026-03-20T21:00:00.692219",
+          "exit_time": "2026-03-21T00:01:44.900808",
+          "was_partial": false,
+          "session": "regular"
         }
       ],
       "partial_taken": []
     },
     "GapHold": {
       "name": "GapHold",
-      "cash": 80.54,
-      "equity": 665.74,
-      "pnl": -334.26,
-      "pnl_pct": -33.43,
-      "positions": {
-        "BCRX": {
-          "entry_price": 9.3,
-          "qty": 35,
-          "stop_loss": 8.33,
-          "target": 14.37,
-          "entry_time": "2026-03-16T22:16:24.816275",
-          "highest_price": 9.54,
-          "trailing_active": false,
-          "session": "aftermarket"
-        },
-        "NBIS": {
-          "entry_price": 129.85,
-          "qty": 2,
-          "stop_loss": 116.35,
-          "target": 200.62,
-          "entry_time": "2026-03-16T22:16:35.752923",
-          "highest_price": 129.96,
-          "trailing_active": false,
-          "session": "aftermarket"
-        }
-      },
+      "cash": 647.14,
+      "equity": 647.14,
+      "pnl": -352.86,
+      "pnl_pct": -35.29,
+      "positions": {},
       "trades": [
         {
           "ticker": "PXIU",
@@ -443,38 +625,69 @@
           "exit_time": "2026-03-16T22:16:24.805519",
           "was_partial": false,
           "session": "regular"
+        },
+        {
+          "ticker": "NBIS",
+          "entry_price": 129.85,
+          "exit_price": 118.1,
+          "qty": 2,
+          "pnl": -23.5,
+          "pnl_pct": -9.05,
+          "reason": "Stale (24h, <2%)",
+          "entry_time": "2026-03-16T22:16:35.752923",
+          "exit_time": "2026-03-18T11:09:38.530037",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "BCRX",
+          "entry_price": 9.3,
+          "exit_price": 9.44,
+          "qty": 35,
+          "pnl": 4.9,
+          "pnl_pct": 1.51,
+          "reason": "Stale (24h, <2%)",
+          "entry_time": "2026-03-16T22:16:24.816275",
+          "exit_time": "2026-03-19T18:28:20.748720",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "CAL",
+          "entry_price": 10.4,
+          "exit_price": 10.4,
+          "qty": 30,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-19T15:30:00.340678",
+          "exit_time": "2026-03-20T20:22:22.696273",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "BCRX",
+          "entry_price": 9.81,
+          "exit_price": 9.81,
+          "qty": 32,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-19T22:15:39.614669",
+          "exit_time": "2026-03-20T20:22:22.696291",
+          "was_partial": false,
+          "session": "aftermarket"
         }
       ],
       "partial_taken": []
     },
     "CatalystMover": {
       "name": "CatalystMover",
-      "cash": 14.92,
-      "equity": 57.91,
-      "pnl": -942.09,
-      "pnl_pct": -94.21,
-      "positions": {
-        "BCRX": {
-          "entry_price": 9.3,
-          "qty": 3,
-          "stop_loss": 8.22,
-          "target": 13.07,
-          "entry_time": "2026-03-16T22:16:24.816314",
-          "highest_price": 9.54,
-          "trailing_active": false,
-          "session": "aftermarket"
-        },
-        "TME": {
-          "entry_price": 15.09,
-          "qty": 1,
-          "stop_loss": 13.34,
-          "target": 21.2,
-          "entry_time": "2026-03-16T22:16:35.753045",
-          "highest_price": 15.09,
-          "trailing_active": false,
-          "session": "aftermarket"
-        }
-      },
+      "cash": 53.53,
+      "equity": 53.53,
+      "pnl": -946.47,
+      "pnl_pct": -94.65,
+      "positions": {},
       "trades": [
         {
           "ticker": "MUR",
@@ -560,38 +773,69 @@
           "exit_time": "2026-03-16T22:16:24.805583",
           "was_partial": false,
           "session": "regular"
+        },
+        {
+          "ticker": "BCRX",
+          "entry_price": 9.3,
+          "exit_price": 9.44,
+          "qty": 3,
+          "pnl": 0.42,
+          "pnl_pct": 1.51,
+          "reason": "Stale (24h, <2%)",
+          "entry_time": "2026-03-16T22:16:24.816314",
+          "exit_time": "2026-03-19T18:28:20.748788",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "TME",
+          "entry_price": 15.09,
+          "exit_price": 10.29,
+          "qty": 1,
+          "pnl": -4.8,
+          "pnl_pct": -31.81,
+          "reason": "eod_replace",
+          "entry_time": "2026-03-16T22:16:35.753045",
+          "exit_time": "2026-03-19T22:15:39.603143",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "BCRX",
+          "entry_price": 9.81,
+          "exit_price": 9.81,
+          "qty": 2,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-19T22:15:39.614741",
+          "exit_time": "2026-03-20T20:22:22.696310",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "CVE",
+          "entry_price": 24.89,
+          "exit_price": 24.89,
+          "qty": 1,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-19T22:15:49.882028",
+          "exit_time": "2026-03-20T20:22:22.696328",
+          "was_partial": false,
+          "session": "aftermarket"
         }
       ],
       "partial_taken": []
     },
     "MomentumCont": {
       "name": "MomentumCont",
-      "cash": 6.92,
-      "equity": 36.67,
-      "pnl": -963.33,
-      "pnl_pct": -96.33,
-      "positions": {
-        "BCRX": {
-          "entry_price": 9.3,
-          "qty": 1,
-          "stop_loss": 8.17,
-          "target": 15.21,
-          "entry_time": "2026-03-16T22:16:24.816367",
-          "highest_price": 9.54,
-          "trailing_active": false,
-          "session": "aftermarket"
-        },
-        "CPNG": {
-          "entry_price": 20.45,
-          "qty": 1,
-          "stop_loss": 17.96,
-          "target": 33.44,
-          "entry_time": "2026-03-16T22:16:35.753192",
-          "highest_price": 20.68,
-          "trailing_active": false,
-          "session": "aftermarket"
-        }
-      },
+      "cash": 34.68,
+      "equity": 34.68,
+      "pnl": -965.32,
+      "pnl_pct": -96.53,
+      "positions": {},
       "trades": [
         {
           "ticker": "TERN",
@@ -625,38 +869,82 @@
           "exit_time": "2026-03-16T22:16:24.805611",
           "was_partial": false,
           "session": "regular"
+        },
+        {
+          "ticker": "CPNG",
+          "entry_price": 20.45,
+          "exit_price": 19.77,
+          "qty": 1,
+          "pnl": -0.68,
+          "pnl_pct": -3.33,
+          "reason": "Stale (24h, <2%)",
+          "entry_time": "2026-03-16T22:16:35.753192",
+          "exit_time": "2026-03-19T15:30:36.234669",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "BCRX",
+          "entry_price": 9.3,
+          "exit_price": 9.44,
+          "qty": 1,
+          "pnl": 0.14,
+          "pnl_pct": 1.51,
+          "reason": "Stale (24h, <2%)",
+          "entry_time": "2026-03-16T22:16:24.816367",
+          "exit_time": "2026-03-19T18:28:20.748823",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "VG",
+          "entry_price": 15.74,
+          "exit_price": 14.29,
+          "qty": 1,
+          "pnl": -1.45,
+          "pnl_pct": -9.21,
+          "reason": "eod_replace",
+          "entry_time": "2026-03-19T15:31:17.206320",
+          "exit_time": "2026-03-19T22:15:39.603171",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "BCRX",
+          "entry_price": 9.81,
+          "exit_price": 9.81,
+          "qty": 1,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-19T22:15:39.614811",
+          "exit_time": "2026-03-20T20:22:22.696347",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "SRAD",
+          "entry_price": 19.69,
+          "exit_price": 19.69,
+          "qty": 1,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-19T22:15:49.882141",
+          "exit_time": "2026-03-20T20:22:22.696366",
+          "was_partial": false,
+          "session": "aftermarket"
         }
       ],
       "partial_taken": []
     },
     "FloatRotation": {
       "name": "FloatRotation",
-      "cash": 85.63,
-      "equity": 525.33,
-      "pnl": -474.67,
-      "pnl_pct": -47.47,
-      "positions": {
-        "TOI": {
-          "entry_price": 3.13,
-          "qty": 56,
-          "stop_loss": 3.16,
-          "target": 4.07,
-          "entry_time": "2026-03-16T15:31:32.130469",
-          "highest_price": 3.74,
-          "trailing_active": true,
-          "session": "regular"
-        },
-        "BCRX": {
-          "entry_price": 9.3,
-          "qty": 25,
-          "stop_loss": 8.3,
-          "target": 12.65,
-          "entry_time": "2026-03-16T22:16:24.816422",
-          "highest_price": 9.54,
-          "trailing_active": false,
-          "session": "aftermarket"
-        }
-      },
+      "cash": 487.11,
+      "equity": 487.11,
+      "pnl": -512.89,
+      "pnl_pct": -51.29,
+      "positions": {},
       "trades": [
         {
           "ticker": "WOOF",
@@ -703,41 +991,69 @@
           "exit_time": "2026-03-17T12:15:05.354002",
           "was_partial": true,
           "session": "regular"
+        },
+        {
+          "ticker": "BCRX",
+          "entry_price": 9.3,
+          "exit_price": 9.44,
+          "qty": 25,
+          "pnl": 3.5,
+          "pnl_pct": 1.51,
+          "reason": "Stale (24h, <2%)",
+          "entry_time": "2026-03-16T22:16:24.816422",
+          "exit_time": "2026-03-19T18:28:20.748853",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "CTMX",
+          "entry_price": 4.98,
+          "exit_price": 4.78,
+          "qty": 49,
+          "pnl": -9.8,
+          "pnl_pct": -4.02,
+          "reason": "eod_replace",
+          "entry_time": "2026-03-19T18:29:45.790362",
+          "exit_time": "2026-03-19T22:15:39.603095",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "TOI",
+          "entry_price": 3.13,
+          "exit_price": 3.13,
+          "qty": 56,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-16T15:31:32.130469",
+          "exit_time": "2026-03-20T20:22:22.696384",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "BCRX",
+          "entry_price": 9.81,
+          "exit_price": 9.81,
+          "qty": 24,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-19T22:15:39.614882",
+          "exit_time": "2026-03-20T20:22:22.696402",
+          "was_partial": false,
+          "session": "aftermarket"
         }
       ],
-      "partial_taken": [
-        "TOI",
-        "_tp1_TOI"
-      ]
+      "partial_taken": []
     },
     "ShortSqueeze": {
       "name": "ShortSqueeze",
-      "cash": 123.65,
-      "equity": 504.6,
-      "pnl": -495.4,
-      "pnl_pct": -49.54,
-      "positions": {
-        "BCRX": {
-          "entry_price": 9.3,
-          "qty": 27,
-          "stop_loss": 8.37,
-          "target": 13.25,
-          "entry_time": "2026-03-16T22:16:24.816471",
-          "highest_price": 9.54,
-          "trailing_active": false,
-          "session": "aftermarket"
-        },
-        "NBIS": {
-          "entry_price": 129.85,
-          "qty": 1,
-          "stop_loss": 116.86,
-          "target": 185.04,
-          "entry_time": "2026-03-16T22:16:35.753270",
-          "highest_price": 129.96,
-          "trailing_active": false,
-          "session": "aftermarket"
-        }
-      },
+      "cash": 496.63,
+      "equity": 496.63,
+      "pnl": -503.37,
+      "pnl_pct": -50.34,
+      "positions": {},
       "trades": [
         {
           "ticker": "HIMS",
@@ -748,38 +1064,69 @@
           "pnl": 7.85,
           "pnl_pct": 0.2,
           "exit_reason": "manual_close_stale"
+        },
+        {
+          "ticker": "NBIS",
+          "entry_price": 129.85,
+          "exit_price": 118.1,
+          "qty": 1,
+          "pnl": -11.75,
+          "pnl_pct": -9.05,
+          "reason": "Stale (24h, <2%)",
+          "entry_time": "2026-03-16T22:16:35.753270",
+          "exit_time": "2026-03-18T11:09:38.530069",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "BCRX",
+          "entry_price": 9.3,
+          "exit_price": 9.44,
+          "qty": 27,
+          "pnl": 3.78,
+          "pnl_pct": 1.51,
+          "reason": "Stale (24h, <2%)",
+          "entry_time": "2026-03-16T22:16:24.816471",
+          "exit_time": "2026-03-19T18:28:20.749357",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "BCRX",
+          "entry_price": 9.81,
+          "exit_price": 9.81,
+          "qty": 25,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-19T22:15:39.614953",
+          "exit_time": "2026-03-20T20:22:22.696420",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "ERAS",
+          "entry_price": 15.26,
+          "exit_price": 15.26,
+          "qty": 16,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-19T22:15:49.882251",
+          "exit_time": "2026-03-20T20:22:22.696438",
+          "was_partial": false,
+          "session": "aftermarket"
         }
       ],
       "partial_taken": []
     },
     "NanoRunner": {
       "name": "NanoRunner",
-      "cash": 123.33,
-      "equity": 504.28,
-      "pnl": -495.72,
-      "pnl_pct": -49.57,
-      "positions": {
-        "BCRX": {
-          "entry_price": 9.3,
-          "qty": 27,
-          "stop_loss": 8.25,
-          "target": 14.79,
-          "entry_time": "2026-03-16T22:16:24.816512",
-          "highest_price": 9.54,
-          "trailing_active": false,
-          "session": "aftermarket"
-        },
-        "NBIS": {
-          "entry_price": 129.85,
-          "qty": 1,
-          "stop_loss": 115.18,
-          "target": 206.46,
-          "entry_time": "2026-03-16T22:16:35.753341",
-          "highest_price": 129.96,
-          "trailing_active": false,
-          "session": "aftermarket"
-        }
-      },
+      "cash": 496.31,
+      "equity": 496.31,
+      "pnl": -503.69,
+      "pnl_pct": -50.37,
+      "positions": {},
       "trades": [
         {
           "ticker": "WEST",
@@ -800,38 +1147,69 @@
           "pnl": 0.0,
           "pnl_pct": 0.0,
           "exit_reason": "manual_close_stale"
+        },
+        {
+          "ticker": "NBIS",
+          "entry_price": 129.85,
+          "exit_price": 118.1,
+          "qty": 1,
+          "pnl": -11.75,
+          "pnl_pct": -9.05,
+          "reason": "Stale (24h, <2%)",
+          "entry_time": "2026-03-16T22:16:35.753341",
+          "exit_time": "2026-03-18T11:09:38.530086",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "BCRX",
+          "entry_price": 9.3,
+          "exit_price": 9.44,
+          "qty": 27,
+          "pnl": 3.78,
+          "pnl_pct": 1.51,
+          "reason": "Stale (24h, <2%)",
+          "entry_time": "2026-03-16T22:16:24.816512",
+          "exit_time": "2026-03-19T18:28:20.749734",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "BCRX",
+          "entry_price": 9.81,
+          "exit_price": 9.81,
+          "qty": 25,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-19T22:15:39.615025",
+          "exit_time": "2026-03-20T20:22:22.696457",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "ERAS",
+          "entry_price": 15.26,
+          "exit_price": 15.26,
+          "qty": 16,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-19T22:15:49.882354",
+          "exit_time": "2026-03-20T20:22:22.696474",
+          "was_partial": false,
+          "session": "aftermarket"
         }
       ],
       "partial_taken": []
     },
     "HCNews": {
       "name": "HCNews",
-      "cash": 3.05,
-      "equity": 27.44,
-      "pnl": -972.56,
-      "pnl_pct": -97.26,
-      "positions": {
-        "BCRX": {
-          "entry_price": 9.3,
-          "qty": 1,
-          "stop_loss": 8.14,
-          "target": 13.49,
-          "entry_time": "2026-03-16T22:16:24.816552",
-          "highest_price": 9.54,
-          "trailing_active": false,
-          "session": "aftermarket"
-        },
-        "TME": {
-          "entry_price": 15.09,
-          "qty": 1,
-          "stop_loss": 13.2,
-          "target": 21.88,
-          "entry_time": "2026-03-16T22:16:35.753470",
-          "highest_price": 15.09,
-          "trailing_active": false,
-          "session": "aftermarket"
-        }
-      },
+      "cash": 22.78,
+      "equity": 22.78,
+      "pnl": -977.22,
+      "pnl_pct": -97.72,
+      "positions": {},
       "trades": [
         {
           "ticker": "MUR",
@@ -865,6 +1243,58 @@
           "exit_time": "2026-03-16T22:16:24.805631",
           "was_partial": false,
           "session": "regular"
+        },
+        {
+          "ticker": "BCRX",
+          "entry_price": 9.3,
+          "exit_price": 9.44,
+          "qty": 1,
+          "pnl": 0.14,
+          "pnl_pct": 1.51,
+          "reason": "Stale (48h, <2%)",
+          "entry_time": "2026-03-16T22:16:24.816552",
+          "exit_time": "2026-03-19T18:28:20.749764",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "TME",
+          "entry_price": 15.09,
+          "exit_price": 10.29,
+          "qty": 1,
+          "pnl": -4.8,
+          "pnl_pct": -31.81,
+          "reason": "eod_replace",
+          "entry_time": "2026-03-16T22:16:35.753470",
+          "exit_time": "2026-03-19T22:15:39.603267",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "BCRX",
+          "entry_price": 9.81,
+          "exit_price": 9.81,
+          "qty": 1,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-19T22:15:39.615095",
+          "exit_time": "2026-03-20T20:22:22.696492",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "SBSW",
+          "entry_price": 11.63,
+          "exit_price": 11.63,
+          "qty": 1,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T00:20:51.100873",
+          "exit_time": "2026-03-20T20:22:22.696510",
+          "was_partial": false,
+          "session": "aftermarket"
         }
       ],
       "partial_taken": []
@@ -891,30 +1321,30 @@
     },
     "TrendRider": {
       "name": "TrendRider",
-      "cash": 199.67,
-      "equity": 1017.05,
-      "pnl": 17.05,
-      "pnl_pct": 1.71,
+      "cash": 58.11,
+      "equity": 1029.6,
+      "pnl": 29.6,
+      "pnl_pct": 2.96,
       "positions": {
-        "MUR": {
-          "entry_price": 36.81,
-          "qty": 13,
-          "stop_loss": 33.31,
-          "target": 47.85,
-          "entry_time": "2026-03-13T22:53:43.613104",
-          "highest_price": 37.24,
+        "SEDG": {
+          "entry_price": 51.47,
+          "qty": 9,
+          "stop_loss": 47.35,
+          "target": 66.91,
+          "entry_time": "2026-03-20T20:54:12.405005",
+          "highest_price": 51.77,
           "trailing_active": false,
-          "session": "aftermarket"
+          "session": "regular"
         },
-        "NBIS": {
-          "entry_price": 112.95,
-          "qty": 3,
-          "stop_loss": 114.08,
-          "target": 146.84,
-          "entry_time": "2026-03-13T22:54:01.973890",
-          "highest_price": 132.28,
-          "trailing_active": true,
-          "session": "aftermarket"
+        "VG": {
+          "entry_price": 15.73,
+          "qty": 32,
+          "stop_loss": 14.47,
+          "target": 20.45,
+          "entry_time": "2026-03-20T20:54:16.966426",
+          "highest_price": 15.81,
+          "trailing_active": false,
+          "session": "regular"
         }
       },
       "trades": [
@@ -930,39 +1360,127 @@
           "exit_time": "2026-03-16T12:05:08.386488",
           "was_partial": true,
           "session": "aftermarket"
+        },
+        {
+          "ticker": "NBIS",
+          "entry_price": 112.95,
+          "exit_price": 115.2,
+          "qty": 3,
+          "pnl": 6.75,
+          "pnl_pct": 1.99,
+          "reason": "Stale (72h, <2%)",
+          "entry_time": "2026-03-13T22:54:01.973890",
+          "exit_time": "2026-03-18T14:28:00.441454",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "MUR",
+          "entry_price": 36.81,
+          "exit_price": 36.81,
+          "qty": 13,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-13T22:53:43.613104",
+          "exit_time": "2026-03-20T20:22:22.696530",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "AAOI",
+          "entry_price": 94.75,
+          "exit_price": 94.75,
+          "qty": 5,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-18T14:28:00.441545",
+          "exit_time": "2026-03-20T20:22:22.696548",
+          "was_partial": false,
+          "session": "premarket"
+        },
+        {
+          "ticker": "SEDG",
+          "entry_price": 51.6,
+          "exit_price": 51.67,
+          "qty": 9,
+          "pnl": 0.63,
+          "pnl_pct": 0.14,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T20:23:03.974576",
+          "exit_time": "2026-03-20T20:36:51.274419",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "VG",
+          "entry_price": 15.59,
+          "exit_price": 15.59,
+          "qty": 32,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T20:23:07.240463",
+          "exit_time": "2026-03-20T20:36:51.274463",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "SEDG",
+          "entry_price": 51.6,
+          "exit_price": 51.63,
+          "qty": 9,
+          "pnl": 0.27,
+          "pnl_pct": 0.06,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T20:37:22.610871",
+          "exit_time": "2026-03-20T20:53:48.248043",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "VG",
+          "entry_price": 15.72,
+          "exit_price": 15.72,
+          "qty": 32,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T20:37:25.794618",
+          "exit_time": "2026-03-20T20:53:48.248099",
+          "was_partial": false,
+          "session": "regular"
         }
       ],
-      "partial_taken": [
-        "NBIS",
-        "_tp1_NBIS"
-      ]
+      "partial_taken": []
     },
     "BaseBreakout": {
       "name": "BaseBreakout",
-      "cash": 199.67,
-      "equity": 1017.05,
-      "pnl": 17.05,
-      "pnl_pct": 1.71,
+      "cash": 58.11,
+      "equity": 1029.6,
+      "pnl": 29.6,
+      "pnl_pct": 2.96,
       "positions": {
-        "MUR": {
-          "entry_price": 36.81,
-          "qty": 13,
-          "stop_loss": 33.68,
-          "target": 49.69,
-          "entry_time": "2026-03-13T22:53:43.613153",
-          "highest_price": 37.24,
+        "SEDG": {
+          "entry_price": 51.47,
+          "qty": 9,
+          "stop_loss": 47.87,
+          "target": 69.48,
+          "entry_time": "2026-03-20T20:54:12.405070",
+          "highest_price": 51.77,
           "trailing_active": false,
-          "session": "aftermarket"
+          "session": "regular"
         },
-        "NBIS": {
-          "entry_price": 112.95,
-          "qty": 3,
-          "stop_loss": 114.08,
-          "target": 152.48,
-          "entry_time": "2026-03-13T22:54:01.973982",
-          "highest_price": 132.28,
-          "trailing_active": true,
-          "session": "aftermarket"
+        "VG": {
+          "entry_price": 15.73,
+          "qty": 32,
+          "stop_loss": 14.63,
+          "target": 21.24,
+          "entry_time": "2026-03-20T20:54:16.966496",
+          "highest_price": 15.81,
+          "trailing_active": false,
+          "session": "regular"
         }
       },
       "trades": [
@@ -978,39 +1496,127 @@
           "exit_time": "2026-03-16T12:05:08.386539",
           "was_partial": true,
           "session": "aftermarket"
+        },
+        {
+          "ticker": "NBIS",
+          "entry_price": 112.95,
+          "exit_price": 115.2,
+          "qty": 3,
+          "pnl": 6.75,
+          "pnl_pct": 1.99,
+          "reason": "Stale (72h, <2%)",
+          "entry_time": "2026-03-13T22:54:01.973982",
+          "exit_time": "2026-03-18T14:28:00.441582",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "MUR",
+          "entry_price": 36.81,
+          "exit_price": 36.81,
+          "qty": 13,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-13T22:53:43.613153",
+          "exit_time": "2026-03-20T20:22:22.696566",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "AAOI",
+          "entry_price": 94.75,
+          "exit_price": 94.75,
+          "qty": 5,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-18T14:28:00.441658",
+          "exit_time": "2026-03-20T20:22:22.696584",
+          "was_partial": false,
+          "session": "premarket"
+        },
+        {
+          "ticker": "SEDG",
+          "entry_price": 51.6,
+          "exit_price": 51.67,
+          "qty": 9,
+          "pnl": 0.63,
+          "pnl_pct": 0.14,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T20:23:03.974639",
+          "exit_time": "2026-03-20T20:36:51.274485",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "VG",
+          "entry_price": 15.59,
+          "exit_price": 15.59,
+          "qty": 32,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T20:23:07.240562",
+          "exit_time": "2026-03-20T20:36:51.274502",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "SEDG",
+          "entry_price": 51.6,
+          "exit_price": 51.63,
+          "qty": 9,
+          "pnl": 0.27,
+          "pnl_pct": 0.06,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T20:37:22.610953",
+          "exit_time": "2026-03-20T20:53:48.248125",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "VG",
+          "entry_price": 15.72,
+          "exit_price": 15.72,
+          "qty": 32,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T20:37:25.794733",
+          "exit_time": "2026-03-20T20:53:48.248146",
+          "was_partial": false,
+          "session": "regular"
         }
       ],
-      "partial_taken": [
-        "NBIS",
-        "_tp1_NBIS"
-      ]
+      "partial_taken": []
     },
     "MomentumSwing": {
       "name": "MomentumSwing",
-      "cash": 199.67,
-      "equity": 1017.05,
-      "pnl": 17.05,
-      "pnl_pct": 1.71,
+      "cash": 58.11,
+      "equity": 1029.6,
+      "pnl": 29.6,
+      "pnl_pct": 2.96,
       "positions": {
-        "MUR": {
-          "entry_price": 36.81,
-          "qty": 13,
-          "stop_loss": 33.31,
-          "target": 55.22,
-          "entry_time": "2026-03-13T22:53:43.613204",
-          "highest_price": 37.24,
+        "SEDG": {
+          "entry_price": 51.47,
+          "qty": 9,
+          "stop_loss": 47.35,
+          "target": 77.2,
+          "entry_time": "2026-03-20T20:54:12.405117",
+          "highest_price": 51.77,
           "trailing_active": false,
-          "session": "aftermarket"
+          "session": "regular"
         },
-        "NBIS": {
-          "entry_price": 112.95,
-          "qty": 3,
-          "stop_loss": 114.08,
-          "target": 169.43,
-          "entry_time": "2026-03-13T22:54:01.974098",
-          "highest_price": 132.28,
-          "trailing_active": true,
-          "session": "aftermarket"
+        "VG": {
+          "entry_price": 15.73,
+          "qty": 32,
+          "stop_loss": 14.47,
+          "target": 23.59,
+          "entry_time": "2026-03-20T20:54:16.966550",
+          "highest_price": 15.81,
+          "trailing_active": false,
+          "session": "regular"
         }
       },
       "trades": [
@@ -1026,49 +1632,117 @@
           "exit_time": "2026-03-16T12:05:08.386565",
           "was_partial": true,
           "session": "aftermarket"
+        },
+        {
+          "ticker": "NBIS",
+          "entry_price": 112.95,
+          "exit_price": 115.2,
+          "qty": 3,
+          "pnl": 6.75,
+          "pnl_pct": 1.99,
+          "reason": "Stale (72h, <2%)",
+          "entry_time": "2026-03-13T22:54:01.974098",
+          "exit_time": "2026-03-18T14:28:00.441683",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "MUR",
+          "entry_price": 36.81,
+          "exit_price": 36.81,
+          "qty": 13,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-13T22:53:43.613204",
+          "exit_time": "2026-03-20T20:22:22.696602",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "AAOI",
+          "entry_price": 94.75,
+          "exit_price": 94.75,
+          "qty": 5,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-18T14:28:00.441734",
+          "exit_time": "2026-03-20T20:22:22.696620",
+          "was_partial": false,
+          "session": "premarket"
+        },
+        {
+          "ticker": "SEDG",
+          "entry_price": 51.6,
+          "exit_price": 51.67,
+          "qty": 9,
+          "pnl": 0.63,
+          "pnl_pct": 0.14,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T20:23:03.974682",
+          "exit_time": "2026-03-20T20:36:51.274518",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "VG",
+          "entry_price": 15.59,
+          "exit_price": 15.59,
+          "qty": 32,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T20:23:07.240636",
+          "exit_time": "2026-03-20T20:36:51.274534",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "SEDG",
+          "entry_price": 51.6,
+          "exit_price": 51.63,
+          "qty": 9,
+          "pnl": 0.27,
+          "pnl_pct": 0.06,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T20:37:22.611007",
+          "exit_time": "2026-03-20T20:53:48.248166",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "VG",
+          "entry_price": 15.72,
+          "exit_price": 15.72,
+          "qty": 32,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T20:37:25.794817",
+          "exit_time": "2026-03-20T20:53:48.248207",
+          "was_partial": false,
+          "session": "regular"
         }
       ],
-      "partial_taken": [
-        "NBIS",
-        "_tp1_NBIS"
-      ]
+      "partial_taken": []
     },
     "SeasonalSwing": {
       "name": "SeasonalSwing",
-      "cash": 31.13,
-      "equity": 992.29,
-      "pnl": -7.71,
-      "pnl_pct": -0.77,
+      "cash": 720.7,
+      "equity": 931.89,
+      "pnl": -68.11,
+      "pnl_pct": -6.81,
       "positions": {
-        "BCRX": {
-          "entry_price": 9.3,
-          "qty": 53,
-          "stop_loss": 8.39,
-          "target": 12.23,
-          "entry_time": "2026-03-16T22:16:24.817581",
-          "highest_price": 9.54,
-          "trailing_active": false,
-          "session": "aftermarket"
-        },
-        "NBIS": {
-          "entry_price": 129.85,
-          "qty": 3,
-          "stop_loss": 117.12,
-          "target": 170.75,
-          "entry_time": "2026-03-16T22:16:35.754907",
-          "highest_price": 129.96,
-          "trailing_active": false,
-          "session": "aftermarket"
-        },
-        "UBER": {
-          "entry_price": 78.71,
+        "ROST": {
+          "entry_price": 211.19,
           "qty": 1,
-          "stop_loss": 72.41,
-          "target": 125.94,
-          "entry_time": "2026-03-17T15:49:42.275699",
-          "highest_price": 79.06,
+          "stop_loss": 191.13,
+          "target": 337.9,
+          "entry_time": "2026-03-21T00:11:08.747771",
+          "highest_price": 211.19,
           "trailing_active": false,
-          "session": "regular"
+          "session": "aftermarket"
         }
       },
       "trades": [
@@ -1108,6 +1782,188 @@
           "reason": "eod_replace",
           "entry_time": "2026-03-16T15:46:41.957218",
           "exit_time": "2026-03-16T22:16:24.805474",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "NBIS",
+          "entry_price": 129.85,
+          "exit_price": 116.88,
+          "qty": 3,
+          "pnl": -38.91,
+          "pnl_pct": -9.99,
+          "reason": "Stop loss",
+          "entry_time": "2026-03-16T22:16:35.754907",
+          "exit_time": "2026-03-18T12:58:08.906864",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "BCRX",
+          "entry_price": 9.3,
+          "exit_price": 9.77,
+          "qty": 26,
+          "pnl": 12.22,
+          "pnl_pct": 5.05,
+          "reason": "Partial TP1 +5%",
+          "entry_time": "2026-03-16T22:16:24.817581",
+          "exit_time": "2026-03-19T19:55:45.051677",
+          "was_partial": true,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "UBER",
+          "entry_price": 78.71,
+          "exit_price": 75.34,
+          "qty": 1,
+          "pnl": -3.37,
+          "pnl_pct": -4.28,
+          "reason": "eod_replace",
+          "entry_time": "2026-03-17T15:49:42.275699",
+          "exit_time": "2026-03-19T22:15:39.602976",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "ALGN",
+          "entry_price": 183.0,
+          "exit_price": 176.25,
+          "qty": 1,
+          "pnl": -6.75,
+          "pnl_pct": -3.69,
+          "reason": "eod_replace",
+          "entry_time": "2026-03-19T14:11:23.907435",
+          "exit_time": "2026-03-19T22:15:39.603009",
+          "was_partial": false,
+          "session": "premarket"
+        },
+        {
+          "ticker": "DDOG",
+          "entry_price": 132.47,
+          "exit_price": 129.94,
+          "qty": 1,
+          "pnl": -2.53,
+          "pnl_pct": -1.91,
+          "reason": "eod_replace",
+          "entry_time": "2026-03-19T15:42:02.553851",
+          "exit_time": "2026-03-19T22:15:39.603026",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "AAOI",
+          "entry_price": 101.92,
+          "exit_price": 91.93,
+          "qty": 4,
+          "pnl": -39.96,
+          "pnl_pct": -9.8,
+          "reason": "Stop loss",
+          "entry_time": "2026-03-19T22:15:39.616048",
+          "exit_time": "2026-03-20T16:55:34.235683",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "BCRX",
+          "entry_price": 9.3,
+          "exit_price": 10.0,
+          "qty": 27,
+          "pnl": 18.9,
+          "pnl_pct": 7.53,
+          "reason": "Trailing stop",
+          "entry_time": "2026-03-16T22:16:24.817581",
+          "exit_time": "2026-03-20T19:46:03.057577",
+          "was_partial": false,
+          "session": "aftermarket"
+        },
+        {
+          "ticker": "DYN",
+          "entry_price": 18.69,
+          "exit_price": 18.69,
+          "qty": 24,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T17:58:51.359862",
+          "exit_time": "2026-03-20T20:22:22.696639",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "FANG",
+          "entry_price": 193.8,
+          "exit_price": 193.8,
+          "qty": 1,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T18:47:52.975181",
+          "exit_time": "2026-03-20T20:22:22.696656",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "WING",
+          "entry_price": 191.2,
+          "exit_price": 191.2,
+          "qty": 1,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T19:47:02.373727",
+          "exit_time": "2026-03-20T20:22:22.696674",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "EA",
+          "entry_price": 200.74,
+          "exit_price": 200.74,
+          "qty": 1,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T20:38:32.705297",
+          "exit_time": "2026-03-20T20:53:48.248226",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "NFLX",
+          "entry_price": 91.39,
+          "exit_price": 91.39,
+          "qty": 2,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T20:38:35.469202",
+          "exit_time": "2026-03-20T20:53:48.248245",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "FANG",
+          "entry_price": 193.18,
+          "exit_price": 193.18,
+          "qty": 1,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T20:43:15.254657",
+          "exit_time": "2026-03-20T20:53:48.248262",
+          "was_partial": false,
+          "session": "regular"
+        },
+        {
+          "ticker": "WING",
+          "entry_price": 189.04,
+          "exit_price": 189.04,
+          "qty": 1,
+          "pnl": 0.0,
+          "pnl_pct": 0.0,
+          "reason": "SPY crash \u2014 close_all",
+          "entry_time": "2026-03-20T20:50:19.962626",
+          "exit_time": "2026-03-20T20:53:48.248280",
           "was_partial": false,
           "session": "regular"
         }

@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "strategy_name": "__auto__",
   "active_strategy": "Balanced",
   "trade_amount": 800.0,

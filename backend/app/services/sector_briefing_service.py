@@ -3882,16 +3882,23 @@ async def get_sector_briefing() -> dict:
     print(f'[SectorBriefing] Done — top: {top_name}, '
           f'stocks: {len(sector_stocks)}, insiders: {len(insider_trades)}, '
           f'rotation: {rotation["signal"]}{vix_info}')
+
+    # Cache full response for instant future requests
+    if result.get('sectors'):
+        _response_cache = result
+        _response_cache_at = _time.time()
+
     return result
 
 
 def invalidate_cache() -> None:
-    """Force-refresh next call — clears all caches."""
+    """Force-refresh next call — clears all caches including full response cache."""
     global _etf_cache_at, _drivers_cache_at, _stocks_cache_at
     global _insider_cache_at, _news_cache_at
     global _multi_tf_cache_at, _sparkline_cache_at
     global _macro_cache_at, _market_news_cache_at
     global _all_movers_cache_at, _intel_cache_at
+    global _response_cache_at
     _etf_cache_at = 0.0
     _drivers_cache_at = 0.0
     _stocks_cache_at = 0.0
@@ -3903,3 +3910,4 @@ def invalidate_cache() -> None:
     _market_news_cache_at = 0.0
     _all_movers_cache_at = 0.0
     _intel_cache_at = 0.0
+    _response_cache_at = 0.0
