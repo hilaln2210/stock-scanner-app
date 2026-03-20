@@ -1648,6 +1648,217 @@ def _compute_sector_impacts(macro_data: dict) -> Dict[str, List[dict]]:
     return impacts
 
 
+# ── 10b. Geopolitical Event Scanner — detect macro events from news ────────────
+
+_geo_cache: Optional[List[dict]] = None
+_geo_cache_at: float = 0.0
+_GEO_CACHE_TTL = 120  # 2 minutes
+
+# RSS feeds to scan (free, no API key, fast updates)
+_GEO_RSS_FEEDS = [
+    ('google_energy', 'https://news.google.com/rss/search?q=oil+OR+gas+OR+LNG+OR+energy+attack+OR+strike+OR+war+OR+sanctions+OR+pipeline+OR+embargo&hl=en&gl=US&ceid=US:en'),
+    ('google_geopolitical', 'https://news.google.com/rss/search?q=iran+OR+iraq+OR+saudi+OR+qatar+OR+russia+OR+ukraine+energy+OR+oil+OR+gas&hl=en&gl=US&ceid=US:en'),
+    ('oilprice', 'https://oilprice.com/rss/main'),
+    ('bbc_world', 'https://feeds.bbci.co.uk/news/world/rss.xml'),
+]
+
+# Keywords and their weights for event scoring
+_GEO_KEYWORDS = {
+    # War / military
+    'attack': 8, 'strike': 8, 'missile': 9, 'bomb': 8, 'war': 9,
+    'military': 6, 'invasion': 9, 'airstrike': 9, 'escalation': 7,
+    'conflict': 6, 'troops': 5, 'naval': 6, 'blockade': 8,
+    # Energy infrastructure
+    'oil': 5, 'gas': 5, 'lng': 6, 'pipeline': 7, 'refinery': 7,
+    'crude': 5, 'petroleum': 5, 'natural gas': 7, 'opec': 6,
+    'infrastructure': 5, 'facility': 4, 'terminal': 5, 'tanker': 6,
+    # Disruption
+    'disruption': 7, 'outage': 7, 'shutdown': 7, 'halt': 6,
+    'shortage': 7, 'supply': 5, 'embargo': 8, 'sanctions': 7,
+    'cut': 4, 'suspend': 6, 'block': 5,
+    # Locations (energy-critical)
+    'hormuz': 9, 'strait': 7, 'qatar': 7, 'iran': 7, 'iraq': 6,
+    'saudi': 7, 'russia': 6, 'ukraine': 6, 'libya': 6,
+    'ras laffan': 10, 'kharg island': 9, 'basra': 7, 'aramco': 8,
+    # Market impact
+    'surge': 6, 'spike': 6, 'soar': 6, 'plunge': 6, 'crash': 6,
+    'barrel': 5, 'futures': 5, 'price': 3,
+}
+
+# Map event themes to affected commodities and sectors
+_EVENT_IMPACT_MAP = {
+    'oil_supply': {
+        'keywords': ['oil', 'crude', 'barrel', 'opec', 'aramco', 'refinery', 'petroleum'],
+        'commodity': 'CL=F',
+        'commodity_name': 'נפט',
+        'sectors': ['XLE'],
+        'stocks': ['OXY', 'DVN', 'MRO', 'FANG', 'PR', 'CTRA', 'SM', 'MTDR'],
+    },
+    'gas_supply': {
+        'keywords': ['gas', 'lng', 'natural gas', 'ras laffan', 'pipeline', 'terminal'],
+        'commodity': 'NG=F',
+        'commodity_name': 'גז טבעי',
+        'sectors': ['XLE', 'XLU'],
+        'stocks': ['ANNA', 'AR', 'RRC', 'EQT', 'TELL', 'SWN', 'CNX', 'CHK', 'NEXT'],
+    },
+    'strait_hormuz': {
+        'keywords': ['hormuz', 'strait', 'tanker', 'blockade', 'naval'],
+        'commodity': 'CL=F',
+        'commodity_name': 'נפט + שילוח',
+        'sectors': ['XLE'],
+        'stocks': ['STNG', 'TNK', 'FRO', 'INSW', 'DHT', 'OXY', 'DVN'],
+    },
+    'gold_safe_haven': {
+        'keywords': ['war', 'conflict', 'escalation', 'invasion', 'missile'],
+        'commodity': 'GC=F',
+        'commodity_name': 'זהב',
+        'sectors': ['XLB'],
+        'stocks': ['GLD', 'NEM', 'GOLD', 'AEM', 'KGC', 'AG'],
+    },
+    'defense': {
+        'keywords': ['military', 'troops', 'airstrike', 'missile', 'defense'],
+        'commodity': None,
+        'commodity_name': 'ביטחון',
+        'sectors': ['XLI'],
+        'stocks': ['LMT', 'RTX', 'NOC', 'GD', 'BA', 'HII', 'KTOS'],
+    },
+}
+
+
+def _scan_geopolitical_events() -> List[dict]:
+    """
+    Scan RSS feeds for geopolitical events that could move energy/commodity markets.
+    Returns list of detected events with impact analysis.
+    """
+    import feedparser
+    from datetime import timezone, timedelta
+
+    now_utc = datetime.now(timezone.utc)
+    all_articles = []
+
+    for source_name, url in _GEO_RSS_FEEDS:
+        try:
+            feed = feedparser.parse(url)
+            for entry in feed.entries[:30]:
+                title = entry.get('title', '')
+                summary = entry.get('summary', entry.get('description', ''))
+                pub = entry.get('published_parsed') or entry.get('updated_parsed')
+
+                # Parse publication date
+                pub_dt = None
+                if pub:
+                    try:
+                        from calendar import timegm
+                        pub_dt = datetime.fromtimestamp(timegm(pub), tz=timezone.utc)
+                    except Exception:
+                        pass
+
+                # Only process articles from last 24 hours
+                if pub_dt and (now_utc - pub_dt).total_seconds() > 86400:
+                    continue
+
+                # Score the article
+                text = f'{title} {summary}'.lower()
+                score = 0
+                matched_keywords = []
+                for kw, weight in _GEO_KEYWORDS.items():
+                    if kw in text:
+                        score += weight
+                        matched_keywords.append(kw)
+
+                # Only keep articles with significant geopolitical + energy relevance
+                if score >= 15:
+                    # Determine which event themes match
+                    themes = []
+                    for theme_key, theme_data in _EVENT_IMPACT_MAP.items():
+                        theme_score = sum(1 for kw in theme_data['keywords'] if kw in text)
+                        if theme_score >= 2:
+                            themes.append(theme_key)
+
+                    all_articles.append({
+                        'title': title,
+                        'source': source_name,
+                        'pub_date': pub_dt.isoformat() if pub_dt else None,
+                        'age_hours': round((now_utc - pub_dt).total_seconds() / 3600, 1) if pub_dt else None,
+                        'score': score,
+                        'keywords': matched_keywords[:8],
+                        'themes': themes,
+                    })
+        except Exception as e:
+            print(f'[GeoScanner] {source_name} error: {e}')
+
+    # Sort by score (highest first), deduplicate by similar titles
+    all_articles.sort(key=lambda x: x['score'], reverse=True)
+    seen_titles = set()
+    unique = []
+    for a in all_articles:
+        # Simple dedup: first 40 chars of title
+        key = a['title'][:40].lower()
+        if key not in seen_titles:
+            seen_titles.add(key)
+            unique.append(a)
+
+    # Group into events and generate impact analysis
+    events = []
+    theme_scores: Dict[str, int] = {}
+    theme_articles: Dict[str, list] = {}
+
+    for article in unique[:20]:
+        for theme in article.get('themes', []):
+            theme_scores[theme] = theme_scores.get(theme, 0) + article['score']
+            if theme not in theme_articles:
+                theme_articles[theme] = []
+            theme_articles[theme].append(article)
+
+    # Generate event alerts for themes with multiple high-score articles
+    for theme_key, total_score in sorted(theme_scores.items(), key=lambda x: -x[1]):
+        articles = theme_articles[theme_key]
+        if total_score < 20 or len(articles) < 1:
+            continue
+
+        theme_data = _EVENT_IMPACT_MAP[theme_key]
+        confidence = 'High' if total_score >= 50 and len(articles) >= 3 else 'Medium' if total_score >= 30 else 'Low'
+
+        # Best headline
+        top_article = articles[0]
+
+        events.append({
+            'theme': theme_key,
+            'headline': top_article['title'],
+            'source': top_article['source'],
+            'age_hours': top_article.get('age_hours'),
+            'total_score': total_score,
+            'article_count': len(articles),
+            'confidence': confidence,
+            'commodity': theme_data['commodity'],
+            'commodity_name': theme_data['commodity_name'],
+            'affected_sectors': theme_data['sectors'],
+            'play_tickers': theme_data['stocks'],
+            'keywords': list(set(kw for a in articles for kw in a.get('keywords', [])))[:10],
+            'all_headlines': [a['title'] for a in articles[:5]],
+        })
+
+    return events[:5]
+
+
+async def _fetch_geo_events() -> List[dict]:
+    """Async wrapper for geopolitical event scanning (runs in thread)."""
+    global _geo_cache, _geo_cache_at
+    now = _time.time()
+    if _geo_cache is not None and (now - _geo_cache_at) < _GEO_CACHE_TTL:
+        return _geo_cache
+    try:
+        events = await asyncio.to_thread(_scan_geopolitical_events)
+        _geo_cache = events
+        _geo_cache_at = _time.time()
+        if events:
+            print(f'[GeoScanner] Detected {len(events)} geopolitical events')
+        return events
+    except Exception as e:
+        print(f'[GeoScanner] Error: {e}')
+        return _geo_cache or []
+
+
 # ── 11. Market-Wide News ─────────────────────────────────────────────────────────
 
 def _fetch_market_news() -> List[dict]:
@@ -3006,6 +3217,9 @@ async def get_sector_briefing() -> dict:
 
         all_movers_task = asyncio.ensure_future(asyncio.wait_for(_do_all_movers(), timeout=25))
 
+    # ── Geopolitical event scanner (always runs, 2min cache) ─────────────────
+    geo_task = asyncio.ensure_future(asyncio.wait_for(_fetch_geo_events(), timeout=15))
+
     # ── Await all tasks ────────────────────────────────────────────────────────
     if drivers_task is not None:
         try:
@@ -3179,6 +3393,17 @@ async def get_sector_briefing() -> dict:
         except Exception as e:
             print(f'[SectorBriefing] all-movers error: {e}')
 
+    # ── Await geopolitical events ─────────────────────────────────────────────
+    geo_events = []
+    try:
+        geo_events = await geo_task or []
+    except (asyncio.TimeoutError, FuturesTimeout):
+        print('[SectorBriefing] geo events timeout')
+        geo_events = _geo_cache or []
+    except Exception as e:
+        print(f'[SectorBriefing] geo events error: {e}')
+        geo_events = _geo_cache or []
+
     # ── Fetch stock intelligence (after all_movers is resolved) ──────────────
     intel_stale = _intel_cache is None or (now - _intel_cache_at) >= _INTEL_TTL
     if intel_stale and _all_movers_cache:
@@ -3347,6 +3572,7 @@ async def get_sector_briefing() -> dict:
             _intel_cache or {},
         ),
         'macro_event_plays': _detect_macro_event_plays(macro_data, all_movers),
+        'geo_events':      geo_events,
         'smart_money':     {
             'top_accumulation': smart_money['top_accumulation'],
             'top_distribution': smart_money['top_distribution'],

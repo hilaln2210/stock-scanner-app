@@ -348,6 +348,96 @@ function GoldSignals({ signals }) {
   );
 }
 
+// ── Geopolitical Event Alerts ────────────────────────────────────────────────────
+
+function GeoEventAlerts({ events }) {
+  if (!events?.length) return null;
+
+  const confColor = { High: 'text-emerald-400', Medium: 'text-amber-400', Low: 'text-slate-400' };
+
+  const themeLabels = {
+    oil_supply: '🛢️ אספקת נפט',
+    gas_supply: '🔥 אספקת גז',
+    strait_hormuz: '🚢 מצר הורמוז',
+    gold_safe_haven: '🥇 מקלט בטוח',
+    defense: '🛡️ ביטחון/הגנה',
+  };
+
+  return (
+    <div className="bg-slate-900/60 border border-red-600/40 rounded-2xl overflow-hidden">
+      <div className="px-3 sm:px-4 py-2.5 border-b border-red-700/30 bg-red-950/30 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-base">🌍</span>
+          <h3 className="text-sm font-bold text-red-300">התראות גיאופוליטיות</h3>
+          <span className="text-[10px] bg-red-800/60 text-red-200 rounded-full px-2 py-0.5 font-bold animate-pulse">
+            {events.length} אירועים
+          </span>
+        </div>
+      </div>
+      <div className="divide-y divide-slate-700/20">
+        {events.map((ev, i) => (
+          <div key={i} className="px-3 sm:px-4 py-3 hover:bg-slate-800/20 transition-colors">
+            {/* Event headline */}
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[11px] font-bold text-red-400">
+                    {themeLabels[ev.theme] || ev.theme}
+                  </span>
+                  <span className={`text-[10px] font-medium ${confColor[ev.confidence]}`}>
+                    {ev.confidence === 'High' ? 'ביטחון גבוה' : ev.confidence === 'Medium' ? 'ביטחון בינוני' : 'מעקב'}
+                  </span>
+                  {ev.age_hours != null && (
+                    <span className="text-[10px] text-slate-600">
+                      {ev.age_hours < 1 ? 'עכשיו' : ev.age_hours < 24 ? `לפני ${Math.round(ev.age_hours)} שע׳` : `לפני ${Math.round(ev.age_hours / 24)} ימים`}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[12px] sm:text-[13px] text-slate-200 leading-snug font-medium">{ev.headline}</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">{ev.source} • {ev.article_count} כתבות • ציון {ev.total_score}</p>
+              </div>
+            </div>
+
+            {/* Impact */}
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {ev.commodity_name && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-900/40 text-amber-300 border border-amber-600/30">
+                  משפיע על: {ev.commodity_name}
+                </span>
+              )}
+              {ev.affected_sectors?.map(s => (
+                <span key={s} className="text-[10px] px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-300 border border-blue-600/30">
+                  {s}
+                </span>
+              ))}
+            </div>
+
+            {/* Play tickers */}
+            {ev.play_tickers?.length > 0 && (
+              <div className="mt-1.5">
+                <span className="text-[10px] text-emerald-500 font-medium">מניות לעקוב: </span>
+                <span className="text-[11px] text-emerald-400 font-bold">
+                  {ev.play_tickers.join(' • ')}
+                </span>
+              </div>
+            )}
+
+            {/* Additional headlines */}
+            {ev.all_headlines?.length > 1 && (
+              <div className="mt-1.5 space-y-0.5">
+                {ev.all_headlines.slice(1, 3).map((h, j) => (
+                  <p key={j} className="text-[10px] text-slate-500 leading-snug">• {h}</p>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
 // ── Macro Event Plays ────────────────────────────────────────────────────────────
 
 function MacroEventPlays({ plays }) {
@@ -1407,6 +1497,9 @@ export default function SectorBriefing() {
             </div>
             <RotationSignal rotation={rotation} />
           </div>
+
+          {/* ── Geopolitical Alerts ──────────────────────────────────────────── */}
+          <GeoEventAlerts events={data?.geo_events} />
 
           {/* ── Gold Signals ──────────────────────────────────────────────────── */}
           <GoldSignals signals={data?.gold_signals} />
