@@ -1589,8 +1589,8 @@ export default function SectorBriefing() {
         </div>
       </div>
 
-      {/* Loading */}
-      {isLoading && (
+      {/* Loading — only when no data at all (first mount) */}
+      {isLoading && sectors.length === 0 && (
         <div className="flex items-center justify-center h-48">
           <div className="text-slate-400 flex items-center gap-2">
             <RefreshCw size={18} className="animate-spin" />

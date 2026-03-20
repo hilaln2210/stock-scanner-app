@@ -264,25 +264,36 @@ def _fetch_live_prices_batch(tickers: List[str]) -> Dict[str, dict]:
 def _fetch_etf_only() -> List[dict]:
     """
     Fetch today's % change for the 11 sector ETFs.
-    Fast: single yf.download batch call (~2-3s), not 11 individual .info calls.
+    Uses 5m intraday with prepost=True to capture pre/after-market prices.
+    Two batch calls: intraday for current price, daily for previous close.
     """
     etf_tickers = list(SECTOR_ETFS.keys())
     results = []
     try:
-        data = yf.download(etf_tickers, period='5d', interval='1d', progress=False,
-                           timeout=10, auto_adjust=True, prepost=True)
-        close = data.get('Close', data) if hasattr(data, 'get') else data
+        # Current price — last 5m bar including pre/post market
+        intra = yf.download(etf_tickers, period='1d', interval='5m', progress=False,
+                            timeout=10, prepost=True)
+        intra_close = intra.get('Close', intra) if hasattr(intra, 'get') else intra
+
+        # Previous close — last completed daily session
+        daily = yf.download(etf_tickers, period='5d', interval='1d', progress=False,
+                            timeout=10, auto_adjust=True)
+        daily_close = daily.get('Close', daily) if hasattr(daily, 'get') else daily
+
         for etf, meta in SECTOR_ETFS.items():
             try:
-                prices = close[etf].dropna()
-                if len(prices) >= 2:
-                    prev, curr = float(prices.iloc[-2]), float(prices.iloc[-1])
-                    chg = (curr - prev) / prev * 100 if prev else 0.0
-                    results.append({
-                        'etf': etf, 'name': meta['name'], 'icon': meta['icon'],
-                        'finviz_filter': meta['finviz'],
-                        'change_pct': round(chg, 2), 'price': round(curr, 2),
-                    })
+                intra_prices = intra_close[etf].dropna()
+                daily_prices = daily_close[etf].dropna()
+                if len(intra_prices) < 1 or len(daily_prices) < 2:
+                    continue
+                curr = float(intra_prices.iloc[-1])
+                prev = float(daily_prices.iloc[-2])  # previous day's close
+                chg = (curr - prev) / prev * 100 if prev else 0.0
+                results.append({
+                    'etf': etf, 'name': meta['name'], 'icon': meta['icon'],
+                    'finviz_filter': meta['finviz'],
+                    'change_pct': round(chg, 2), 'price': round(curr, 2),
+                })
             except Exception:
                 pass
     except Exception as e:
