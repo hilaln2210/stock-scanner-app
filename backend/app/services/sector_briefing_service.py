@@ -1838,6 +1838,29 @@ def _scan_geopolitical_events() -> List[dict]:
             'all_headlines': [a['title'] for a in articles[:5]],
         })
 
+    # Translate headlines to Hebrew
+    if events:
+        try:
+            from deep_translator import GoogleTranslator
+            translator = GoogleTranslator(source='en', target='iw')
+            headlines = [ev['headline'] for ev in events]
+            translated = translator.translate_batch(headlines)
+            for i, t in enumerate(translated):
+                if t:
+                    events[i]['headline_he'] = t
+
+            # Also translate all_headlines
+            for ev in events:
+                originals = ev.get('all_headlines', [])
+                if originals:
+                    try:
+                        tr = translator.translate_batch(originals[:3])
+                        ev['all_headlines_he'] = [t or o for t, o in zip(tr, originals)]
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f'[GeoScanner] translation error: {e}')
+
     return events[:5]
 
 

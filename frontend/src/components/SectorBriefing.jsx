@@ -393,7 +393,10 @@ function GeoEventAlerts({ events }) {
                     </span>
                   )}
                 </div>
-                <p className="text-[12px] sm:text-[13px] text-slate-200 leading-snug font-medium">{ev.headline}</p>
+                <p className="text-[12px] sm:text-[13px] text-slate-200 leading-snug font-medium">{ev.headline_he || ev.headline}</p>
+                {ev.headline_he && (
+                  <p className="text-[10px] text-slate-500/60 mt-0.5 leading-snug">{ev.headline}</p>
+                )}
                 <p className="text-[10px] text-slate-500 mt-0.5">{ev.source} • {ev.article_count} כתבות • ציון {ev.total_score}</p>
               </div>
             </div>
@@ -447,7 +450,7 @@ function GeoEventAlerts({ events }) {
             {/* Additional headlines */}
             {ev.all_headlines?.length > 1 && (
               <div className="mt-1.5 space-y-0.5">
-                {ev.all_headlines.slice(1, 3).map((h, j) => (
+                {(ev.all_headlines_he || ev.all_headlines).slice(1, 3).map((h, j) => (
                   <p key={j} className="text-[10px] text-slate-500 leading-snug">• {h}</p>
                 ))}
               </div>
