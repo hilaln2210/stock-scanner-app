@@ -370,7 +370,7 @@ const TAG_META = {
 
 // ── Formatters ─────────────────────────────────────────────────────────────────
 function fmtMoney(n) {
-  if (n == null) return '—';
+  if (n == null || isNaN(n) || n === 0) return '—';
   const abs = Math.abs(n), sign = n < 0 ? '-' : '';
   if (abs >= 1e12) return `${sign}$${(abs / 1e12).toFixed(2)}T`;
   if (abs >= 1e9)  return `${sign}$${(abs / 1e9).toFixed(2)}B`;
@@ -432,9 +432,12 @@ function PctCell({ val }) {
 }
 
 function MoneyCell({ val, str }) {
-  const display = str || fmtMoney(val);
+  // val may be numeric or a string like '708.62M' (smallcap cache stocks)
+  const numVal = typeof val === 'string' ? null : val;
+  const strVal = str || (typeof val === 'string' ? val : null) || fmtMoney(numVal);
+  const display = strVal;
   if (!display || display === '—') return <span style={{ color: '#94a3b8' }}>—</span>;
-  const neg = display.startsWith('-') || (val != null && val < 0);
+  const neg = display.startsWith('-') || (numVal != null && numVal < 0);
   return (
     <span style={{ color: neg ? '#f87171' : '#94a3b8', fontFamily: 'monospace', fontSize: 12 }}>
       {display}
