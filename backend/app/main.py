@@ -832,7 +832,7 @@ async def lifespan(app: FastAPI):
 
     # Arena price cache — warm up in background so P&L shows immediately after restart
     async def _warm_arena_prices():
-        await asyncio.sleep(15)  # let server finish startup first
+        await asyncio.sleep(5)  # let server finish startup first
         try:
             import httpx
             async with httpx.AsyncClient() as client:

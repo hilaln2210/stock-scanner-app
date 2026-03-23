@@ -1969,6 +1969,7 @@ _FV_FUND_CACHE: dict = {}           # {ticker: fund_data}
 _FV_FUND_CACHE_TIME: float = 0.0
 _FV_FUND_CACHE_TTL: int = 3600      # fundamentals: 60 min (stale-while-revalidate in bg)
 _FV_FUND_BG_REFRESHING: bool = False  # prevent concurrent bg refreshes
+_FV_TABLE_BG_REFRESHING: bool = False  # stale-while-revalidate for screener pages
 _FV_NEWS_CACHE: dict = {}           # {ticker: [news_items]}
 _FV_NEWS_CACHE_TIME: dict = {}      # {ticker: timestamp}
 _FV_NEWS_CACHE_TTL: int = 300       # news: 5 min per ticker (breaking news sensitivity)
@@ -2661,7 +2662,7 @@ async def get_finviz_table(
     Finviz-style fundamental table screener with move reasons + news.
     Price cache: 25 s. Fundamentals: 30 min. News: 5 min per ticker.
     """
-    global _FV_TABLE_CACHE, _FV_TABLE_CACHE_TIME
+    global _FV_TABLE_CACHE, _FV_TABLE_CACHE_TIME, _FV_TABLE_BG_REFRESHING
     global _FV_FUND_CACHE, _FV_FUND_CACHE_TIME
     global _FV_NEWS_CACHE, _FV_NEWS_CACHE_TIME
     import time as _t
@@ -2670,17 +2671,41 @@ async def get_finviz_table(
     _evict_expired_caches()
 
     cache_key = f"{filters}|{ensure_tickers}"
-    if (
-        _FV_TABLE_CACHE
+    has_cache = bool(_FV_TABLE_CACHE and _FV_TABLE_CACHE.get("data"))
+    cache_fresh = (
+        has_cache
         and _FV_TABLE_CACHE.get("cache_key") == cache_key
         and (now - _FV_TABLE_CACHE_TIME) < _FV_TABLE_CACHE_TTL
-    ):
+    )
+
+    # Fresh cache — serve immediately
+    if cache_fresh:
         return _FV_TABLE_CACHE["data"]
 
+    # Stale cache — serve immediately + refresh in background (if not already refreshing)
+    if has_cache:
+        if not _FV_TABLE_BG_REFRESHING:
+            _FV_TABLE_BG_REFRESHING = True
+            _f, _e = filters, ensure_tickers
+            async def _bg_table_refresh():
+                global _FV_TABLE_BG_REFRESHING
+                try:
+                    lock = _get_fv_table_lock()
+                    if lock.locked():
+                        return  # arena tick is already refreshing, cache will be updated soon
+                    async with lock:
+                        _now = _t.time()
+                        await _do_finviz_table_scan(_f, _e, _now, f"{_f}|{_e}")
+                except Exception as ex:
+                    print(f"[finviz-table] bg refresh error: {ex}")
+                finally:
+                    _FV_TABLE_BG_REFRESHING = False
+            asyncio.ensure_future(_bg_table_refresh())
+        return _FV_TABLE_CACHE["data"]  # always return stale immediately
+
+    # No cache at all — must wait (first ever scan)
     lock = _get_fv_table_lock()
     if lock.locked():
-        if _FV_TABLE_CACHE and _FV_TABLE_CACHE.get("data"):
-            return _FV_TABLE_CACHE["data"]
         from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=202,
