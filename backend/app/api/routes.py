@@ -3133,6 +3133,7 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
             'gross_margin':   fund.get('gross_margin', ''),
             'debt_equity':    fund.get('debt_equity', ''),
             'cash_per_share': fund.get('cash_per_share', ''),
+            'book_per_share': fund.get('book_per_share', ''),
             'short_float':    fund.get('short_float', ''),
             'short_ratio':    fund.get('short_ratio', ''),
             'short_interest': fund.get('short_interest', ''),
