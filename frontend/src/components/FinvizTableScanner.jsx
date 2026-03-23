@@ -1610,18 +1610,37 @@ function ExpandRow({ s, colSpan }) {
               </div>
             )}
 
-            {/* Valuation section — EV, EV/MC, Cash/sh, Book/sh */}
-            {(s.ev || s.ev_mc_ratio || s.cash_per_share || s.book_per_share) && (
+            {/* Valuation section — P/E, EV, EV/MC, Cash/sh, Book/sh */}
+            {(s.ev || s.ev_mc_ratio || s.cash_per_share || s.book_per_share || s.pe || s.forward_pe || s.beta) && (
               <div style={{ marginTop: 10, borderTop: '1px solid #1e293b', paddingTop: 8 }}>
                 <div style={{ fontSize: 10, color: '#38bdf8', fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
                   💰 שווי
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px 10px', fontSize: 10 }}>
+                  {s.pe && s.pe !== '-' && (() => {
+                    const v = parseFloat(s.pe);
+                    if (isNaN(v)) return null;
+                    const c = v > 0 && v < 15 ? '#4ade80' : v > 0 && v < 25 ? '#fde047' : v > 50 ? '#f87171' : '#e2e8f0';
+                    return <span style={{ color: '#94a3b8' }}>P/E: <b style={{ color: c, fontFamily: 'monospace' }}>{v.toFixed(1)}</b></span>;
+                  })()}
+                  {s.forward_pe && s.forward_pe !== '-' && (() => {
+                    const v = parseFloat(s.forward_pe);
+                    if (isNaN(v)) return null;
+                    const c = v > 0 && v < 15 ? '#4ade80' : v > 0 && v < 25 ? '#fde047' : v > 50 ? '#f87171' : '#94a3b8';
+                    return <span style={{ color: '#94a3b8' }}>P/E fwd: <b style={{ color: c, fontFamily: 'monospace' }}>{v.toFixed(1)}</b></span>;
+                  })()}
+                  {s.beta && (() => {
+                    const v = parseFloat(s.beta);
+                    if (isNaN(v)) return null;
+                    const c = v > 2 ? '#f87171' : v > 1.5 ? '#fde047' : '#94a3b8';
+                    return <span style={{ color: '#94a3b8' }}>Beta: <b style={{ color: c, fontFamily: 'monospace' }}>{v.toFixed(2)}</b></span>;
+                  })()}
                   {s.ev && (
                     <span style={{ color: '#94a3b8' }}>EV: <b style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{s.ev_str || s.enterprise_value || '—'}</b></span>
                   )}
                   {s.ev_mc_ratio && (() => {
                     const r = parseFloat(s.ev_mc_ratio);
+                    if (isNaN(r)) return null;
                     const c = r < 1.0 ? '#4ade80' : r > 1.5 ? '#f87171' : r > 1.1 ? '#fde047' : '#e2e8f0';
                     const label = r < 1.0 ? ' 💥' : '';
                     return <span style={{ color: '#94a3b8' }}>EV/MC: <b style={{ color: c, fontFamily: 'monospace' }}>{r.toFixed(2)}x{label}</b></span>;
@@ -1632,7 +1651,7 @@ function ExpandRow({ s, colSpan }) {
                     if (isNaN(cash) || cash <= 0) return null;
                     const ratio = price > 0 ? cash / price : 0;
                     const c = ratio >= 0.5 ? '#fbbf24' : ratio >= 0.3 ? '#f59e0b' : '#94a3b8';
-                    const label = ratio >= 0.5 ? ' 💥 Cash play!' : ratio >= 0.3 ? ' מזומן גבוה' : '';
+                    const label = ratio >= 0.5 ? ' 💥' : ratio >= 0.3 ? ' ✓' : '';
                     return <span style={{ color: '#94a3b8' }}>Cash/sh: <b style={{ color: c, fontFamily: 'monospace' }}>${cash.toFixed(2)}{label && <span style={{ fontSize: 9 }}>{label}</span>}</b></span>;
                   })()}
                   {s.book_per_share && (() => {
@@ -1642,7 +1661,7 @@ function ExpandRow({ s, colSpan }) {
                     const belowBook = price < book;
                     const disc = belowBook ? ((book - price) / book * 100).toFixed(0) : null;
                     const c = belowBook ? '#a78bfa' : '#94a3b8';
-                    const label = belowBook ? ` 💎 -${disc}% מBook` : '';
+                    const label = belowBook ? ` 💎 -${disc}%` : '';
                     return <span style={{ color: '#94a3b8' }}>Book/sh: <b style={{ color: c, fontFamily: 'monospace' }}>${book.toFixed(2)}{label && <span style={{ fontSize: 9 }}>{label}</span>}</b></span>;
                   })()}
                 </div>
@@ -3339,34 +3358,64 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
 
   // ── Value Scanner — מניות עם יתרון פונדמנטלי ──
   const valuePlays = useMemo(() => {
-    if (!stocks.length) return { cashPlays: [], deepValue: [], evUnderMc: [] };
+    if (!stocks.length) return { cashPlays: [], deepValue: [], evUnderMc: [], valueMomentum: [] };
     const cashPlays = [];
     const deepValue = [];
     const evUnderMc = [];
     stocks.forEach(s => {
       const price = parseFloat(s.price);
       if (!price || price <= 0) return;
+      const chg = parseFloat(s.change_pct) || 0;
       const cash = parseFloat(s.cash_per_share);
       if (cash > 0 && cash / price >= 0.3) {
-        cashPlays.push({ ...s, _cash_ratio: cash / price });
+        cashPlays.push({ ...s, _cash_ratio: cash / price, _chg: chg });
       }
       const book = parseFloat(s.book_per_share);
       if (book > 0 && price < book) {
-        deepValue.push({ ...s, _discount_pct: ((book - price) / book * 100) });
+        deepValue.push({ ...s, _discount_pct: ((book - price) / book * 100), _chg: chg });
       }
       const evRatio = parseFloat(s.ev_mc_ratio);
       if (!isNaN(evRatio) && evRatio > 0 && evRatio < 1.0) {
-        evUnderMc.push({ ...s, _ev_ratio: evRatio });
+        evUnderMc.push({ ...s, _ev_ratio: evRatio, _chg: chg });
       }
     });
-    cashPlays.sort((a, b) => b._cash_ratio - a._cash_ratio);
-    deepValue.sort((a, b) => b._discount_pct - a._discount_pct);
-    evUnderMc.sort((a, b) => a._ev_ratio - b._ev_ratio);
-    return { cashPlays: cashPlays.slice(0, 8), deepValue: deepValue.slice(0, 8), evUnderMc: evUnderMc.slice(0, 8) };
+    // Sort: positive movers first, then by value metric
+    const sortVal = (arr, key, asc = false) => arr.sort((a, b) => {
+      const aMov = a._chg > 0 ? 1 : 0, bMov = b._chg > 0 ? 1 : 0;
+      if (aMov !== bMov) return bMov - aMov;
+      return asc ? a[key] - b[key] : b[key] - a[key];
+    });
+    sortVal(cashPlays, '_cash_ratio');
+    sortVal(deepValue, '_discount_pct');
+    sortVal(evUnderMc, '_ev_ratio', true);
+    // Value Momentum: any value play moving +2%+ today
+    const valueTickers = new Set([...cashPlays, ...deepValue, ...evUnderMc].map(s => s.ticker));
+    const valueMomentum = stocks
+      .filter(s => valueTickers.has(s.ticker) && parseFloat(s.change_pct) >= 2)
+      .map(s => ({
+        ...s,
+        _chg: parseFloat(s.change_pct),
+        _cats: [
+          cashPlays.find(c => c.ticker === s.ticker) ? '💰' : null,
+          deepValue.find(d => d.ticker === s.ticker) ? '📘' : null,
+          evUnderMc.find(e => e.ticker === s.ticker) ? '🏦' : null,
+        ].filter(Boolean),
+        _cashRatio: cashPlays.find(c => c.ticker === s.ticker)?._cash_ratio,
+        _disc: deepValue.find(d => d.ticker === s.ticker)?._discount_pct,
+        _evRatio: evUnderMc.find(e => e.ticker === s.ticker)?._ev_ratio,
+      }))
+      .sort((a, b) => b._chg - a._chg)
+      .slice(0, 8);
+    return {
+      cashPlays: cashPlays.slice(0, 8),
+      deepValue: deepValue.slice(0, 8),
+      evUnderMc: evUnderMc.slice(0, 8),
+      valueMomentum,
+    };
   }, [stocks]);
 
   const [valueExpanded, setValueExpanded] = useState(true);
-  const hasValuePlays = valuePlays.cashPlays.length > 0 || valuePlays.deepValue.length > 0 || valuePlays.evUnderMc.length > 0;
+  const hasValuePlays = valuePlays.cashPlays.length > 0 || valuePlays.deepValue.length > 0 || valuePlays.evUnderMc.length > 0 || valuePlays.valueMomentum.length > 0;
 
   return (
     <div
@@ -3598,153 +3647,164 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
       `}</style>
 
       {/* ── Value Scanner ── */}
-      {stocks.length > 0 && (
-        <div style={{ margin: '10px 16px 0', borderRadius: 12, border: '1px solid rgba(59,130,246,0.2)', background: 'rgba(15,23,42,0.8)', overflow: 'hidden' }}>
-          <button
-            onClick={() => setValueExpanded(v => !v)}
-            style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px',
-              background: 'linear-gradient(135deg, rgba(15,23,42,0.9), rgba(30,41,59,0.8))',
-              border: 'none', borderBottom: valueExpanded ? '1px solid rgba(51,65,85,0.4)' : 'none',
-              cursor: 'pointer', color: '#e2e8f0', textAlign: 'right',
-            }}
-          >
-            <span style={{ fontSize: 13, fontWeight: 800, color: '#38bdf8', letterSpacing: '0.05em' }}>💎 VALUE SCANNER</span>
-            <span style={{ fontSize: 10, color: '#64748b', flex: 1 }}>
-              מניות עם יתרון פונדמנטלי
-            </span>
-            <span style={{ fontSize: 11, color: '#475569', transform: valueExpanded ? 'rotate(90deg)' : 'rotate(-90deg)', transition: 'transform 0.2s' }}>›</span>
-          </button>
-          {valueExpanded && (
-            <div style={{ padding: '10px 14px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-
-              {!hasValuePlays && (
-                <div style={{ fontSize: 11, color: '#475569', textAlign: 'center', padding: '8px 0' }}>
-                  אין מניות עם יתרון value בסריקה הנוכחית
-                </div>
-              )}
-
-              {/* Cash Play */}
-              {valuePlays.cashPlays.length > 0 && (
-                <div>
-                  <div style={{ fontSize: 10, color: '#fbbf24', fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span>💰 Cash Play</span>
-                    <span style={{ fontWeight: 400, color: '#64748b' }}>— Cash/sh ≥ 30% ממחיר המניה</span>
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {valuePlays.cashPlays.map(s => {
-                      const cashRatio = (s._cash_ratio * 100).toFixed(0);
-                      const isCashPlay = s._cash_ratio >= 0.5;
-                      return (
-                        <div
-                          key={s.ticker}
-                          onClick={() => setExpanded(prev => { const n = new Set(prev); n.has(s.ticker) ? n.delete(s.ticker) : n.add(s.ticker); return n; })}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 5, padding: '4px 8px 4px 10px',
-                            background: isCashPlay ? 'rgba(251,191,36,0.12)' : 'rgba(251,191,36,0.06)',
-                            border: `1px solid ${isCashPlay ? 'rgba(251,191,36,0.4)' : 'rgba(251,191,36,0.2)'}`,
-                            borderRadius: 8, cursor: 'pointer',
-                          }}
-                        >
-                          <span style={{ fontWeight: 800, fontSize: 11, color: '#fbbf24', fontFamily: 'monospace' }}>{s.ticker}</span>
-                          <span style={{ fontSize: 9, color: '#94a3b8' }}>${parseFloat(s.price).toFixed(2)}</span>
-                          <span style={{ fontSize: 9, fontWeight: 700, color: isCashPlay ? '#fbbf24' : '#f59e0b', background: 'rgba(251,191,36,0.15)', borderRadius: 4, padding: '1px 4px' }}>
-                            {isCashPlay ? '💥' : ''} {cashRatio}% cash
-                          </span>
-                          {parseFloat(s.change_pct) !== 0 && (
-                            <span style={{ fontSize: 9, color: parseFloat(s.change_pct) > 0 ? '#4ade80' : '#f87171', fontFamily: 'monospace' }}>
-                              {parseFloat(s.change_pct) > 0 ? '+' : ''}{parseFloat(s.change_pct).toFixed(1)}%
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Deep Value */}
-              {valuePlays.deepValue.length > 0 && (
-                <div>
-                  <div style={{ fontSize: 10, color: '#a78bfa', fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span>📘 Deep Value</span>
-                    <span style={{ fontWeight: 400, color: '#64748b' }}>— מחיר מתחת ל-Book/sh</span>
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {valuePlays.deepValue.map(s => {
-                      const disc = s._discount_pct.toFixed(0);
-                      const isDeep = s._discount_pct >= 40;
-                      return (
-                        <div
-                          key={s.ticker}
-                          onClick={() => setExpanded(prev => { const n = new Set(prev); n.has(s.ticker) ? n.delete(s.ticker) : n.add(s.ticker); return n; })}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 5, padding: '4px 8px 4px 10px',
-                            background: isDeep ? 'rgba(167,139,250,0.12)' : 'rgba(167,139,250,0.06)',
-                            border: `1px solid ${isDeep ? 'rgba(167,139,250,0.4)' : 'rgba(167,139,250,0.2)'}`,
-                            borderRadius: 8, cursor: 'pointer',
-                          }}
-                        >
-                          <span style={{ fontWeight: 800, fontSize: 11, color: '#a78bfa', fontFamily: 'monospace' }}>{s.ticker}</span>
-                          <span style={{ fontSize: 9, color: '#94a3b8' }}>${parseFloat(s.price).toFixed(2)}</span>
-                          <span style={{ fontSize: 9, fontWeight: 700, color: '#a78bfa', background: 'rgba(167,139,250,0.15)', borderRadius: 4, padding: '1px 4px' }}>
-                            {isDeep ? '💎' : ''} -{disc}% מBook
-                          </span>
-                          {parseFloat(s.change_pct) !== 0 && (
-                            <span style={{ fontSize: 9, color: parseFloat(s.change_pct) > 0 ? '#4ade80' : '#f87171', fontFamily: 'monospace' }}>
-                              {parseFloat(s.change_pct) > 0 ? '+' : ''}{parseFloat(s.change_pct).toFixed(1)}%
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* EV < Market Cap */}
-              {valuePlays.evUnderMc.length > 0 && (
-                <div>
-                  <div style={{ fontSize: 10, color: '#34d399', fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span>🏦 EV &lt; Market Cap</span>
-                    <span style={{ fontWeight: 400, color: '#64748b' }}>— יש מזומן עודף / חוב נמוך</span>
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {valuePlays.evUnderMc.map(s => {
-                      const ratio = s._ev_ratio;
-                      const isStrong = ratio < 0.7;
-                      return (
-                        <div
-                          key={s.ticker}
-                          onClick={() => setExpanded(prev => { const n = new Set(prev); n.has(s.ticker) ? n.delete(s.ticker) : n.add(s.ticker); return n; })}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 5, padding: '4px 8px 4px 10px',
-                            background: isStrong ? 'rgba(52,211,153,0.12)' : 'rgba(52,211,153,0.06)',
-                            border: `1px solid ${isStrong ? 'rgba(52,211,153,0.4)' : 'rgba(52,211,153,0.2)'}`,
-                            borderRadius: 8, cursor: 'pointer',
-                          }}
-                        >
-                          <span style={{ fontWeight: 800, fontSize: 11, color: '#34d399', fontFamily: 'monospace' }}>{s.ticker}</span>
-                          <span style={{ fontSize: 9, color: '#94a3b8' }}>${parseFloat(s.price).toFixed(2)}</span>
-                          <span style={{ fontSize: 9, fontWeight: 700, color: '#34d399', background: 'rgba(52,211,153,0.15)', borderRadius: 4, padding: '1px 4px' }}>
-                            {isStrong ? '💥' : ''} EV={ratio.toFixed(2)}x MC
-                          </span>
-                          {parseFloat(s.change_pct) !== 0 && (
-                            <span style={{ fontSize: 9, color: parseFloat(s.change_pct) > 0 ? '#4ade80' : '#f87171', fontFamily: 'monospace' }}>
-                              {parseFloat(s.change_pct) > 0 ? '+' : ''}{parseFloat(s.change_pct).toFixed(1)}%
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
+      {stocks.length > 0 && (() => {
+        // Mini-card component for value chips
+        const ValueCard = ({ s, accentColor, badge, onClick }) => {
+          const chg = parseFloat(s.change_pct) || 0;
+          const isUp = chg > 0;
+          const isDown = chg < 0;
+          const chgColor = isUp ? '#4ade80' : isDown ? '#f87171' : '#94a3b8';
+          const chgBg = isUp ? 'rgba(74,222,128,0.12)' : isDown ? 'rgba(248,113,113,0.12)' : 'rgba(148,163,184,0.08)';
+          return (
+            <div
+              onClick={onClick}
+              title={`${s.company || s.ticker} · ${s.sector || ''}`}
+              style={{
+                display: 'flex', flexDirection: 'column', gap: 3,
+                padding: '6px 10px', borderRadius: 10, cursor: 'pointer',
+                background: 'rgba(15,23,42,0.7)',
+                border: `1px solid ${accentColor}33`,
+                minWidth: 90,
+                transition: 'border-color 0.15s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = accentColor + '88'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = accentColor + '33'}
+            >
+              {/* Row 1: Ticker + daily change */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                <span style={{ fontWeight: 900, fontSize: 12, color: accentColor, fontFamily: 'monospace', letterSpacing: '0.03em' }}>{s.ticker}</span>
+                <span style={{
+                  fontSize: 11, fontWeight: 800, color: chgColor,
+                  background: chgBg, borderRadius: 5, padding: '1px 5px',
+                  fontFamily: 'monospace',
+                }}>
+                  {isUp ? '▲' : isDown ? '▼' : ''}{isUp ? '+' : ''}{chg.toFixed(1)}%
+                </span>
+              </div>
+              {/* Row 2: Price + value badge */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ fontSize: 9, color: '#64748b', fontFamily: 'monospace' }}>${parseFloat(s.price).toFixed(2)}</span>
+                <span style={{ fontSize: 9, fontWeight: 700, color: accentColor, background: accentColor + '22', borderRadius: 4, padding: '1px 4px' }}>{badge}</span>
+              </div>
             </div>
-          )}
-        </div>
-      )}
+          );
+        };
+
+        const clickTicker = s => setExpanded(prev => { const n = new Set(prev); n.has(s.ticker) ? n.delete(s.ticker) : n.add(s.ticker); return n; });
+
+        return (
+          <div style={{ margin: '10px 16px 0', borderRadius: 12, border: '1px solid rgba(59,130,246,0.2)', background: 'rgba(15,23,42,0.8)', overflow: 'hidden' }}>
+            <button
+              onClick={() => setValueExpanded(v => !v)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px',
+                background: 'linear-gradient(135deg, rgba(15,23,42,0.9), rgba(30,41,59,0.8))',
+                border: 'none', borderBottom: valueExpanded ? '1px solid rgba(51,65,85,0.4)' : 'none',
+                cursor: 'pointer', color: '#e2e8f0', textAlign: 'right',
+              }}
+            >
+              <span style={{ fontSize: 13, fontWeight: 800, color: '#38bdf8', letterSpacing: '0.05em' }}>💎 VALUE SCANNER</span>
+              {valuePlays.valueMomentum.length > 0 && (
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#4ade80', background: 'rgba(74,222,128,0.12)', borderRadius: 6, padding: '2px 7px', border: '1px solid rgba(74,222,128,0.25)' }}>
+                  🚀 {valuePlays.valueMomentum.length} עולות היום
+                </span>
+              )}
+              <span style={{ fontSize: 10, color: '#475569', flex: 1 }}>מניות עם יתרון פונדמנטלי</span>
+              <span style={{ fontSize: 11, color: '#475569', transform: valueExpanded ? 'rotate(90deg)' : 'rotate(-90deg)', transition: 'transform 0.2s' }}>›</span>
+            </button>
+            {valueExpanded && (
+              <div style={{ padding: '10px 14px 12px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+                {!hasValuePlays && (
+                  <div style={{ fontSize: 11, color: '#475569', textAlign: 'center', padding: '8px 0' }}>
+                    אין מניות עם יתרון value בסריקה הנוכחית
+                  </div>
+                )}
+
+                {/* 🚀 Value Momentum — value plays moving up today */}
+                {valuePlays.valueMomentum.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ color: '#4ade80' }}>🚀 Value + Momentum</span>
+                      <span style={{ fontWeight: 400, color: '#64748b' }}>— מניות value שעולות +2% היום</span>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {valuePlays.valueMomentum.map(s => {
+                        const metricBadge = s._cats.length > 1
+                          ? s._cats.join(' ')
+                          : s._cashRatio ? `💰 cash ${(s._cashRatio * 100).toFixed(0)}%`
+                            : s._disc ? `📘 -${s._disc.toFixed(0)}% book`
+                              : s._evRatio ? `🏦 EV ${s._evRatio.toFixed(2)}x` : s._cats[0];
+                        return (
+                          <ValueCard key={s.ticker} s={s} accentColor="#4ade80" badge={metricBadge} onClick={() => clickTicker(s)} />
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 💰 Cash Play */}
+                {valuePlays.cashPlays.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 10, color: '#fbbf24', fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span>💰 Cash Play</span>
+                      <span style={{ fontWeight: 400, color: '#64748b' }}>— Cash/sh ≥ 30% ממחיר המניה</span>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {valuePlays.cashPlays.map(s => (
+                        <ValueCard
+                          key={s.ticker} s={s} accentColor="#fbbf24"
+                          badge={`cash ${(s._cash_ratio * 100).toFixed(0)}%${s._cash_ratio >= 0.5 ? ' 💥' : ''}`}
+                          onClick={() => clickTicker(s)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 📘 Deep Value */}
+                {valuePlays.deepValue.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 10, color: '#a78bfa', fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span>📘 Deep Value</span>
+                      <span style={{ fontWeight: 400, color: '#64748b' }}>— מחיר מתחת ל-Book/sh</span>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {valuePlays.deepValue.map(s => (
+                        <ValueCard
+                          key={s.ticker} s={s} accentColor="#a78bfa"
+                          badge={`-${s._discount_pct.toFixed(0)}% book${s._discount_pct >= 40 ? ' 💎' : ''}`}
+                          onClick={() => clickTicker(s)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 🏦 EV < Market Cap */}
+                {valuePlays.evUnderMc.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 10, color: '#34d399', fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span>🏦 EV &lt; Market Cap</span>
+                      <span style={{ fontWeight: 400, color: '#64748b' }}>— יש מזומן עודף / חוב נמוך</span>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {valuePlays.evUnderMc.map(s => (
+                        <ValueCard
+                          key={s.ticker} s={s} accentColor="#34d399"
+                          badge={`EV ${s._ev_ratio.toFixed(2)}x${s._ev_ratio < 0.7 ? ' 💥' : ''}`}
+                          onClick={() => clickTicker(s)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {(isLoading || isFirstScanLoading) && !stocks.length && (
         <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}>
@@ -3839,14 +3899,14 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                   filterOpen={colFilterOpen === 'chg_30m'}
                   onFilterOpen={setColFilterOpen} />
                 <SortTh label="שווי"   col="market_cap"   sort={sort} onSort={handleSort} style={{ width: 72 }}
-                  title={"שווי שוק = מחיר × מספר מניות\nשורה שנייה — ערך ארגוני לעומת שווי שוק:\nפחות מ-1 = מזומנים עודפים, חיובי\nיותר מ-1.3 = חוב גבוה, סיכון"}
+                  title={"שווי שוק = מחיר × מספר מניות\nשורה 2 — EV/MC: פחות מ-1 = מזומנים עודפים\nשורה 3 — P/E (או Forward P/E)"}
                   filterOpts={COL_FILTER_OPTS.market_cap}
                   filterValue={colFilter.market_cap || ''}
                   onFilter={handleColFilterToggle}
                   filterOpen={colFilterOpen === 'market_cap'}
                   onFilterOpen={setColFilterOpen} />
                 <SortTh label="בריאות" col="health_score" sort={sort} onSort={handleSort} style={{ width: 82 }}
-                  title={"ציון בריאות פונדמנטלית (0-100)\nמקור: Finviz\n• רווחיות: רווח למניה, מכפיל רווח\n• צמיחה: רווח רבעוני, הכנסות\n• מאזן: חוב, נזילות\n• ביצועים: ביחס למדד\nמעל 70 = בריא | מעל 85 = מצוין\nשורה שנייה: EPS QoQ (צמיחת רווח רבעוני)"}
+                  title={"ציון בריאות פונדמנטלית (0-100)\nמקור: Finviz\n• רווחיות: רווח למניה, מכפיל רווח\n• צמיחה: רווח רבעוני, הכנסות\n• מאזן: חוב, נזילות\n• ביצועים: ביחס למדד\nמעל 70 = בריא | מעל 85 = מצוין\nשורה שנייה: EPS QoQ, או ביצוע שבועי אם אין EPS"}
                   filterOpts={COL_FILTER_OPTS.health_score}
                   filterValue={colFilter.health_score || ''}
                   onFilter={handleColFilterToggle}
@@ -4050,20 +4110,40 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                       </div>
                     </td>
 
-                    {/* Market Cap + EV/MC */}
+                    {/* Market Cap + EV/MC + P/E */}
                     <td style={{ ...TD_BASE, padding: '3px 4px' }}>
                       <MoneyCell val={s.market_cap} str={livePrices[s.ticker]?.market_cap_str || s.market_cap_str} />
                       {s.ev_mc_ratio != null && (
                         <div style={{ marginTop: 1 }}><EvMcCell ratio={s.ev_mc_ratio} /></div>
                       )}
+                      {(() => {
+                        const pe = parseFloat(s.pe);
+                        const fpe = parseFloat(s.forward_pe);
+                        const val = !isNaN(pe) && pe > 0 ? pe : !isNaN(fpe) && fpe > 0 ? fpe : null;
+                        const isFwd = isNaN(pe) || pe <= 0;
+                        if (!val) return null;
+                        const c = val < 15 ? '#4ade80' : val < 25 ? '#fde047' : val > 50 ? '#f87171' : '#94a3b8';
+                        return (
+                          <div style={{ marginTop: 1, fontSize: 9, color: '#475569', fontFamily: 'monospace' }}>
+                            {isFwd ? 'fwd ' : ''}<span style={{ color: c, fontWeight: 700 }}>P/E {val.toFixed(0)}</span>
+                          </div>
+                        );
+                      })()}
                     </td>
 
-                    {/* Health + EPS QoQ */}
+                    {/* Health + EPS QoQ / Perf Week */}
                     <td style={{ ...TD_BASE, padding: '4px 6px' }}>
                       <HealthBadge score={s.health_score} detail={s.health_detail} />
-                      {s.eps_qq != null && (
+                      {s.eps_qq != null ? (
                         <div style={{ marginTop: 2 }}><EpsQqCell val={s.eps_qq} /></div>
-                      )}
+                      ) : s.perf_week ? (() => {
+                        const v = parseFloat(s.perf_week);
+                        return (
+                          <div style={{ marginTop: 2, fontSize: 9, color: '#475569' }}>
+                            7י׳ <span style={{ color: v > 0 ? '#4ade80' : '#f87171', fontFamily: 'monospace', fontWeight: 700 }}>{v > 0 ? '+' : ''}{v.toFixed(1)}%</span>
+                          </div>
+                        );
+                      })() : null}
                     </td>
 
                     {/* ATR */}
