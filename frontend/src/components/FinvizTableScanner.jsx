@@ -3004,7 +3004,7 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
     refetchInterval: effectiveRefreshSec > 0 ? effectiveRefreshSec * 1000 : false,
     staleTime: 15000,
     retry: (failureCount, error) => {
-      if (error?.message === 'scan_in_progress') return failureCount < 6;
+      if (error?.message === 'scan_in_progress') return failureCount < 24; // 2 min
       return failureCount < 2;
     },
     retryDelay: (attempt, error) => {
@@ -3013,6 +3013,14 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
     },
     keepPreviousData: true,
   });
+
+  // Detect if we're in "first scan" loading state (repeated scan_in_progress retries)
+  const [scanAttempts, setScanAttempts] = useState(0);
+  useEffect(() => {
+    if (isError) setScanAttempts(v => v + 1);
+    else setScanAttempts(0);
+  }, [isError, dataUpdatedAt]);
+  const isFirstScanLoading = isError && !stocks.length && scanAttempts > 0;
 
   // Reset countdown when data updates
   useEffect(() => {
@@ -3519,7 +3527,7 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
         <FilterItem label="📊 דוח" options={EARNINGS_OPTS} value={earnings} onChange={v => { setEarnings(v); setExpanded(new Set()); }} />
       </div>
 
-      {isError && (
+      {isError && !isFirstScanLoading && (
         <div style={{
           margin: '12px 20px', padding: '12px 16px', background: 'rgba(127,29,29,0.3)',
           color: '#fecaca', fontSize: 12, borderRadius: 10, display: 'flex',
@@ -3738,14 +3746,16 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
         </div>
       )}
 
-      {isLoading && !stocks.length && (
+      {(isLoading || isFirstScanLoading) && !stocks.length && (
         <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}>
           <div style={{
             width: 36, height: 36, border: '3px solid #1e293b', borderTopColor: '#3b82f6',
             borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px',
           }} />
           <div style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8' }}>סורק מניות...</div>
-          <div style={{ fontSize: 11, color: '#475569', marginTop: 4 }}>שולף נתונים מ-Finviz</div>
+          <div style={{ fontSize: 11, color: '#475569', marginTop: 4 }}>
+            {isFirstScanLoading ? 'סריקה ראשונה — שולף פונדמנטלס מ-Finviz, עד כדקה...' : 'שולף נתונים מ-Finviz'}
+          </div>
         </div>
       )}
       {!isLoading && !isError && stocks.length === 0 && (
