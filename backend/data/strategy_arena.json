@@ -1,6 +1,6 @@
 {
-  "week_start": "2026-03-16",
-  "current_day": "2026-03-20",
+  "week_start": "2026-03-23",
+  "current_day": "2026-03-23",
   "daily_history": [
     {
       "date": "2026-03-12",
@@ -71,8 +71,8 @@
   ],
   "weekly_winner": null,
   "weekly_winner_at": null,
-  "tick_count": 20811,
-  "last_tick": "2026-03-21T00:15:45.640614",
+  "tick_count": 21749,
+  "last_tick": "2026-03-23T14:23:24.838022",
   "portfolios": {
     "First5Min": {
       "name": "First5Min",
@@ -1321,10 +1321,10 @@
     },
     "TrendRider": {
       "name": "TrendRider",
-      "cash": 58.11,
-      "equity": 1029.6,
-      "pnl": 29.6,
-      "pnl_pct": 2.96,
+      "cash": 262.53,
+      "equity": 983.12,
+      "pnl": -16.88,
+      "pnl_pct": -1.69,
       "positions": {
         "SEDG": {
           "entry_price": 51.47,
@@ -1336,15 +1336,15 @@
           "trailing_active": false,
           "session": "regular"
         },
-        "VG": {
-          "entry_price": 15.73,
-          "qty": 32,
-          "stop_loss": 14.47,
-          "target": 20.45,
-          "entry_time": "2026-03-20T20:54:16.966426",
-          "highest_price": 15.81,
+        "COHR": {
+          "entry_price": 253.5,
+          "qty": 1,
+          "stop_loss": 230.69,
+          "target": 329.55,
+          "entry_time": "2026-03-23T14:03:16.381774",
+          "highest_price": 259.0,
           "trailing_active": false,
-          "session": "regular"
+          "session": "premarket"
         }
       },
       "trades": [
@@ -1451,16 +1451,29 @@
           "exit_time": "2026-03-20T20:53:48.248099",
           "was_partial": false,
           "session": "regular"
+        },
+        {
+          "ticker": "VG",
+          "entry_price": 15.73,
+          "exit_price": 14.31,
+          "qty": 32,
+          "pnl": -45.44,
+          "pnl_pct": -9.03,
+          "reason": "Stop loss",
+          "entry_time": "2026-03-20T20:54:16.966426",
+          "exit_time": "2026-03-23T13:09:54.847661",
+          "was_partial": false,
+          "session": "regular"
         }
       ],
       "partial_taken": []
     },
     "BaseBreakout": {
       "name": "BaseBreakout",
-      "cash": 58.11,
-      "equity": 1029.6,
-      "pnl": 29.6,
-      "pnl_pct": 2.96,
+      "cash": 262.53,
+      "equity": 983.12,
+      "pnl": -16.88,
+      "pnl_pct": -1.69,
       "positions": {
         "SEDG": {
           "entry_price": 51.47,
@@ -1472,15 +1485,15 @@
           "trailing_active": false,
           "session": "regular"
         },
-        "VG": {
-          "entry_price": 15.73,
-          "qty": 32,
-          "stop_loss": 14.63,
-          "target": 21.24,
-          "entry_time": "2026-03-20T20:54:16.966496",
-          "highest_price": 15.81,
+        "COHR": {
+          "entry_price": 253.5,
+          "qty": 1,
+          "stop_loss": 233.22,
+          "target": 342.23,
+          "entry_time": "2026-03-23T14:03:16.382034",
+          "highest_price": 259.0,
           "trailing_active": false,
-          "session": "regular"
+          "session": "premarket"
         }
       },
       "trades": [
@@ -1587,16 +1600,29 @@
           "exit_time": "2026-03-20T20:53:48.248146",
           "was_partial": false,
           "session": "regular"
+        },
+        {
+          "ticker": "VG",
+          "entry_price": 15.73,
+          "exit_price": 14.31,
+          "qty": 32,
+          "pnl": -45.44,
+          "pnl_pct": -9.03,
+          "reason": "Stop loss",
+          "entry_time": "2026-03-20T20:54:16.966496",
+          "exit_time": "2026-03-23T13:09:54.847874",
+          "was_partial": false,
+          "session": "regular"
         }
       ],
       "partial_taken": []
     },
     "MomentumSwing": {
       "name": "MomentumSwing",
-      "cash": 58.11,
-      "equity": 1029.6,
-      "pnl": 29.6,
-      "pnl_pct": 2.96,
+      "cash": 516.03,
+      "equity": 979.26,
+      "pnl": -20.74,
+      "pnl_pct": -2.07,
       "positions": {
         "SEDG": {
           "entry_price": 51.47,
@@ -1605,16 +1631,6 @@
           "target": 77.2,
           "entry_time": "2026-03-20T20:54:12.405117",
           "highest_price": 51.77,
-          "trailing_active": false,
-          "session": "regular"
-        },
-        "VG": {
-          "entry_price": 15.73,
-          "qty": 32,
-          "stop_loss": 14.47,
-          "target": 23.59,
-          "entry_time": "2026-03-20T20:54:16.966550",
-          "highest_price": 15.81,
           "trailing_active": false,
           "session": "regular"
         }
@@ -1723,16 +1739,29 @@
           "exit_time": "2026-03-20T20:53:48.248207",
           "was_partial": false,
           "session": "regular"
+        },
+        {
+          "ticker": "VG",
+          "entry_price": 15.73,
+          "exit_price": 14.31,
+          "qty": 32,
+          "pnl": -45.44,
+          "pnl_pct": -9.03,
+          "reason": "Stop loss",
+          "entry_time": "2026-03-20T20:54:16.966550",
+          "exit_time": "2026-03-23T13:09:54.848057",
+          "was_partial": false,
+          "session": "regular"
         }
       ],
       "partial_taken": []
     },
     "SeasonalSwing": {
       "name": "SeasonalSwing",
-      "cash": 720.7,
-      "equity": 931.89,
-      "pnl": -68.11,
-      "pnl_pct": -6.81,
+      "cash": 189.66,
+      "equity": 932.63,
+      "pnl": -67.37,
+      "pnl_pct": -6.74,
       "positions": {
         "ROST": {
           "entry_price": 211.19,
@@ -1743,6 +1772,26 @@
           "highest_price": 211.19,
           "trailing_active": false,
           "session": "aftermarket"
+        },
+        "NFLX": {
+          "entry_price": 91.82,
+          "qty": 2,
+          "stop_loss": 83.1,
+          "target": 146.91,
+          "entry_time": "2026-03-21T00:43:41.158096",
+          "highest_price": 93.18,
+          "trailing_active": false,
+          "session": "aftermarket"
+        },
+        "ADI": {
+          "entry_price": 347.4,
+          "qty": 1,
+          "stop_loss": 316.13,
+          "target": 555.84,
+          "entry_time": "2026-03-23T13:15:07.603996",
+          "highest_price": 347.4,
+          "trailing_active": false,
+          "session": "premarket"
         }
       },
       "trades": [
