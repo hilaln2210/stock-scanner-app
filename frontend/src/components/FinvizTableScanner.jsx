@@ -3590,7 +3590,7 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
       `}</style>
 
       {/* ── Value Scanner ── */}
-      {hasValuePlays && (
+      {stocks.length > 0 && (
         <div style={{ margin: '10px 16px 0', borderRadius: 12, border: '1px solid rgba(59,130,246,0.2)', background: 'rgba(15,23,42,0.8)', overflow: 'hidden' }}>
           <button
             onClick={() => setValueExpanded(v => !v)}
@@ -3609,6 +3609,12 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
           </button>
           {valueExpanded && (
             <div style={{ padding: '10px 14px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+              {!hasValuePlays && (
+                <div style={{ fontSize: 11, color: '#475569', textAlign: 'center', padding: '8px 0' }}>
+                  אין מניות עם יתרון value בסריקה הנוכחית
+                </div>
+              )}
 
               {/* Cash Play */}
               {valuePlays.cashPlays.length > 0 && (
