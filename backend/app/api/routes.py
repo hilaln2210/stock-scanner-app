@@ -2795,29 +2795,14 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
     fund_truly_missing = [t for t in tickers if t not in _FV_FUND_CACHE]
     fund_stale = (now - _FV_FUND_CACHE_TIME) > _FV_FUND_CACHE_TTL
 
-    if fund_truly_missing:
-        # Block only for tickers with NO cached data at all (batch size 25 for speed)
-        batches = [fund_truly_missing[i:i+25] for i in range(0, len(fund_truly_missing), 25)]
-        try:
-            results = await asyncio.wait_for(
-                asyncio.gather(*[finviz_fundamentals.get_fundamentals_batch(b) for b in batches],
-                               return_exceptions=True),
-                timeout=25,
-            )
-            for res in results:
-                if isinstance(res, dict):
-                    _FV_FUND_CACHE.update({k: v for k, v in res.items() if v})
-            _FV_FUND_CACHE_TIME = now
-        except asyncio.TimeoutError:
-            print('[finviz-table] fundamentals first-fetch timeout — returning partial data')
-
-    elif fund_stale and not _FV_FUND_BG_REFRESHING:
-        # Stale but cached — refresh in background, serve stale data now
+    # Never block on fundamentals — always return immediately, fetch in background
+    _funds_partial = len(fund_truly_missing) > 5
+    if (fund_truly_missing or fund_stale) and not _FV_FUND_BG_REFRESHING:
         _FV_FUND_BG_REFRESHING = True
         _tickers_snap = list(tickers)
 
         async def _bg_fund_refresh():
-            global _FV_FUND_CACHE, _FV_FUND_CACHE_TIME, _FV_FUND_BG_REFRESHING
+            global _FV_FUND_CACHE, _FV_FUND_CACHE_TIME, _FV_FUND_BG_REFRESHING, _FV_TABLE_CACHE_TIME
             try:
                 batches = [_tickers_snap[i:i+25] for i in range(0, len(_tickers_snap), 25)]
                 results = await asyncio.gather(
@@ -2828,7 +2813,8 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
                     if isinstance(res, dict):
                         _FV_FUND_CACHE.update({k: v for k, v in res.items() if v})
                 _FV_FUND_CACHE_TIME = _time.time()
-                print(f'[finviz-table] bg fund refresh complete ({len(_tickers_snap)} tickers)')
+                _FV_TABLE_CACHE_TIME = 0.0  # invalidate table cache → next req gets enriched data
+                print(f'[finviz-table] bg fund refresh done ({len(_tickers_snap)} tickers)')
             except Exception as e:
                 print(f'[finviz-table] bg fund refresh error: {e}')
             finally:
@@ -3268,7 +3254,8 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
         'generated_at': datetime.now().isoformat(),
     }
     _FV_TABLE_CACHE = {'data': out, 'filters': filters, 'cache_key': cache_key}
-    _FV_TABLE_CACHE_TIME = now
+    # Short TTL when fundamentals are loading in bg — expire in 5s so next req gets enriched data
+    _FV_TABLE_CACHE_TIME = now if not _funds_partial else now - _FV_TABLE_CACHE_TTL + 5
     return out
 
 
