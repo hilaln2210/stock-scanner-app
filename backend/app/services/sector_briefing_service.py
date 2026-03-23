@@ -99,7 +99,7 @@ _HEADERS = {
 
 _etf_cache: Optional[List[dict]] = None
 _etf_cache_at: float = 0.0
-_ETF_CACHE_TTL = 30  # 30 seconds — real-time sector ranking
+_ETF_CACHE_TTL = 60  # 60 seconds — sector ETF ranking
 
 _drivers_cache: Dict[str, float] = {}
 _drivers_cache_at: float = 0.0
@@ -133,7 +133,7 @@ _NEWS_CACHE_TTL = 300  # 5 minutes
 # Macro indicators cache
 _macro_cache: Optional[dict] = None
 _macro_cache_at: float = 0.0
-_MACRO_TTL = 60  # 1 minute — critical real-time data
+_MACRO_TTL = 120  # 2 minutes — macro indicators
 
 # Market-wide news cache
 _market_news_cache: Optional[List[dict]] = None
@@ -153,7 +153,8 @@ _INTEL_TTL = 300  # 5 minutes
 # Full response cache — returned instantly to users, refreshed in background
 _response_cache: Optional[dict] = None
 _response_cache_at: float = 0.0
-_RESPONSE_CACHE_TTL = 180  # 3 minutes
+_RESPONSE_CACHE_TTL = 300  # 5 minutes
+_sector_bg_refreshing: bool = False  # stale-while-revalidate flag
 
 # ── Macro Indicator Definitions ──────────────────────────────────────────────────
 
@@ -3252,7 +3253,7 @@ async def get_stocks_for_sector(finviz_filter: str) -> List[dict]:
 
 # ── Main Entry Point ────────────────────────────────────────────────────────────
 
-async def get_sector_briefing() -> dict:
+async def get_sector_briefing(_bg: bool = False) -> dict:
     """
     Returns the full sector briefing dict with all intelligence data.
     Full response is cached for 3 minutes — returned instantly on every call.
@@ -3273,9 +3274,29 @@ async def get_sector_briefing() -> dict:
 
     now = _time.time()
 
-    # ── Serve from full response cache if fresh (instant response) ────────────
-    if _response_cache is not None and (now - _response_cache_at) < _RESPONSE_CACHE_TTL:
-        return _response_cache
+    global _sector_bg_refreshing
+
+    # ── Serve from full response cache (stale-while-revalidate) ────────────────
+    if not _bg and _response_cache is not None:
+        cache_age = now - _response_cache_at
+        if cache_age < _RESPONSE_CACHE_TTL:
+            return _response_cache  # fresh — instant
+        # Stale: return stale immediately, refresh in background
+        if not _sector_bg_refreshing:
+            _sector_bg_refreshing = True
+            async def _do_bg():
+                global _sector_bg_refreshing, _response_cache, _response_cache_at
+                try:
+                    result = await get_sector_briefing(_bg=True)
+                    if result and not result.get('error'):
+                        _response_cache = result
+                        _response_cache_at = _time.time()
+                except Exception as e:
+                    print(f'[SectorBriefing] bg refresh error: {e}')
+                finally:
+                    _sector_bg_refreshing = False
+            asyncio.ensure_future(_do_bg())
+        return _response_cache  # serve stale immediately
 
     # ── 1a. ETF prices (30s TTL) ──────────────────────────────────────────────
     if _etf_cache is None or (now - _etf_cache_at) >= _ETF_CACHE_TTL:

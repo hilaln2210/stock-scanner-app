@@ -1967,7 +1967,8 @@ _FV_SMALLCAP_CACHE_TIME: float = 0.0
 _FV_SMALLCAP_CACHE_TTL: int = 120   # refresh every 2 min
 _FV_FUND_CACHE: dict = {}           # {ticker: fund_data}
 _FV_FUND_CACHE_TIME: float = 0.0
-_FV_FUND_CACHE_TTL: int = 1800      # fundamentals: 30 min
+_FV_FUND_CACHE_TTL: int = 3600      # fundamentals: 60 min (stale-while-revalidate in bg)
+_FV_FUND_BG_REFRESHING: bool = False  # prevent concurrent bg refreshes
 _FV_NEWS_CACHE: dict = {}           # {ticker: [news_items]}
 _FV_NEWS_CACHE_TIME: dict = {}      # {ticker: timestamp}
 _FV_NEWS_CACHE_TTL: int = 300       # news: 5 min per ticker (breaking news sensitivity)
@@ -2789,18 +2790,51 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
 
     tickers = [s['ticker'] for s in raw_stocks if s.get('ticker')]
 
-    # ── 2. Fundamentals מ-Finviz בלבד (EPS, RSI, Short%, מחיר, שינוי) ──────────
+    # ── 2. Fundamentals מ-Finviz — stale-while-revalidate ──────────────────────
+    global _FV_FUND_BG_REFRESHING
+    fund_truly_missing = [t for t in tickers if t not in _FV_FUND_CACHE]
     fund_stale = (now - _FV_FUND_CACHE_TIME) > _FV_FUND_CACHE_TTL
-    fund_missing = tickers if fund_stale else [t for t in tickers if t not in _FV_FUND_CACHE]
-    if fund_missing:
-        batches = [fund_missing[i:i+15] for i in range(0, len(fund_missing), 15)]
-        results = await asyncio.gather(*[
-            finviz_fundamentals.get_fundamentals_batch(b) for b in batches
-        ], return_exceptions=True)
-        for res in results:
-            if isinstance(res, dict):
-                _FV_FUND_CACHE.update({k: v for k, v in res.items() if v})
-        _FV_FUND_CACHE_TIME = now
+
+    if fund_truly_missing:
+        # Block only for tickers with NO cached data at all (batch size 25 for speed)
+        batches = [fund_truly_missing[i:i+25] for i in range(0, len(fund_truly_missing), 25)]
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*[finviz_fundamentals.get_fundamentals_batch(b) for b in batches],
+                               return_exceptions=True),
+                timeout=25,
+            )
+            for res in results:
+                if isinstance(res, dict):
+                    _FV_FUND_CACHE.update({k: v for k, v in res.items() if v})
+            _FV_FUND_CACHE_TIME = now
+        except asyncio.TimeoutError:
+            print('[finviz-table] fundamentals first-fetch timeout — returning partial data')
+
+    elif fund_stale and not _FV_FUND_BG_REFRESHING:
+        # Stale but cached — refresh in background, serve stale data now
+        _FV_FUND_BG_REFRESHING = True
+        _tickers_snap = list(tickers)
+
+        async def _bg_fund_refresh():
+            global _FV_FUND_CACHE, _FV_FUND_CACHE_TIME, _FV_FUND_BG_REFRESHING
+            try:
+                batches = [_tickers_snap[i:i+25] for i in range(0, len(_tickers_snap), 25)]
+                results = await asyncio.gather(
+                    *[finviz_fundamentals.get_fundamentals_batch(b) for b in batches],
+                    return_exceptions=True,
+                )
+                for res in results:
+                    if isinstance(res, dict):
+                        _FV_FUND_CACHE.update({k: v for k, v in res.items() if v})
+                _FV_FUND_CACHE_TIME = _time.time()
+                print(f'[finviz-table] bg fund refresh complete ({len(_tickers_snap)} tickers)')
+            except Exception as e:
+                print(f'[finviz-table] bg fund refresh error: {e}')
+            finally:
+                _FV_FUND_BG_REFRESHING = False
+
+        asyncio.ensure_future(_bg_fund_refresh())
 
     # ── 3. News from Finviz fundamentals (already scraped) ──────────────────
     for t in tickers:
