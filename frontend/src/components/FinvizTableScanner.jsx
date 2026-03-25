@@ -3417,6 +3417,47 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
     };
   }, [stocks]);
 
+  // ── Sector & Industry performance from stocks ──
+  const sectorPerf = useMemo(() => {
+    if (!stocks.length) return { sectors: [], industries: [] };
+    const parsePct = v => { const n = parseFloat(String(v).replace('%','')); return isNaN(n) ? null : n; };
+    const sectorMap = {};
+    const industryMap = {};
+    stocks.forEach(s => {
+      const sec = s.sector;
+      const ind = s.industry;
+      const chg = parsePct(s.change_pct);
+      const w = parsePct(s.perf_week);
+      const m = parsePct(s.perf_month);
+      if (sec && chg !== null) {
+        if (!sectorMap[sec]) sectorMap[sec] = { name: sec, count: 0, day_sum: 0, week_sum: 0, week_n: 0, month_sum: 0, month_n: 0, top: null };
+        const b = sectorMap[sec];
+        b.count++; b.day_sum += chg;
+        if (w !== null) { b.week_sum += w; b.week_n++; }
+        if (m !== null) { b.month_sum += m; b.month_n++; }
+        if (!b.top || chg > parsePct(b.top.change_pct)) b.top = s;
+      }
+      if (ind && chg !== null) {
+        if (!industryMap[ind]) industryMap[ind] = { name: ind, sector: sec, count: 0, day_sum: 0, week_sum: 0, week_n: 0, month_sum: 0, month_n: 0, top: null };
+        const b = industryMap[ind];
+        b.count++; b.day_sum += chg;
+        if (w !== null) { b.week_sum += w; b.week_n++; }
+        if (m !== null) { b.month_sum += m; b.month_n++; }
+        if (!b.top || chg > parsePct(b.top.change_pct)) b.top = s;
+      }
+    });
+    const finalize = obj => {
+      obj.day_avg = obj.count ? +(obj.day_sum / obj.count).toFixed(2) : 0;
+      obj.week_avg = obj.week_n ? +(obj.week_sum / obj.week_n).toFixed(2) : null;
+      obj.month_avg = obj.month_n ? +(obj.month_sum / obj.month_n).toFixed(2) : null;
+    };
+    Object.values(sectorMap).forEach(finalize);
+    Object.values(industryMap).forEach(finalize);
+    const sectors = Object.values(sectorMap).filter(s => s.count >= 2).sort((a, b) => b.day_avg - a.day_avg);
+    const industries = Object.values(industryMap).filter(s => s.count >= 2).sort((a, b) => b.day_avg - a.day_avg);
+    return { sectors, industries };
+  }, [stocks]);
+
   const [valueExpanded, setValueExpanded] = useState(true);
   const hasValuePlays = valuePlays.cashPlays.length > 0 || valuePlays.deepValue.length > 0 || valuePlays.evUnderMc.length > 0 || valuePlays.valueMomentum.length > 0;
 
@@ -3800,6 +3841,92 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
                         />
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* 📊 Top Sectors & Industries */}
+                {sectorPerf.sectors.length > 0 && (
+                  <div style={{ borderTop: '1px solid rgba(51,65,85,0.4)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {/* Sectors */}
+                    <div>
+                      <div style={{ fontSize: 10, color: '#f59e0b', fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>📊 סקטורים מובילים</span>
+                        <span style={{ fontWeight: 400, color: '#64748b' }}>— ממוצע שינוי לפי סקטור</span>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                        {sectorPerf.sectors.slice(0, 6).map(sec => {
+                          const dayColor = sec.day_avg >= 0 ? '#4ade80' : '#f87171';
+                          return (
+                            <div key={sec.name} style={{
+                              background: 'rgba(15,23,42,0.9)', border: `1px solid ${sec.day_avg > 2 ? 'rgba(74,222,128,0.35)' : 'rgba(51,65,85,0.4)'}`,
+                              borderRadius: 8, padding: '6px 10px', minWidth: 130, position: 'relative',
+                            }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: '#e2e8f0', marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sec.name}</div>
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 10, fontFamily: 'monospace' }}>
+                                <span style={{ color: dayColor, fontWeight: 800 }}>{sec.day_avg > 0 ? '+' : ''}{sec.day_avg}%</span>
+                                <span style={{ color: '#64748b' }}>יום</span>
+                                {sec.week_avg !== null && (
+                                  <>
+                                    <span style={{ color: sec.week_avg >= 0 ? '#86efac' : '#fca5a5', fontWeight: 600 }}>{sec.week_avg > 0 ? '+' : ''}{sec.week_avg}%</span>
+                                    <span style={{ color: '#64748b' }}>שבוע</span>
+                                  </>
+                                )}
+                                {sec.month_avg !== null && (
+                                  <>
+                                    <span style={{ color: sec.month_avg >= 0 ? '#86efac' : '#fca5a5', fontWeight: 600 }}>{sec.month_avg > 0 ? '+' : ''}{sec.month_avg}%</span>
+                                    <span style={{ color: '#64748b' }}>חודש</span>
+                                  </>
+                                )}
+                              </div>
+                              {sec.top && (
+                                <div style={{ fontSize: 9, color: '#94a3b8', marginTop: 2 }}>
+                                  מוביל: <span style={{ color: '#38bdf8', fontWeight: 600 }}>{sec.top.ticker}</span> {parseFloat(sec.top.change_pct) > 0 ? '+' : ''}{parseFloat(sec.top.change_pct).toFixed(1)}%
+                                </div>
+                              )}
+                              <div style={{ position: 'absolute', top: 4, left: 6, fontSize: 8, color: '#475569' }}>{sec.count}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Industries */}
+                    {sectorPerf.industries.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 10, color: '#818cf8', fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>🏭 תעשיות מובילות</span>
+                          <span style={{ fontWeight: 400, color: '#64748b' }}>— תת-סקטור עם הביצועים הטובים ביותר</span>
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                          {sectorPerf.industries.slice(0, 8).map(ind => {
+                            const dayColor = ind.day_avg >= 0 ? '#4ade80' : '#f87171';
+                            return (
+                              <div key={ind.name} style={{
+                                background: 'rgba(15,23,42,0.9)', border: `1px solid ${ind.day_avg > 3 ? 'rgba(129,140,248,0.35)' : 'rgba(51,65,85,0.4)'}`,
+                                borderRadius: 8, padding: '5px 9px', minWidth: 110,
+                              }}>
+                                <div style={{ fontSize: 10, fontWeight: 700, color: '#e2e8f0', marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160 }}>{ind.name}</div>
+                                <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 9, fontFamily: 'monospace' }}>
+                                  <span style={{ color: dayColor, fontWeight: 800 }}>{ind.day_avg > 0 ? '+' : ''}{ind.day_avg}%</span>
+                                  {ind.week_avg !== null && (
+                                    <span style={{ color: ind.week_avg >= 0 ? '#86efac' : '#fca5a5' }}>ש:{ind.week_avg > 0 ? '+' : ''}{ind.week_avg}%</span>
+                                  )}
+                                  {ind.month_avg !== null && (
+                                    <span style={{ color: ind.month_avg >= 0 ? '#86efac' : '#fca5a5' }}>ח:{ind.month_avg > 0 ? '+' : ''}{ind.month_avg}%</span>
+                                  )}
+                                </div>
+                                {ind.top && (
+                                  <div style={{ fontSize: 8, color: '#94a3b8', marginTop: 1 }}>
+                                    <span style={{ color: '#818cf8' }}>{ind.top.ticker}</span> {parseFloat(ind.top.change_pct) > 0 ? '+' : ''}{parseFloat(ind.top.change_pct).toFixed(1)}%
+                                    {ind.sector && <span style={{ color: '#475569' }}> · {ind.sector}</span>}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
