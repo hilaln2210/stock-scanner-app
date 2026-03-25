@@ -2064,10 +2064,10 @@ def _fmt_num(n) -> str:
     return f"{sign}{abs_n:.2f}"
 
 
-def _compute_ev(fund: dict) -> Optional[float]:
+def _compute_ev(fund: dict, mc: float = None) -> Optional[float]:
     """
     Derive Enterprise Value from Finviz data.
-    Priority: direct 'enterprise_value' → EV/Sales × Sales → None.
+    Priority: direct 'enterprise_value' → EV/Sales × Sales → MC + Debt - Cash → None.
     """
     ev = _parse_fv_num(fund.get('enterprise_value', ''))
     if ev:
@@ -2076,6 +2076,20 @@ def _compute_ev(fund: dict) -> Optional[float]:
     sales      = _parse_fv_num(fund.get('sales', ''))
     if ev_sales_r and sales and ev_sales_r > 0:
         return ev_sales_r * sales
+    # Estimate from Market Cap + Debt - Cash (Export API path)
+    if mc and mc > 0:
+        cash_sh = _parse_fv_num(fund.get('cash_per_share', ''))
+        book_sh = _parse_fv_num(fund.get('book_per_share', ''))
+        de = _parse_fv_num(fund.get('debt_equity', ''))
+        if cash_sh is not None and book_sh is not None and de is not None:
+            # Total equity ≈ book_per_share × shares, total debt ≈ equity × D/E
+            # But simpler: EV ≈ MC × (1 + D/E) - (cash_sh/price × MC) when we have price
+            price = _parse_fv_num(fund.get('price', ''))
+            if price and price > 0:
+                cash_ratio = cash_sh / price  # cash as fraction of price
+                ev_est = mc * (1 + de) - (cash_ratio * mc)
+                if ev_est > 0:
+                    return ev_est
     return None
 
 
@@ -3181,11 +3195,11 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
             })
 
         tags    = _stock_tags(fund, price)
-        ev      = _compute_ev(fund)
+        ev      = _compute_ev(fund, mc)
         ev_mc_ratio = round(ev / mc, 3) if ev and mc and mc > 0 else None
 
         # Numeric EV / ratios for scores
-        ev      = _compute_ev(fund)
+        ev      = _compute_ev(fund, mc)
         ev_sales_field = _parse_fv_num(fund.get('ev_sales', ''))
         ev_sales_ratio = None
         if ev_sales_field is not None:
