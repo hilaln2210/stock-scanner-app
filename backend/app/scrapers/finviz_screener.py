@@ -221,107 +221,114 @@ class FinvizScreener:
         # ── Fallback: HTML scraping ──
         return await self._scrape_screener_html(filters, source_label)
 
+    # All columns for v=152 custom export — 62 fields in a single request
+    _EXPORT_COLS = ','.join(str(i) for i in range(0, 71))
+
     async def _export_api(self, filters: Dict, source_label: str) -> List[Dict]:
-        """Fetch via Finviz Export API — returns structured CSV, no HTML parsing.
-        Fetches 4 views in parallel (overview + valuation + ownership + performance)
-        and merges into a single enriched dict per ticker."""
+        """Fetch via Finviz Export API — single request with all 62 columns."""
         import csv as _csv
         import io as _io
 
-        base_params = '&'.join(f'{k}={v}' for k, v in filters.items())
+        # Exclude 'v' from filters — we force v=152 for full columns
+        params = '&'.join(f'{k}={v}' for k, v in filters.items() if k != 'v')
+        url = f"{self.EXPORT_URL}?v=152&{params}&c={self._EXPORT_COLS}&auth={self.api_token}"
         headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"}
-        timeout = aiohttp.ClientTimeout(total=15)
+        timeout = aiohttp.ClientTimeout(total=20)
+        _MAX_CSV_ROWS = 300
 
-        _MAX_CSV_ROWS = 300  # cap CSV parsing — results already sorted by -change
-
-        async def _fetch_view(session, view_num):
-            url = f"{self.EXPORT_URL}?{base_params}&v={view_num}&auth={self.api_token}"
+        async with aiohttp.ClientSession() as session:
             for attempt in range(2):
                 async with session.get(url, headers=headers, timeout=timeout) as resp:
                     if resp.status == 429:
                         await asyncio.sleep(2 ** attempt + 1)
                         continue
                     if resp.status != 200:
-                        return {}
+                        print(f"Finviz Export [{source_label}] status {resp.status}")
+                        return []
                     text = await resp.text()
-                    reader = _csv.DictReader(_io.StringIO(text))
-                    result = {}
-                    for i, row in enumerate(reader):
-                        if i >= _MAX_CSV_ROWS:
-                            break
-                        t = (row.get('Ticker') or '').strip()
-                        if t:
-                            result[t] = row
-                    return result
-            return {}
-
-        # Fetch all 4 views in parallel
-        async with aiohttp.ClientSession() as session:
-            v111, v121, v131, v141 = await asyncio.gather(
-                _fetch_view(session, '111'),  # overview: company, sector, industry, cap, P/E
-                _fetch_view(session, '121'),  # valuation: P/E, P/S, P/B, EPS growth
-                _fetch_view(session, '131'),  # ownership: short float, insider, institutional, float
-                _fetch_view(session, '141'),  # performance: week, month, quarter, rel volume, volatility
-                return_exceptions=True,
-            )
-
-        # Handle exceptions
-        if isinstance(v111, Exception): v111 = {}
-        if isinstance(v121, Exception): v121 = {}
-        if isinstance(v131, Exception): v131 = {}
-        if isinstance(v141, Exception): v141 = {}
+                    break
+            else:
+                return []
 
         _pct = lambda s: s.replace('%', '').strip() if isinstance(s, str) else s
+        _num = lambda s: float(s.replace('%', '').replace(',', '')) if s and s.strip() else None
 
+        reader = _csv.DictReader(_io.StringIO(text))
         stocks = []
-        for ticker, ov in v111.items():
-            if not re.match(r'^[A-Z]{1,5}$', ticker):
+        for i, r in enumerate(reader):
+            if i >= _MAX_CSV_ROWS:
+                break
+            ticker = (r.get('Ticker') or '').strip()
+            if not ticker or not re.match(r'^[A-Z]{1,5}$', ticker):
                 continue
-            val = v121.get(ticker, {})
-            own = v131.get(ticker, {})
-            perf = v141.get(ticker, {})
+            try: change_pct = float(_pct(r.get('Change', '0')))
+            except: change_pct = 0
+            try: price = float((r.get('Price') or '0').replace(',', ''))
+            except: price = 0
 
-            change_str = _pct(ov.get('Change', '0'))
-            try: change_pct = float(change_str)
-            except ValueError: change_pct = 0
-            price_str = (ov.get('Price') or '0').replace(',', '')
-            try: price = float(price_str)
-            except ValueError: price = 0
+            # Compute book/sh from P/B, cash/sh from P/Cash
+            pb = _num(r.get('P/B', ''))
+            book_per_share = round(price / pb, 2) if pb and pb > 0 and price > 0 else None
+            pcash = _num(r.get('P/Cash', ''))
+            cash_per_share = round(price / pcash, 2) if pcash and pcash > 0 and price > 0 else None
+            profit_margin = _num(r.get('Profit Margin', ''))
 
             stocks.append({
                 'ticker': ticker,
-                'company': ov.get('Company', ''),
-                'sector': ov.get('Sector', ''),
-                'industry': ov.get('Industry', ''),
+                'company': r.get('Company', ''),
+                'sector': r.get('Sector', ''),
+                'industry': r.get('Industry', ''),
                 'price': price,
                 'change_pct': change_pct,
-                'volume': self._parse_volume(ov.get('Volume', '0')),
-                'market_cap_str': ov.get('Market Cap', ''),
-                # Valuation (v=121)
-                'pe_ratio': val.get('P/E', ''),
-                'forward_pe': val.get('Forward P/E', ''),
-                'ps_ratio': val.get('P/S', ''),
-                'pb_ratio': val.get('P/B', ''),
-                'eps_this_y': val.get('EPS Growth This Year', ''),
-                'eps_next_y': val.get('EPS Growth Next Year', ''),
-                # Ownership (v=131)
-                'short_float': _pct(own.get('Short Float', '')),
-                'short_ratio': own.get('Short Ratio', ''),
-                'insider_own': _pct(own.get('Insider Ownership', '')),
-                'insider_trans': _pct(own.get('Insider Transactions', '')),
-                'inst_own': _pct(own.get('Institutional Ownership', '')),
-                'inst_trans': _pct(own.get('Institutional Transactions', '')),
-                'shs_float': own.get('Shares Float', ''),
-                'avg_volume': own.get('Average Volume', ''),
-                # Performance (v=141)
-                'perf_week': _pct(perf.get('Performance (Week)', '')),
-                'perf_month': _pct(perf.get('Performance (Month)', '')),
-                'perf_quarter': _pct(perf.get('Performance (Quarter)', '')),
-                'perf_half': _pct(perf.get('Performance (Half Year)', '')),
-                'perf_ytd': _pct(perf.get('Performance (YTD)', '')),
-                'perf_year': _pct(perf.get('Performance (Year)', '')),
-                'rel_volume': perf.get('Relative Volume', ''),
-                'volatility': perf.get('Volatility (Week)', ''),
+                'volume': self._parse_volume(r.get('Volume', '0')),
+                'market_cap_str': r.get('Market Cap', ''),
+                # Valuation
+                'pe_ratio': r.get('P/E', ''),
+                'forward_pe': r.get('Forward P/E', ''),
+                'ps_ratio': r.get('P/S', ''),
+                'pb_ratio': r.get('P/B', ''),
+                'eps_this_y': r.get('EPS Growth Quarter Over Quarter', ''),
+                'sales_qq': r.get('Sales Growth Quarter Over Quarter', ''),
+                # Ownership
+                'short_float': _pct(r.get('Short Float', '')),
+                'short_ratio': r.get('Short Ratio', ''),
+                'insider_own': _pct(r.get('Insider Ownership', '')),
+                'insider_trans': _pct(r.get('Insider Transactions', '')),
+                'inst_own': _pct(r.get('Institutional Ownership', '')),
+                'inst_trans': _pct(r.get('Institutional Transactions', '')),
+                'shs_float': r.get('Shares Float', ''),
+                'avg_volume': r.get('Average Volume', ''),
+                # Performance
+                'perf_week': _pct(r.get('Performance (Week)', '')),
+                'perf_month': _pct(r.get('Performance (Month)', '')),
+                'perf_quarter': _pct(r.get('Performance (Quarter)', '')),
+                'perf_half': _pct(r.get('Performance (Half Year)', '')),
+                'perf_ytd': _pct(r.get('Performance (YTD)', '')),
+                'perf_year': _pct(r.get('Performance (Year)', '')),
+                'rel_volume': r.get('Relative Volume', ''),
+                'volatility': r.get('Volatility (Week)', ''),
+                # Technical
+                'rsi': r.get('Relative Strength Index (14)', ''),
+                'sma20_dist': r.get('20-Day Simple Moving Average', ''),
+                'sma50_dist': r.get('50-Day Simple Moving Average', ''),
+                'sma200_dist': r.get('200-Day Simple Moving Average', ''),
+                'beta': r.get('Beta', ''),
+                'atr': r.get('Average True Range', ''),
+                'gap_pct': _pct(r.get('Gap', '')),
+                'change_from_open': _pct(r.get('Change from Open', '')),
+                'target_price': r.get('Target Price', ''),
+                'analyst_recom': r.get('Analyst Recom', ''),
+                'earnings_date': r.get('Earnings Date', ''),
+                # Financials
+                'debt_equity': r.get('Total Debt/Equity', ''),
+                'gross_margin': r.get('Gross Margin', ''),
+                'oper_margin': r.get('Operating Margin', ''),
+                'profit_margin': r.get('Profit Margin', ''),
+                'roa': r.get('Return on Assets', ''),
+                'roe': r.get('Return on Equity', ''),
+                # Computed
+                'book_per_share': str(book_per_share) if book_per_share else '',
+                'cash_per_share': str(cash_per_share) if cash_per_share else '',
                 # Source
                 'scan_sources': [source_label],
                 'scanned_at': datetime.now().isoformat(),
@@ -329,7 +336,7 @@ class FinvizScreener:
             })
 
         if stocks:
-            print(f"Finviz Export [{source_label}]: {len(stocks)} stocks (4 views merged)")
+            print(f"Finviz Export [{source_label}]: {len(stocks)} stocks (62 cols, 1 request)")
         return stocks
 
     async def _scrape_screener_html(self, filters: Dict, source_label: str) -> List[Dict]:

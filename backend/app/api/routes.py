@@ -2819,49 +2819,37 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
     tickers = [s['ticker'] for s in raw_stocks if s.get('ticker')]
 
     # ── 1c. If Export API provided enriched data, seed the fund cache ──
+    _EXPORT_FUND_KEYS = [
+        'short_float', 'short_ratio', 'insider_own', 'insider_trans',
+        'inst_own', 'inst_trans', 'shs_float', 'avg_volume', 'rel_volume',
+        'pe_ratio', 'forward_pe', 'ps_ratio', 'pb_ratio', 'eps_this_y', 'sales_qq',
+        'perf_week', 'perf_month', 'perf_quarter', 'perf_half', 'perf_ytd', 'perf_year',
+        'volatility', 'sector', 'industry', 'company',
+        'rsi', 'sma20_dist', 'sma50_dist', 'sma200_dist', 'beta', 'atr',
+        'gap_pct', 'target_price', 'analyst_recom', 'earnings_date',
+        'debt_equity', 'gross_margin', 'oper_margin', 'profit_margin', 'roa', 'roe',
+        'book_per_share', 'cash_per_share',
+    ]
     _api_enriched_count = 0
     for raw in raw_stocks:
         if raw.get('_from_export_api') and raw.get('ticker'):
             t = raw['ticker']
-            if t not in _FV_FUND_CACHE:
-                _FV_FUND_CACHE[t] = {
-                    'short_float': raw.get('short_float', ''),
-                    'short_ratio': raw.get('short_ratio', ''),
-                    'insider_own': raw.get('insider_own', ''),
-                    'insider_trans': raw.get('insider_trans', ''),
-                    'inst_own': raw.get('inst_own', ''),
-                    'inst_trans': raw.get('inst_trans', ''),
-                    'shs_float': raw.get('shs_float', ''),
-                    'avg_volume': raw.get('avg_volume', ''),
-                    'rel_volume': raw.get('rel_volume', ''),
-                    'pe_ratio': raw.get('pe_ratio', ''),
-                    'forward_pe': raw.get('forward_pe', ''),
-                    'ps_ratio': raw.get('ps_ratio', ''),
-                    'pb_ratio': raw.get('pb_ratio', ''),
-                    'eps_this_y': raw.get('eps_this_y', ''),
-                    'perf_week': raw.get('perf_week', ''),
-                    'perf_month': raw.get('perf_month', ''),
-                    'perf_quarter': raw.get('perf_quarter', ''),
-                    'perf_half': raw.get('perf_half', ''),
-                    'perf_ytd': raw.get('perf_ytd', ''),
-                    'perf_year': raw.get('perf_year', ''),
-                    'volatility': raw.get('volatility', ''),
-                    'sector': raw.get('sector', ''),
-                    'industry': raw.get('industry', ''),
-                    'company': raw.get('company', ''),
-                    'market_cap': raw.get('market_cap_str', ''),
-                    'price': str(raw.get('price', '')),
-                    'change_pct': str(raw.get('change_pct', '')),
-                    '_from_export': True,
-                }
+            if t not in _FV_FUND_CACHE or _FV_FUND_CACHE[t].get('_from_export'):
+                entry = {k: raw.get(k, '') for k in _EXPORT_FUND_KEYS}
+                entry['market_cap'] = raw.get('market_cap_str', '')
+                entry['price'] = str(raw.get('price', ''))
+                entry['change_pct'] = str(raw.get('change_pct', ''))
+                _FV_FUND_CACHE[t] = entry
                 _api_enriched_count += 1
     if _api_enriched_count:
-        print(f'[finviz-table] seeded fund cache from Export API: {_api_enriched_count} tickers')
+        print(f'[finviz-table] seeded fund cache from Export API: {_api_enriched_count} tickers (62 cols)')
         _FV_FUND_CACHE_TIME = _time.time()
 
     # ── 2. Fundamentals מ-Finviz — sync when cold, stale-while-revalidate after ─
     global _FV_FUND_BG_REFRESHING, _FV_FUND_BG_START_TIME
+    # Export API seeds partial data — still need per-ticker fetch for cash/book/income/RSI
     fund_truly_missing = [t for t in tickers if t not in _FV_FUND_CACHE]
+    fund_partial = [t for t in tickers if _FV_FUND_CACHE.get(t, {}).get('_from_export')]
     fund_stale = (now - _FV_FUND_CACHE_TIME) > _FV_FUND_CACHE_TTL
 
     # Safety: reset stuck bg flag after 120s
@@ -2893,13 +2881,15 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
         finally:
             _FV_FUND_BG_REFRESHING = False
 
-    if (fund_truly_missing or fund_stale) and not _FV_FUND_BG_REFRESHING:
+    _needs_fund_refresh = fund_truly_missing or fund_stale or fund_partial
+    if _needs_fund_refresh and not _FV_FUND_BG_REFRESHING:
         _FV_FUND_BG_REFRESHING = True
         _FV_FUND_BG_START_TIME = now
-        _tickers_snap = list(tickers)
+        # Prioritize: truly missing first, then partial (Export API only)
+        _tickers_snap = list(dict.fromkeys(fund_truly_missing + fund_partial + list(tickers)))
 
-        if _fund_cache_empty:
-            # Cold start: block on first 25 tickers, rest in background
+        if _fund_cache_empty and not fund_partial:
+            # Cold start with NO Export API data: block on first 25
             _first_batch = _tickers_snap[:25]
             _rest = _tickers_snap[25:]
             print(f'[finviz-table] COLD START — loading fundamentals for {len(_first_batch)} tickers (blocking), {len(_rest)} in bg...')
@@ -2912,7 +2902,9 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
             else:
                 _FV_FUND_BG_REFRESHING = False
         else:
-            # Warm: stale-while-revalidate in background
+            # Warm / partial Export API data: fetch full fundamentals in background
+            if fund_partial:
+                print(f'[finviz-table] bg fund refresh: {len(fund_partial)} partial (Export API) + {len(fund_truly_missing)} missing')
             asyncio.ensure_future(_do_fund_refresh(_tickers_snap))
 
     # ── 3. News from Finviz fundamentals (already scraped) ──────────────────
@@ -3153,6 +3145,14 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
     asyncio.create_task(_enrich_in_background())
 
     # ── 6. Merge — בונה טבלה עם fundamentals מ-Finviz ─────────────────────────
+    # Debug: check fund cache state
+    _sample = next((t for t in tickers[:5] if _FV_FUND_CACHE.get(t)), None)
+    if _sample:
+        _sf = _FV_FUND_CACHE[_sample]
+        print(f'[finviz-table] fund cache sample {_sample}: rsi={_sf.get("rsi","?")}, sf={_sf.get("short_float","?")}, pw={_sf.get("perf_week","?")}')
+    else:
+        print(f'[finviz-table] fund cache EMPTY for first 5 tickers: {tickers[:5]}')
+
     stocks = []
     for raw in raw_stocks:
         t     = raw.get('ticker', '')
