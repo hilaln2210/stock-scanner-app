@@ -3453,8 +3453,8 @@ export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshS
     };
     Object.values(sectorMap).forEach(finalize);
     Object.values(industryMap).forEach(finalize);
-    const sectors = Object.values(sectorMap).filter(s => s.count >= 2).sort((a, b) => b.day_avg - a.day_avg);
-    const industries = Object.values(industryMap).filter(s => s.count >= 2).sort((a, b) => b.day_avg - a.day_avg);
+    const sectors = Object.values(sectorMap).filter(s => s.count >= 5).sort((a, b) => b.day_avg - a.day_avg);
+    const industries = Object.values(industryMap).filter(s => s.count >= 3).sort((a, b) => b.day_avg - a.day_avg);
     return { sectors, industries };
   }, [stocks]);
 
