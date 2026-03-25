@@ -3076,8 +3076,10 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
         # Run intraday + TA in parallel; summary is lightweight and can run in parallel too
         await asyncio.gather(_do_intra(), _do_ta(), _do_summary(), return_exceptions=True)
 
-    # אחזור intraday — batch download סינכרוני לכל המניות החסרות
+    # אחזור intraday — batch download סינכרוני (max 15 tickers, rest in bg)
     import pandas as _pd2
+    if intra_missing:
+        intra_missing = intra_missing[:15]  # cap sync fetch — rest handled by _enrich_in_background
     if intra_missing:
         _t0_intra = _time.time()
         try:

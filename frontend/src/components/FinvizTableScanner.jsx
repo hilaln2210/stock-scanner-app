@@ -2974,17 +2974,17 @@ const INITIAL_CAPITAL = 3000;
 export default function FinvizTableScanner({ ensureTickers, refreshSec: refreshSecProp }) {
   const effectiveRefreshSec = (refreshSecProp != null && refreshSecProp >= 0) ? refreshSecProp : REFRESH_SEC;
   // ברירת מחדל: כולל מניות כמו AAOI (RSI Any, Mid+)
-  const [mcap,   setMcap]   = useState('cap_midover');
-  const [avgvol, setAvgvol] = useState('sh_avgvol_o2000');
+  const [mcap,   setMcap]   = useState('');
+  const [avgvol, setAvgvol] = useState('sh_avgvol_o200');
   const [relvol, setRelvol] = useState('');
   const [curvol, setCurvol] = useState('');  // Any — מניות כמו AAOI עם נפח יומי נמוך יופיעו
-  const [change, setChange] = useState('');
+  const [change, setChange] = useState('ta_change_u');
   const [changeopen, setChangeopen] = useState('');
   const [customChangePct, setCustomChangePct] = useState('3');
   const [showChangeList, setShowChangeList] = useState(false);
   const [shortf, setShortf] = useState('');
   const [rsi,    setRsi]    = useState('');  // Any — כדי לכלול מניות עם RSI גבוה (למשל AAOI)
-  const [inst,   setInst]   = useState('sh_instown_o10');
+  const [inst,   setInst]   = useState('');
   const [salesqq, setSalesqq] = useState('');
   const [gap,    setGap]     = useState('');
   const [sma50,  setSma50]   = useState('');
