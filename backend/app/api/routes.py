@@ -47,7 +47,8 @@ momentum_scanner = MomentumScanner()
 finviz_screener = FinvizScreener(
     email=settings.finviz_email,
     password=settings.finviz_password,
-    cookie=settings.finviz_cookie
+    cookie=settings.finviz_cookie,
+    api_token=settings.finviz_api_token,
 )
 fda_calendar_scraper = FDACalendarScraper()
 finviz_fundamentals = FinvizFundamentals(
@@ -2761,24 +2762,22 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
 
     raw_stocks = []
     seen_tickers = set()
-    pages = await asyncio.gather(*[
-        finviz_screener._scrape_screener(
-            {'v': '111', 'f': filters, 'o': '-changeopen', 'r': str(r_start)},
+    # Export API returns all results in one call (no pagination needed)
+    _MAX_SCREENER_STOCKS = 100  # cap to avoid overload on fundamentals + TA
+    try:
+        all_results = await finviz_screener._scrape_screener(
+            {'v': '111', 'f': filters, 'o': '-change'},
             'finviz-table',
         )
-        for r_start in [1, 21, 41]
-    ], return_exceptions=True)
-    for i, page in enumerate(pages):
-        if isinstance(page, Exception):
-            print(f'[finviz-table] page {i} EXCEPTION: {page}')
-            continue
-        print(f'[finviz-table] page {i}: {len(page)} stocks')
-        for s in page:
+        # Already sorted by -change from Finviz — take top N
+        for s in all_results[:_MAX_SCREENER_STOCKS]:
             t = s.get('ticker')
             if t and t not in seen_tickers:
                 seen_tickers.add(t)
                 raw_stocks.append(s)
-    print(f'[finviz-table] total raw_stocks after screener: {len(raw_stocks)}')
+    except Exception as e:
+        print(f'[finviz-table] screener error: {e}')
+    print(f'[finviz-table] raw_stocks from screener: {len(raw_stocks)}')
 
     # ── 1b. ensure_tickers: טיקרים לחיזוק — נשלוף מ-Finviz quote אם לא בסריקה ───
     # נתונים מגיעים כולם מ-Finviz (screener + quote.ashx)
@@ -2818,6 +2817,47 @@ async def _finviz_table_inner(filters, ensure_tickers, now, cache_key):
                 'generated_at': datetime.now().isoformat()}
 
     tickers = [s['ticker'] for s in raw_stocks if s.get('ticker')]
+
+    # ── 1c. If Export API provided enriched data, seed the fund cache ──
+    _api_enriched_count = 0
+    for raw in raw_stocks:
+        if raw.get('_from_export_api') and raw.get('ticker'):
+            t = raw['ticker']
+            if t not in _FV_FUND_CACHE:
+                _FV_FUND_CACHE[t] = {
+                    'short_float': raw.get('short_float', ''),
+                    'short_ratio': raw.get('short_ratio', ''),
+                    'insider_own': raw.get('insider_own', ''),
+                    'insider_trans': raw.get('insider_trans', ''),
+                    'inst_own': raw.get('inst_own', ''),
+                    'inst_trans': raw.get('inst_trans', ''),
+                    'shs_float': raw.get('shs_float', ''),
+                    'avg_volume': raw.get('avg_volume', ''),
+                    'rel_volume': raw.get('rel_volume', ''),
+                    'pe_ratio': raw.get('pe_ratio', ''),
+                    'forward_pe': raw.get('forward_pe', ''),
+                    'ps_ratio': raw.get('ps_ratio', ''),
+                    'pb_ratio': raw.get('pb_ratio', ''),
+                    'eps_this_y': raw.get('eps_this_y', ''),
+                    'perf_week': raw.get('perf_week', ''),
+                    'perf_month': raw.get('perf_month', ''),
+                    'perf_quarter': raw.get('perf_quarter', ''),
+                    'perf_half': raw.get('perf_half', ''),
+                    'perf_ytd': raw.get('perf_ytd', ''),
+                    'perf_year': raw.get('perf_year', ''),
+                    'volatility': raw.get('volatility', ''),
+                    'sector': raw.get('sector', ''),
+                    'industry': raw.get('industry', ''),
+                    'company': raw.get('company', ''),
+                    'market_cap': raw.get('market_cap_str', ''),
+                    'price': str(raw.get('price', '')),
+                    'change_pct': str(raw.get('change_pct', '')),
+                    '_from_export': True,
+                }
+                _api_enriched_count += 1
+    if _api_enriched_count:
+        print(f'[finviz-table] seeded fund cache from Export API: {_api_enriched_count} tickers')
+        _FV_FUND_CACHE_TIME = _time.time()
 
     # ── 2. Fundamentals מ-Finviz — sync when cold, stale-while-revalidate after ─
     global _FV_FUND_BG_REFRESHING, _FV_FUND_BG_START_TIME

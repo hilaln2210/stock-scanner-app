@@ -82,10 +82,13 @@ class FinvizScreener:
     # Cache the full scan result for this many seconds
     SCAN_CACHE_TTL = 90
 
-    def __init__(self, email: str = '', password: str = '', cookie: str = ''):
+    EXPORT_URL = "https://elite.finviz.com/export.ashx"
+
+    def __init__(self, email: str = '', password: str = '', cookie: str = '', api_token: str = ''):
         self.email = email
         self.password = password
         self.cookie = cookie
+        self.api_token = api_token
         # Per-ticker enrichment cache
         self._ticker_cache: Dict[str, Dict] = {}
         self._ticker_cache_time: Dict[str, float] = {}
@@ -205,7 +208,132 @@ class FinvizScreener:
             return {}
 
     async def _scrape_screener(self, filters: Dict, source_label: str) -> List[Dict]:
-        """Scrape a single Finviz screener page with given filters."""
+        """Fetch screener data via Export API (CSV) with HTML fallback."""
+        # ── Try Export API first (faster, more reliable) ──
+        if self.api_token:
+            try:
+                result = await self._export_api(filters, source_label)
+                if result:
+                    return result
+            except Exception as e:
+                print(f"Finviz Export API [{source_label}] failed: {e}, falling back to HTML")
+
+        # ── Fallback: HTML scraping ──
+        return await self._scrape_screener_html(filters, source_label)
+
+    async def _export_api(self, filters: Dict, source_label: str) -> List[Dict]:
+        """Fetch via Finviz Export API — returns structured CSV, no HTML parsing.
+        Fetches 4 views in parallel (overview + valuation + ownership + performance)
+        and merges into a single enriched dict per ticker."""
+        import csv as _csv
+        import io as _io
+
+        base_params = '&'.join(f'{k}={v}' for k, v in filters.items())
+        headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"}
+        timeout = aiohttp.ClientTimeout(total=15)
+
+        _MAX_CSV_ROWS = 300  # cap CSV parsing — results already sorted by -change
+
+        async def _fetch_view(session, view_num):
+            url = f"{self.EXPORT_URL}?{base_params}&v={view_num}&auth={self.api_token}"
+            for attempt in range(2):
+                async with session.get(url, headers=headers, timeout=timeout) as resp:
+                    if resp.status == 429:
+                        await asyncio.sleep(2 ** attempt + 1)
+                        continue
+                    if resp.status != 200:
+                        return {}
+                    text = await resp.text()
+                    reader = _csv.DictReader(_io.StringIO(text))
+                    result = {}
+                    for i, row in enumerate(reader):
+                        if i >= _MAX_CSV_ROWS:
+                            break
+                        t = (row.get('Ticker') or '').strip()
+                        if t:
+                            result[t] = row
+                    return result
+            return {}
+
+        # Fetch all 4 views in parallel
+        async with aiohttp.ClientSession() as session:
+            v111, v121, v131, v141 = await asyncio.gather(
+                _fetch_view(session, '111'),  # overview: company, sector, industry, cap, P/E
+                _fetch_view(session, '121'),  # valuation: P/E, P/S, P/B, EPS growth
+                _fetch_view(session, '131'),  # ownership: short float, insider, institutional, float
+                _fetch_view(session, '141'),  # performance: week, month, quarter, rel volume, volatility
+                return_exceptions=True,
+            )
+
+        # Handle exceptions
+        if isinstance(v111, Exception): v111 = {}
+        if isinstance(v121, Exception): v121 = {}
+        if isinstance(v131, Exception): v131 = {}
+        if isinstance(v141, Exception): v141 = {}
+
+        _pct = lambda s: s.replace('%', '').strip() if isinstance(s, str) else s
+
+        stocks = []
+        for ticker, ov in v111.items():
+            if not re.match(r'^[A-Z]{1,5}$', ticker):
+                continue
+            val = v121.get(ticker, {})
+            own = v131.get(ticker, {})
+            perf = v141.get(ticker, {})
+
+            change_str = _pct(ov.get('Change', '0'))
+            try: change_pct = float(change_str)
+            except ValueError: change_pct = 0
+            price_str = (ov.get('Price') or '0').replace(',', '')
+            try: price = float(price_str)
+            except ValueError: price = 0
+
+            stocks.append({
+                'ticker': ticker,
+                'company': ov.get('Company', ''),
+                'sector': ov.get('Sector', ''),
+                'industry': ov.get('Industry', ''),
+                'price': price,
+                'change_pct': change_pct,
+                'volume': self._parse_volume(ov.get('Volume', '0')),
+                'market_cap_str': ov.get('Market Cap', ''),
+                # Valuation (v=121)
+                'pe_ratio': val.get('P/E', ''),
+                'forward_pe': val.get('Forward P/E', ''),
+                'ps_ratio': val.get('P/S', ''),
+                'pb_ratio': val.get('P/B', ''),
+                'eps_this_y': val.get('EPS Growth This Year', ''),
+                'eps_next_y': val.get('EPS Growth Next Year', ''),
+                # Ownership (v=131)
+                'short_float': _pct(own.get('Short Float', '')),
+                'short_ratio': own.get('Short Ratio', ''),
+                'insider_own': _pct(own.get('Insider Ownership', '')),
+                'insider_trans': _pct(own.get('Insider Transactions', '')),
+                'inst_own': _pct(own.get('Institutional Ownership', '')),
+                'inst_trans': _pct(own.get('Institutional Transactions', '')),
+                'shs_float': own.get('Shares Float', ''),
+                'avg_volume': own.get('Average Volume', ''),
+                # Performance (v=141)
+                'perf_week': _pct(perf.get('Performance (Week)', '')),
+                'perf_month': _pct(perf.get('Performance (Month)', '')),
+                'perf_quarter': _pct(perf.get('Performance (Quarter)', '')),
+                'perf_half': _pct(perf.get('Performance (Half Year)', '')),
+                'perf_ytd': _pct(perf.get('Performance (YTD)', '')),
+                'perf_year': _pct(perf.get('Performance (Year)', '')),
+                'rel_volume': perf.get('Relative Volume', ''),
+                'volatility': perf.get('Volatility (Week)', ''),
+                # Source
+                'scan_sources': [source_label],
+                'scanned_at': datetime.now().isoformat(),
+                '_from_export_api': True,
+            })
+
+        if stocks:
+            print(f"Finviz Export [{source_label}]: {len(stocks)} stocks (4 views merged)")
+        return stocks
+
+    async def _scrape_screener_html(self, filters: Dict, source_label: str) -> List[Dict]:
+        """Fallback: scrape HTML screener page."""
         results = []
 
         try:
@@ -739,5 +867,5 @@ class FinvizScreener:
 
 
 # Singleton factory
-def create_finviz_screener(email: str = '', password: str = '', cookie: str = '') -> FinvizScreener:
-    return FinvizScreener(email=email, password=password, cookie=cookie)
+def create_finviz_screener(email: str = '', password: str = '', cookie: str = '', api_token: str = '') -> FinvizScreener:
+    return FinvizScreener(email=email, password=password, cookie=cookie, api_token=api_token)

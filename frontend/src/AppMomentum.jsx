@@ -98,14 +98,14 @@ function ArenaIBWidget() {
 // { key: 'fda',             label: '💊 FDA',                  accent: '#22c55e' },
 // { key: 'news',            label: '📰 חדשות',               accent: '#3b82f6' },
 const TABS = [
-  { key: 'arena',           label: '🏆 ארנה',                accent: '#fbbf24' },
+  { key: 'finviz-table',    label: '📋 סורק בסיסי',           accent: '#14b8a6' },
   { key: 'sector-briefing', label: '🌅 סקטורים',              accent: '#f59e0b' },
+  { key: 'arena',           label: '🏆 ארנה',                accent: '#fbbf24' },
   { key: 'tech-signals',    label: '📈 סיגנלים',             accent: '#6366f1' },
   { key: 'daily-analysis',  label: '🎯 ניתוח יומי',           accent: '#8b5cf6' },
   { key: 'ib',              label: '🏦 IB חשבון',             accent: '#3b82f6' },
   { key: 'pattern-bot',     label: '🤖 Pattern Bot',           accent: '#a78bfa' },
   { key: 'seasonality',     label: '📅 עונתיות',               accent: '#06b6d4' },
-  { key: 'finviz-table',    label: '📋 סורק בסיסי',           accent: '#14b8a6' },
 ];
 
 // האפליקציה המלאה: כל הסורקים
@@ -126,7 +126,7 @@ function MomentumDashboard() {
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => setSearchTicker(val), 400);
   }, []);
-  const [viewMode, setViewMode]               = useState('sector-briefing');
+  const [viewMode, setViewMode]               = useState('finviz-table');
   const [newsCollapsed, setNewsCollapsed]     = useState(false);
   const [lastUpdateTime, setLastUpdateTime]   = useState(new Date());
   const [language, setLanguage]               = useState('he');

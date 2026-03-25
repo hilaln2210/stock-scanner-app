@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     finviz_email: str = ""
     finviz_password: str = ""
     finviz_cookie: str = ""
+    finviz_api_token: str = ""
 
     # AI Assistant
     anthropic_api_key: str = ""
