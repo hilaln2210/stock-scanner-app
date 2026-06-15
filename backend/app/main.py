@@ -476,9 +476,13 @@ async def lifespan(app: FastAPI):
             _ib_reconnect_failures[0] += 1
             print(f"[IB Reconnect] שגיאה: {e} (ניסיון #{_ib_reconnect_failures[0]})")
 
-    scheduler.add_job(_ib_auto_reconnect, "interval", seconds=60, id="ib_reconnect_job",
-                      max_instances=1, coalesce=True)
-    print("IB Auto-Reconnect: heartbeat + reconnect every 60s, Telegram alerts on disconnect/recover")
+    from app.services.ib_service import IB_DISABLED as _IB_DISABLED
+    if not _IB_DISABLED:
+        scheduler.add_job(_ib_auto_reconnect, "interval", seconds=60, id="ib_reconnect_job",
+                          max_instances=1, coalesce=True)
+        print("IB Auto-Reconnect: heartbeat + reconnect every 60s, Telegram alerts on disconnect/recover")
+    else:
+        print("IB Auto-Reconnect: DISABLED (IB_DISABLED=True)")
 
     # ── System Watchdog — self-healing monitor every 5 min ─────────────────
     async def _system_watchdog():

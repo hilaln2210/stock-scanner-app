@@ -103,7 +103,7 @@ const TABS = [
   { key: 'arena',           label: '🏆 ארנה',                accent: '#fbbf24' },
   { key: 'tech-signals',    label: '📈 סיגנלים',             accent: '#6366f1' },
   { key: 'daily-analysis',  label: '🎯 ניתוח יומי',           accent: '#8b5cf6' },
-  { key: 'ib',              label: '🏦 IB חשבון',             accent: '#3b82f6' },
+  // { key: 'ib',              label: '🏦 IB חשבון',             accent: '#3b82f6' },  // IB disabled
   { key: 'pattern-bot',     label: '🤖 Pattern Bot',           accent: '#a78bfa' },
   { key: 'seasonality',     label: '📅 עונתיות',               accent: '#06b6d4' },
 ];

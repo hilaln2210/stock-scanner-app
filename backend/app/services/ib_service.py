@@ -17,6 +17,11 @@ from datetime import datetime, timedelta
 
 log = logging.getLogger(__name__)
 
+# ── IB Gateway kill-switch ─────────────────────────────────────────────
+# Set True to fully disable all IB Gateway connections (no trading, no
+# account/position fetches, no auto-reconnect). Flip back to False to re-enable.
+IB_DISABLED = True
+
 try:
     import ib_insync as _ib
     _IB_AVAILABLE = True
@@ -313,6 +318,8 @@ class IBService:
                 pass
 
     async def connect(self, host="127.0.0.1", port=4002, client_id=20) -> Dict:
+        if IB_DISABLED:
+            return {"connected": False, "error": "IB Gateway מושבת"}
         if not _IB_AVAILABLE:
             return {"connected": False, "error": "ib_insync לא מותקן"}
 
