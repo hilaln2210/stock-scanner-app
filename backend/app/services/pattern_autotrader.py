@@ -102,6 +102,9 @@ _state: Dict = {
 # ── IB market order helper ─────────────────────────────────────────────────────
 def _place_ib_order(ticker: str, action: str, amount: float) -> Optional[dict]:
     """Place a market order via IB. action = 'BUY' or 'SELL'."""
+    from app.services.ib_service import IB_DISABLED
+    if IB_DISABLED:
+        return None  # IB Gateway disabled — caller falls back to paper price
     try:
         import ib_insync as _ib
     except ImportError:
